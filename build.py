@@ -225,23 +225,14 @@ def build():
         if sysdateien:
             print(f"  System    {sysdateien} Dateien in SYSTEM\\ sichtbar gemacht")
 
-        # Ein offenes Benutzerkonto: Name "user", kein Passwort. Damit
-        # kommt die frisch gebaute Maschine ohne Nachfrage hoch. Wer die
-        # Einrichtung sehen will, nimmt eine frische Platte (reset.py) oder
-        # löscht \SYSTEM\USER.DAT -- dann fragt sie beim nächsten Start.
-        konto = bytearray(24)
-        konto[:4] = b"user"
-        h = 0x1234
-        konto[20:24] = h.to_bytes(4, "little")
-        idx = fs.put("USER.DAT", bytes(konto))   # ins Hauptverzeichnis:
-        # ... und verstecken (Bit 8 im Info-Wort), damit es nicht in DIR
-        # und im Dateifenster steht. Siehe ent_versteckt in system/fs.c.
-        e = fs._ent(idx) + 24
-        fs._put32(e, fs._u32(e) | 256)
-        fs.markiere(513, 8)
-        fs.save()
-        # 
-        # dort sucht fs_read, und genau das benutzt der Kernel.
+        # KEIN Benutzerkonto. Wer den Rechner frisch baut, richtet ihn beim
+        # ersten Start selbst ein: Name, Passwort, fertig. Frueher legte
+        # build.py hier ein offenes Konto "user" an -- praktisch beim
+        # Entwickeln, aber wer das Projekt herunterlaedt, sass danach in
+        # einem fremden Konto, das er nie angelegt hatte.
+        #
+        # Die Testwerkzeuge brauchen weiterhin einen angemeldeten Rechner;
+        # die legen sich das Konto selbst an (test_konto in tools/headless.py).
 
         # Alles aus diskfiles/ wird 1:1 auf die Platte gespiegelt
         diskdir_src = os.path.join(ROOT, "diskfiles")

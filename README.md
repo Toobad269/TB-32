@@ -14,6 +14,13 @@ python3 build.py     # BIOS, Kernel, Programme und Laufwerk bauen
 python3 pc.py        # den Rechner einschalten
 ```
 
+Beim **ersten Start** richtet der Rechner sich ein: Benutzername, Passwort,
+Passwort wiederholen. Danach meldest du dich bei jedem Start mit diesem
+Passwort an. Ein leeres Passwort bedeutet: der Rechner ist offen und fragt
+nicht. Das Konto liegt als versteckte Datei `\USER.DAT` auf der virtuellen
+Platte -- gelöscht wird es über *Start ▸ Settings ▸ Reset this machine* oder
+auf dem Mac mit `python3 reset.py`.
+
 ## Tasten am Gehäuse
 
 Diese Tasten gehören dem Fenster, nicht dem virtuellen Rechner — sie

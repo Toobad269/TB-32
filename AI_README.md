@@ -498,6 +498,15 @@ Klick holt es nach vorn. Rechts außen die **Uhr**.
 | 10 | Power options | Restart, Shut down, Sign out |
 | 11 | Exit desktop | zurück zur Kommandozeile |
 
+**Benutzerkonto.** Genau eines, in `\USER.DAT` (24 Byte, versteckt): Name ab
+Byte 0, Prüfsumme des Passworts ab Byte 20. Die Datei liegt **immer im
+Hauptverzeichnis** -- `benutzer_anlegen()` und `benutzer_vorhanden()` setzen
+`cwd` dafür kurz auf die Wurzel, weil `fs_write`/`fs_read` sonst im gerade
+offenen Ordner arbeiten würden. `pw_summe("") == 0x1234`: ein leeres Passwort
+gilt als *nicht gesperrt*, der Anmeldeschirm entfällt. `build.py` legt **kein**
+Konto an -- der erste Start fragt danach. Testwerkzeuge legen sich über
+`test_konto()` in `tools/headless.py` selbst eines an.
+
 **Symbole auf dem Schreibtisch.** Dateien aus `\DESKTOP` liegen als Symbole
 da und lassen sich mit der Maus verschieben; die Positionen merkt sich
 `ICONS.DAT`. Doppelklick startet oder öffnet.

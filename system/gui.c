@@ -2640,7 +2640,9 @@ void gl_malen(int neu_anlegen) {
         else g_text(160, 244, "Click a field or press TAB, ENTER confirms", C_WINDARK, 256);
     } else {
         g_text(160, 150, "User", C_WINDARK, 256);
-        g_text(200, 150, gl_name, C_ACCENT, 256);
+        /* Der Name des Kontos, nicht der Eingabepuffer -- beim Anmelden
+           tippt niemand einen Namen, das Feld waere immer leer. */
+        g_text(200, 150, benutzer_name(), C_ACCENT, 256);
         gl_kasten(176, "Password", gl_pw, 1, 1);
         if (gl_fehler) g_text(160, 206, "Wrong password.", C_WARN, 256);
         else g_text(160, 206, "ENTER to sign in", C_WINDARK, 256);
@@ -2802,7 +2804,10 @@ void app_settings(int i) {
         g_text(x, y + 26, "This deletes your account and every file you", C_TEXT, 256);
         g_text(x, y + 40, "created. The system itself stays, so the machine", C_TEXT, 256);
         g_text(x, y + 54, "still starts -- it will ask you to set it up again.", C_TEXT, 256);
-        g_text(x, y + 76, "Are you sure?", C_WARN, 256);
+        if (st_fehler)
+            g_text_max(x, y + 76, "The SYSTEM folder is gone -- not resetting.",
+                       C_WARN, 256, b - 32);
+        else g_text(x, y + 76, "Are you sure?", C_WARN, 256);
         g_button(x + b - 190, y + 100, 80, 20, "Reset", 0);
         g_button(x + b - 100, y + 100, 80, 20, "Cancel", 0);
         return;
@@ -2811,13 +2816,19 @@ void app_settings(int i) {
 }
 
 /* Konto und eigene Dateien loeschen -- die Systemordner bleiben stehen. */
-void st_zuruecksetzen() {
-    int i; int sys;
+int st_zuruecksetzen() {
+    int i; int sys; int u;
     /* Alles weg ausser dem Ordner SYSTEM und seinem Inhalt. Dort liegt der
        Kernel, den der Bootsektor als Datei holt -- ohne ihn startet der
        Rechner nicht mehr, und niemand kaeme ohne den Mac wieder heran.
        Alles andere ist entweder deins oder kommt mit build.py zurueck. */
     sys = fs_find_in("SYSTEM", 0 - 1);
+    /* Ohne den Ordner SYSTEM wuerde die Schleife unten genau das Falsche
+       tun: sys waere -1, und -1 ist der Elternordner des HAUPTverzeichnisses.
+       Geschuetzt waere dann alles oben, geloescht alles in den Ordnern --
+       einschliesslich KERNEL.BIN. Der Rechner startete nie wieder. Also
+       lieber gar nichts anfassen. */
+    if (sys < 0 || ent_type(sys) != FT_DIR) return 0;
     for (i = 0; i < FS_MAXFILES; i++) {
         if (ent_type(i) == 0) continue;
         if (i == sys) continue;                /* der Ordner selbst */
@@ -2825,7 +2836,17 @@ void st_zuruecksetzen() {
         ent_setinfo(i, 0, 0 - 1);
         memset(ent_name(i), 0, 16);
     }
+    /* Ein Konto gehoert nie zum System. Landete es einmal in \SYSTEM (das
+       ging, solange USER.DAT im gerade offenen Ordner geschrieben wurde),
+       dann ueberlebte es hier jedes Zuruecksetzen. */
+    u = fs_find_in("USER.DAT", sys);
+    if (u >= 0) { ent_setinfo(u, 0, 0 - 1); memset(ent_name(u), 0, 16); }
     fs_save_dir();
+    /* Und zum Schluss die Probe aufs Exempel: den Kernel muss es danach
+       noch geben. Sonst wird NICHT neu gestartet -- ein Rechner, der nicht
+       mehr hochkommt, ist schlimmer als ein misslungenes Zuruecksetzen. */
+    if (fs_find_in("KERNEL.BIN", sys) < 0) return 0;
+    return 1;
 }
 
 int st_klick(int i, int mx, int my) {
@@ -2840,7 +2861,9 @@ int st_klick(int i, int mx, int my) {
             memset(st_alt, 0, 32); st_fehler = 0; st_meldung[0] = 0;
             return 1;
         }
-        if (treffer(mx, my, x, y + 54, 200, 20)) { st_schritt = ST_RESET; return 1; }
+        if (treffer(mx, my, x, y + 54, 200, 20)) {
+            st_schritt = ST_RESET; st_fehler = 0; return 1;
+        }
         return 0;
     }
     if (st_schritt == ST_ALT) {
@@ -2882,7 +2905,7 @@ int st_klick(int i, int mx, int my) {
     }
     if (st_schritt == ST_RESET) {
         if (treffer(mx, my, x + b - 190, y + 100, 80, 20)) {
-            st_zuruecksetzen();
+            if (st_zuruecksetzen() == 0) { st_fehler = 1; return 1; }
             st_schritt = ST_FERTIG;
             return 2;                    /* der Aufrufer startet neu */
         }

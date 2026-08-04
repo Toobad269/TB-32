@@ -35,6 +35,10 @@ def test_cmos():
     Seit der Rechner in den Schreibtisch startet, stehen im Textbildspeicher
     nur noch die Reste von vorher -- jedes Werkzeug, das screen_text() liest,
     waere blind. Es bekommt deshalb eine Kopie des CMOS mit Byte 0x1D = 1.
+    Und weil build.py kein Benutzerkonto mehr anlegt, wird hier gleich eines
+    sichergestellt (siehe test_konto) -- sonst stuende jedes Werkzeug in der
+    Ersteinrichtung und wartete auf einen Namen.
+
     Das eigene CMOS des Nutzers bleibt unberuehrt, auch beim Herunterfahren."""
     import shutil
     import tempfile
@@ -47,7 +51,29 @@ def test_cmos():
     d[0x1D] = 1                       # 1 = Textkonsole
     with open(ziel, "wb") as f:
         f.write(bytes(d))
+    test_konto()
     return ziel
+
+
+def test_konto():
+    """Sorgt dafuer, dass auf der Platte ein offenes Konto liegt.
+
+    Seit `build.py` keines mehr anlegt -- wer den Rechner herunterlaedt, soll
+    seinen Benutzer selbst einrichten --, staende sonst jedes Werkzeug in der
+    Ersteinrichtung und wartete auf einen Namen. Das Konto heisst "user", hat
+    kein Passwort (dann ist der Rechner offen) und ist versteckt."""
+    from tools.tbfs import TBFS
+    fs = TBFS(os.path.join(ROOT, "disk", "hd0.img"))
+    if not fs.formatted() or fs.find("USER.DAT", -1) >= 0:
+        return
+    konto = bytearray(24)
+    konto[:4] = b"user"
+    konto[20:24] = (0x1234).to_bytes(4, "little")     # pw_summe("")
+    i = fs.put("USER.DAT", bytes(konto))
+    e = fs._ent(i) + 24
+    fs._put32(e, fs._u32(e) | 256)                    # verstecken
+    fs.markiere(513, 8)
+    fs.save()
 
 
 def screen_text(m):

@@ -77,7 +77,25 @@ def main():
 
     if not ohne_frage:
         print()
-        if input("  Wirklich zuruecksetzen? Tippe JA: ").strip().upper() != "JA":
+        # Ohne Tastatur gibt es keine Rueckfrage -- und ohne Rueckfrage wird
+        # nichts geloescht. Das passiert, wenn man die Datei aus einem Editor
+        # heraus startet: dort haengt keine Eingabe am Programm, input() bricht
+        # sofort mit EOFError ab. Statt eines Absturzes soll dastehen, was zu
+        # tun ist.
+        if not sys.stdin or not sys.stdin.isatty():
+            print(f"  {GELB}Hier haengt keine Tastatur dran{WEG} -- vermutlich "
+                  "startest du die Datei\n  aus einem Editor. Die Sicherheitsfrage "
+                  "koennte niemand beantworten.\n")
+            print("  Im Terminal starten:      python3 reset.py")
+            print("  Oder ohne Rueckfrage:     python3 reset.py --ja")
+            print("\n  Nichts geaendert.")
+            return 1
+        try:
+            antwort = input("  Wirklich zuruecksetzen? Tippe JA: ")
+        except EOFError:
+            print("\n  Keine Eingabe moeglich. Nichts geaendert.")
+            return 1
+        if antwort.strip().upper() != "JA":
             print("\n  Abgebrochen. Nichts geaendert.")
             return 0
 

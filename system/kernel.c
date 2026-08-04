@@ -987,14 +987,24 @@ int passwort_lesen(char* buf, int max) {
     }
 }
 
+/* Das Konto liegt IMMER im Hauptverzeichnis -- unabhaengig davon, in welchem
+   Ordner der Benutzer gerade steht. fs_write und fs_read arbeiten sonst im
+   aktuellen Ordner, und dann landet USER.DAT dort, wo zufaellig gerade das
+   Dateifenster stand. Genau das ist passiert: auf einer Platte lag eine
+   USER.DAT in \SYSTEM -- unsichtbar fuer die Anmeldung (die sucht im
+   Hauptverzeichnis) und geschuetzt vor dem Zuruecksetzen (das laesst
+   \SYSTEM stehen). Der Rechner fragte nach jedem Start wieder nach der
+   Ersteinrichtung, und das Konto liess sich nicht mehr loswerden. */
 void benutzer_anlegen(char* name, char* pw) {
-    int n;
+    int n; int alt;
     memset((char*)USER_BUF, 0, USER_LEN);
     strncpy((char*)(USER_BUF + USER_NAME), name, 19);
     mem_put(USER_BUF + USER_HASH, pw_summe(pw));
+    alt = cwd; cwd = 0 - 1;
     fs_write("USER.DAT", USER_BUF, USER_LEN);
     n = fs_find("USER.DAT");
     if (n >= 0) { ent_verstecken(n); fs_save_dir(); }
+    cwd = alt;
 }
 
 int benutzer_passt(char* pw) {
@@ -1002,7 +1012,11 @@ int benutzer_passt(char* pw) {
 }
 
 int benutzer_vorhanden() {
-    return fs_read("USER.DAT", USER_BUF, USER_LEN) == USER_LEN;
+    int alt; int n;
+    alt = cwd; cwd = 0 - 1;
+    n = fs_read("USER.DAT", USER_BUF, USER_LEN);
+    cwd = alt;
+    return n == USER_LEN;
 }
 
 char* benutzer_name() { return (char*)(USER_BUF + USER_NAME); }
@@ -1032,10 +1046,8 @@ void ersteinrichtung() {
         printc("The two entries differ. Try again.\n\n", RED);
     }
 
-    memset((char*)USER_BUF, 0, USER_LEN);
-    strncpy((char*)(USER_BUF + USER_NAME), name, 19);
-    mem_put(USER_BUF + USER_HASH, pw_summe(pw1));
-    if (fs_write("USER.DAT", USER_BUF, USER_LEN) < 0)
+    benutzer_anlegen(name, pw1);        /* legt es im Hauptverzeichnis ab */
+    if (benutzer_vorhanden() == 0)
         printc("\nCould not save the account.\n", RED);
     else {
         nl();

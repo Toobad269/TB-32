@@ -9,6 +9,50 @@ Die tiefer liegenden Fallen haben zusätzlich einen ausführlichen Eintrag in
 
 ---
 
+## Konto lag im falschen Ordner -- und der erste Start gehört dem Benutzer
+
+**Der Fund.** Auf der Platte lag eine `USER.DAT` **in `\SYSTEM`**. Das darf
+nicht sein, und es erklärt seltsames Verhalten: `benutzer_anlegen()` schrieb
+die Datei mit `fs_write("USER.DAT", ...)`, und `fs_write` arbeitet im
+**aktuellen Ordner**. Stand das Dateifenster gerade in `\SYSTEM`, landete
+das Konto dort.
+
+Zwei Folgen, beide unangenehm:
+
+1. Die Anmeldung sucht im Hauptverzeichnis. Ein Konto in `\SYSTEM` findet
+   sie nie -- der Rechner fragte nach jedem Start wieder nach der
+   Ersteinrichtung.
+2. Das Zurücksetzen lässt `\SYSTEM` absichtlich stehen. Ein Konto, das dort
+   liegt, überlebt also jedes Zurücksetzen und ist nicht mehr loszuwerden.
+
+`benutzer_anlegen()` und `benutzer_vorhanden()` setzen `cwd` jetzt kurz auf
+die Wurzel und danach zurück. Das Zurücksetzen räumt außerdem ein
+verirrtes `\SYSTEM\USER.DAT` mit weg.
+
+**Zwei Sicherungen beim Zurücksetzen.** Wird der Ordner `SYSTEM` nicht
+gefunden, ist `sys == -1` -- und -1 ist zugleich der Elternordner des
+Hauptverzeichnisses. Die Schutzabfrage hätte dann genau das Falsche
+geschützt: alles oben, und gelöscht worden wäre alles in den Ordnern,
+einschließlich `KERNEL.BIN`. Der Rechner wäre nie wieder gestartet. Jetzt
+passiert in dem Fall gar nichts, mit Meldung. Und nach dem Löschen wird
+geprüft, dass `\SYSTEM\KERNEL.BIN` noch da ist -- erst dann wird neu
+gestartet.
+
+**Der erste Start gehört dem Benutzer.** `build.py` legt kein Konto mehr an.
+Wer das Projekt herunterlädt, baut und startet, richtet seinen Benutzer
+selbst ein -- vorher saß er in einem fremden Konto namens `user`, das er nie
+angelegt hatte. Die Testwerkzeuge legen sich ihres selbst an
+(`test_konto()` in `tools/headless.py`, aufgerufen aus `test_cmos()`).
+
+**Kleinigkeiten.** Der Anmeldeschirm zeigte kein `User` -- er malte den
+Eingabepuffer für den Namen, und beim Anmelden tippt niemand einen Namen.
+Jetzt steht dort der Name des Kontos. Und `reset.py` stürzte mit
+`EOFError` ab, wenn man es aus dem Editor startete: dort hängt keine
+Tastatur am Programm, die Sicherheitsfrage konnte niemand beantworten.
+Jetzt steht da, dass man es im Terminal starten soll -- oder mit `--ja`.
+
+---
+
 ## Passwortfelder lassen sich anklicken
 
 Beim Passwort-Ändern kam man **nur mit TAB** von einem Feld zum anderen. Wer
