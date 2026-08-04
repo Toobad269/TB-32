@@ -68,6 +68,7 @@
 #define APP_DIALOG  12
 #define APP_BIOSFRAGE 13
 #define APP_BIOSHILFE 14
+#define APP_SETTINGS  15
 
 #define EDG_COLS    edg_cols
 #define EDG_ROWS    edg_rows
@@ -594,12 +595,17 @@ void edg_oeffnen(char* name) {
    hat, und nur im Kopf der Datei -- weiter hinten darf die Kennung ohnehin
    nicht stehen. */
 int edg_bios_wert = 0;
-int edg_bios_len = 0 - 1;
+int edg_bios_len = 0 - 1;   /* -1 = noch nie gesucht */
 
 int edg_ist_bios() {
     char* t;
     int i; int n;
+    /* Nur nachsehen, wenn sich am KOPF etwas geaendert haben kann. Beim
+       Tippen weiter unten bleibt die Kennung, was sie war -- vorher wurde
+       bei jedem Anschlag neu gesucht, weil sich ed_len aendert. Das waren
+       25 Prozent der Rechenzeit des Coders. */
     if (ed_len == edg_bios_len) return edg_bios_wert;
+    if (edg_bios_len >= 0 && ed_pos > 400) { edg_bios_len = ed_len; return edg_bios_wert; }
     edg_bios_len = ed_len;
     edg_bios_wert = 0;
     t = ed_text();
@@ -1874,6 +1880,7 @@ void draw_window_inhalt(int i) {
     if (win_type[i] == APP_DIALOG)  app_dialog(i);
     if (win_type[i] == APP_BIOSFRAGE) app_biosfrage(i);
     if (win_type[i] == APP_BIOSHILFE) app_bioshilfe(i);
+    if (win_type[i] == APP_SETTINGS)  app_settings(i);
 }
 
 void draw_window(int i) {
@@ -1944,7 +1951,7 @@ void gui_im_fenster(char* name) {
    Oberflaechen liegen die Anwendungen jetzt in einem Menue, und die Leiste
    zeigt stattdessen, welche Fenster gerade offen sind. */
 
-#define MENU_ANZ  10
+#define MENU_ANZ  11
 #define MENU_X    2
 #define MENU_W    180
 #define MENU_ZH   14
@@ -1958,7 +1965,8 @@ char* menu_text(int i) {
     if (i == 5) return "Paint";
     if (i == 6) return "Word";
     if (i == 7) return "Clock";
-    if (i == 8) return "About TOOBAD-OS";
+    if (i == 8) return "Settings";
+    if (i == 9) return "About TOOBAD-OS";
     return "Exit desktop";
 }
 
@@ -1986,6 +1994,7 @@ char* win_kurz(int typ) {
     if (typ == APP_DIALOG)  return "File";
     if (typ == APP_BIOSFRAGE) return "Firmware";
     if (typ == APP_BIOSHILFE) return "Help";
+    if (typ == APP_SETTINGS)  return "Settings";
     if (typ == APP_MONITOR) return "Monitor";
     if (typ == APP_CONTROL) return "Control";
     if (typ == APP_CLOCK)   return "Clock";
@@ -2705,6 +2714,176 @@ int gui_anmelden(int neu_anlegen) {
     }
 }
 
+/* ==========================================================================
+   Einstellungen: Passwort aendern und den Rechner zuruecksetzen
+   ==========================================================================
+   Ein kleiner Ablauf mit Schritten. Das Passwort wird in ZWEI Schritten
+   geaendert -- erst das alte pruefen, dann das neue zweimal -- damit
+   niemand an einem unbeaufsichtigten Rechner einfach umstellen kann.
+
+   "Zuruecksetzen" loescht das Konto und alle eigenen Dateien im
+   Hauptverzeichnis. Die Systemordner bleiben: der Bootsektor holt den
+   Kernel als Datei aus \SYSTEM, ein echtes Formatieren machte den Rechner
+   also unstartbar, bis jemand am Mac build.py aufruft.
+   ========================================================================== */
+
+#define ST_MENUE     0
+#define ST_ALT       1
+#define ST_NEU       2
+#define ST_RESET     3
+#define ST_FERTIG    4
+
+int  st_schritt = ST_MENUE;
+int  st_feld = 0;
+int  st_fehler = 0;
+char st_alt[32];
+char st_neu[32];
+char st_neu2[32];
+char st_meldung[48];
+
+void st_feldkasten(int x, int y, char* beschriftung, char* inhalt, int aktiv) {
+    int i; int n;
+    g_text(x, y, beschriftung, C_TEXT, 256);
+    g_fill(x + 130, y - 3, 150, 14, C_WHITE);
+    g_frame(x + 130, y - 3, 150, 14, aktiv ? C_ACCENT : C_WINDARK);
+    n = strlen(inhalt);
+    for (i = 0; i < n && i < 18; i++)
+        g_char(x + 134 + i * 8, y, '*', C_TEXT, 256);
+    if (aktiv) g_fill(x + 134 + n * 8, y, 7, 8, C_ACCENT);
+}
+
+void app_settings(int i) {
+    int x; int y; int b;
+    x = win_x[i] + 12;
+    y = win_y[i] + TITLE_H + 12;
+    b = win_w[i];
+
+    if (st_schritt == ST_MENUE) {
+        g_text(x, y, "Settings", C_ACCENT, 256);
+        g_button(x, y + 26, 200, 20, "Change password", 0);
+        g_button(x, y + 54, 200, 20, "Reset this machine", 0);
+        g_text(x, y + 86, "User:", C_WINDARK, 256);
+        g_text(x + 48, y + 86, benutzer_name(), C_TEXT, 256);
+        if (st_meldung[0]) g_text(x, y + 104, st_meldung, C_GOOD, 256);
+        return;
+    }
+    if (st_schritt == ST_ALT) {
+        g_text(x, y, "Change password", C_ACCENT, 256);
+        g_text(x, y + 22, "Enter your current password.", C_TEXT, 256);
+        st_feldkasten(x, y + 48, "Current password", st_alt, 1);
+        if (st_fehler) g_text(x, y + 72, "Wrong password.", C_WARN, 256);
+        g_button(x + b - 190, y + 96, 80, 20, "OK", 0);
+        g_button(x + b - 100, y + 96, 80, 20, "Cancel", 0);
+        return;
+    }
+    if (st_schritt == ST_NEU) {
+        g_text(x, y, "Change password", C_ACCENT, 256);
+        st_feldkasten(x, y + 32, "New password", st_neu, st_feld == 0);
+        st_feldkasten(x, y + 58, "Repeat", st_neu2, st_feld == 1);
+        if (st_fehler) g_text(x, y + 80, "The two entries differ.", C_WARN, 256);
+        else g_text(x, y + 80, "TAB switches fields.", C_WINDARK, 256);
+        g_button(x + b - 190, y + 100, 80, 20, "Save", 0);
+        g_button(x + b - 100, y + 100, 80, 20, "Cancel", 0);
+        return;
+    }
+    if (st_schritt == ST_RESET) {
+        g_text(x, y, "Reset this machine", C_WARN, 256);
+        g_text(x, y + 26, "This deletes your account and every file you", C_TEXT, 256);
+        g_text(x, y + 40, "created. The system itself stays, so the machine", C_TEXT, 256);
+        g_text(x, y + 54, "still starts -- it will ask you to set it up again.", C_TEXT, 256);
+        g_text(x, y + 76, "Are you sure?", C_WARN, 256);
+        g_button(x + b - 190, y + 100, 80, 20, "Reset", 0);
+        g_button(x + b - 100, y + 100, 80, 20, "Cancel", 0);
+        return;
+    }
+    g_text(x, y, "Done. The machine restarts now.", C_GOOD, 256);
+}
+
+/* Konto und eigene Dateien loeschen -- die Systemordner bleiben stehen. */
+void st_zuruecksetzen() {
+    int n; int idx;
+    fs_chdir("\\");
+    n = 0;
+    while (n < file_anzahl()) {
+        idx = file_index(n);
+        if (ent_type(idx) == FT_DIR) { n++; continue; }
+        fs_endgueltig_loeschen(ent_name(idx));
+    }
+    fs_save_dir();
+}
+
+int st_klick(int i, int mx, int my) {
+    int x; int y; int b;
+    x = win_x[i] + 12;
+    y = win_y[i] + TITLE_H + 12;
+    b = win_w[i];
+
+    if (st_schritt == ST_MENUE) {
+        if (treffer(mx, my, x, y + 26, 200, 20)) {
+            st_schritt = ST_ALT;
+            memset(st_alt, 0, 32); st_fehler = 0; st_meldung[0] = 0;
+            return 1;
+        }
+        if (treffer(mx, my, x, y + 54, 200, 20)) { st_schritt = ST_RESET; return 1; }
+        return 0;
+    }
+    if (st_schritt == ST_ALT) {
+        if (treffer(mx, my, x + b - 190, y + 96, 80, 20)) {
+            if (benutzer_passt(st_alt)) {
+                st_schritt = ST_NEU;
+                memset(st_neu, 0, 32); memset(st_neu2, 0, 32);
+                st_feld = 0; st_fehler = 0;
+            } else {
+                st_fehler = 1;
+                memset(st_alt, 0, 32);
+            }
+            return 1;
+        }
+        if (treffer(mx, my, x + b - 100, y + 96, 80, 20)) { st_schritt = ST_MENUE; return 1; }
+        return 0;
+    }
+    if (st_schritt == ST_NEU) {
+        if (treffer(mx, my, x + b - 190, y + 100, 80, 20)) {
+            if (strcmp(st_neu, st_neu2) == 0) {
+                benutzer_anlegen(benutzer_name(), st_neu);
+                strcpy(st_meldung, "Password changed.");
+                st_schritt = ST_MENUE;
+            } else {
+                st_fehler = 1;
+                memset(st_neu, 0, 32); memset(st_neu2, 0, 32);
+                st_feld = 0;
+            }
+            return 1;
+        }
+        if (treffer(mx, my, x + b - 100, y + 100, 80, 20)) { st_schritt = ST_MENUE; return 1; }
+        return 0;
+    }
+    if (st_schritt == ST_RESET) {
+        if (treffer(mx, my, x + b - 190, y + 100, 80, 20)) {
+            st_zuruecksetzen();
+            st_schritt = ST_FERTIG;
+            return 2;                    /* der Aufrufer startet neu */
+        }
+        if (treffer(mx, my, x + b - 100, y + 100, 80, 20)) { st_schritt = ST_MENUE; return 1; }
+    }
+    return 0;
+}
+
+void st_taste(int k) {
+    int c; int code; int n;
+    char* ziel;
+    c = keychar(k);
+    code = keycode(k);
+    if (st_schritt == ST_ALT) ziel = st_alt;
+    else if (st_schritt == ST_NEU) ziel = st_feld == 0 ? st_neu : st_neu2;
+    else return;
+    n = strlen(ziel);
+    if (code == K_TAB && st_schritt == ST_NEU) { st_feld = 1 - st_feld; return; }
+    if (code == K_BACKSPACE) { if (n > 0) ziel[n - 1] = 0; return; }
+    if (code == K_ESC) { st_schritt = ST_MENUE; return; }
+    if (c >= 32 && c < 127 && n < 20) { ziel[n] = c; ziel[n + 1] = 0; }
+}
+
 void gui_main() {
     int mx; int my; int btn; int alt_btn; int i; int k;
     int drag; int drag_dx; int drag_dy; int neu; int letzte_sek;
@@ -2784,6 +2963,24 @@ void gui_main() {
             } else if (win_top >= 0 && win_type[win_top] == APP_PAINT) {
                 if (keycode(k) == K_ESC && pt_namemode == 0) break;
                 pt_taste(k);
+                draw_window(win_top);
+            } else if (win_top >= 0 && win_type[win_top] == APP_BIOSHILFE) {
+                /* Blaettern war nie angeschlossen -- das Fenster sagte
+                   "PgUp/PgDn scroll" und tat nichts. */
+                if (keycode(k) == K_PGDN) bh_top = bh_top + 8;
+                else if (keycode(k) == K_PGUP) bh_top = bh_top - 8;
+                else if (keycode(k) == K_DOWN) bh_top++;
+                else if (keycode(k) == K_UP) bh_top--;
+                else if (keycode(k) == K_HOME) bh_top = 0;
+                else if (keycode(k) == K_ESC) {
+                    win_type[win_top] = 0; win_voll[win_top] = 0;
+                    neu = 1;
+                }
+                if (bh_top < 0) bh_top = 0;
+                if (bh_top > 24) bh_top = 24;
+                if (neu == 0) draw_window(win_top);
+            } else if (win_top >= 0 && win_type[win_top] == APP_SETTINGS) {
+                st_taste(k);
                 draw_window(win_top);
             } else if (win_top >= 0 && win_type[win_top] == APP_DIALOG) {
                 dlg_taste(k);
@@ -2892,8 +3089,13 @@ void gui_main() {
                         starte(APP_WORD, "Word", 600, 330);
                     }
                     if (i == 7) starte(APP_CLOCK, "Clock", 200, 130);
-                    if (i == 8) starte(APP_ABOUT, "About TOOBAD-OS", 340, 150);
-                    if (i == 9) gui_running = 0;
+                    if (i == 8) {
+                        st_schritt = ST_MENUE;
+                        st_meldung[0] = 0;
+                        starte(APP_SETTINGS, "Settings", 420, 200);
+                    }
+                    if (i == 9) starte(APP_ABOUT, "About TOOBAD-OS", 340, 150);
+                    if (i == 10) gui_running = 0;
                     /* Selbst neu zeichnen: das continue unten springt am
                        "if (neu) draw_desktop()" am Schleifenende vorbei, und
                        dann bliebe das Menue stehen, bis man irgendwo anders
@@ -3013,6 +3215,12 @@ void gui_main() {
                             if (wd_klick(i, mx, my)) neu = 1;
                         } else if (win_type[i] == APP_DIALOG) {
                             if (dlg_klick(i, mx, my)) neu = 1;
+                        } else if (win_type[i] == APP_SETTINGS) {
+                            k = st_klick(i, mx, my);
+                            if (k == 2) {          /* zurueckgesetzt */
+                                sys_out(P_POWER, 2);
+                            }
+                            if (k) neu = 1;
                         } else if (win_type[i] == APP_BIOSFRAGE) {
                             if (treffer(mx, my, win_x[i] + win_w[i] - 180,
                                         win_y[i] + TITLE_H + 92, 84, 18)) {

@@ -1103,8 +1103,9 @@ int main() {
         sys_out(P_BLT_SRC, (int)font8);
         sys_out(P_MCUR_ON, 0);
         sys_flushkeys();
-        if (benutzer_vorhanden()) gui_anmelden(0);
-        else                      gui_anmelden(1);
+        if (benutzer_vorhanden() == 0) gui_anmelden(1);
+        else if (mem_get(USER_BUF + USER_HASH) != pw_summe(""))
+            gui_anmelden(0);         /* leeres Passwort = nicht gesperrt */
         gui_main();
         sys_setmode(0);
         cls(NORMAL);

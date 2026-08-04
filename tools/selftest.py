@@ -382,7 +382,13 @@ def main():
     # Das Menü wächst nach oben: die Höhe hängt an der Anzahl der Einträge
     # (MENU_ANZ in gui.c). Deshalb hier aus BAR_Y zurückgerechnet, sonst
     # zeigt jeder neue Menüpunkt alle Klicks um eine Zeile daneben.
-    MENU_ANZ, MENU_ZH, BAR_Y = 10, 14, 378
+    # MENU_ANZ direkt aus gui.c lesen, statt sie hier abzuschreiben. Beim
+    # letzten Wachsen des Menues sind drei Tests reihenweise umgefallen,
+    # weil die Zahl an zwei Stellen stand.
+    import re as _re
+    MENU_ANZ = int(_re.search(r"define MENU_ANZ\s+(\d+)",
+                              open(os.path.join(ROOT, "system", "gui.c")).read()).group(1))
+    MENU_ZH, BAR_Y = 14, 378
     MENU_TOP = BAR_Y - (MENU_ANZ * MENU_ZH + 10)
 
     def menue(eintrag):
