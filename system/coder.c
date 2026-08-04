@@ -112,6 +112,32 @@ void syn_sprache(char* name) {
 
 /* Laeuft von vorne bis zur Stelle und meldet, ob dort ein Blockkommentar
    oder eine Zeichenkette offen ist. Nur fuer C noetig. */
+/* Wie syn_zustand_bei, aber ab einer bekannten Stelle mit bekanntem
+   Zustand. Genau dieselbe Rechnung, nur der Anfang ist schon erledigt. */
+int syn_zustand_ab(int von, int z, int ende) {
+    char* t; int p;
+    if (syn_art != 1) return SZ_NORMAL;
+    t = ed_text();
+    p = von;
+    while (p < ende) {
+        if (z == SZ_BLOCK) {
+            if (t[p] == '*' && p + 1 < ende && t[p + 1] == '/') { z = SZ_NORMAL; p++; }
+        } else if (z == SZ_TEXT) {
+            if (t[p] == 92) p++;
+            else if (t[p] == 34) z = SZ_NORMAL;
+            else if (t[p] == 10) z = SZ_NORMAL;
+        } else {
+            if (t[p] == '/' && p + 1 < ende && t[p + 1] == '*') { z = SZ_BLOCK; p++; }
+            else if (t[p] == '/' && p + 1 < ende && t[p + 1] == '/') {
+                while (p < ende && t[p] != 10) p++;
+            }
+            else if (t[p] == 34) z = SZ_TEXT;
+        }
+        p++;
+    }
+    return z;
+}
+
 int syn_zustand_bei(int ende) {
     char* t; int p; int z;
     if (syn_art != 1) return SZ_NORMAL;
@@ -156,7 +182,16 @@ void syn_bauen(int start, int zeilen, int spalten) {
     t = ed_text();
     sb = (char*)SYN_BUF;
     if (syn_top != start) {                 /* nur beim Blaettern neu rechnen */
-        syn_zustand = syn_zustand_bei(start);
+        /* Vorwaerts weiterrechnen statt jedes Mal bei null anzufangen.
+           syn_zustand_bei() laeuft vom Dateianfang bis zur Stelle -- beim
+           Rollen in einer langen Datei war das die ganze Datei, bei JEDEM
+           Schritt. Der Zustand ist ein Automat, der nur vorwaerts laeuft:
+           von einer bekannten Stelle aus weiterzuzaehlen liefert genau
+           dasselbe Ergebnis, kostet aber nur die Strecke dazwischen. */
+        if (start > syn_top && syn_top >= 0)
+            syn_zustand = syn_zustand_ab(syn_top, syn_zustand, start);
+        else
+            syn_zustand = syn_zustand_bei(start);
         syn_top = start;
     }
     zust = syn_zustand;

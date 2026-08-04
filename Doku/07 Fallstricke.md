@@ -497,6 +497,14 @@ sie zerstören, und `vid_hline` tat das auch prompt.
   sobald ein Fenster mit kleinerer Nummer darunterlag. Jetzt läuft sie
   rückwärts. **Merke:** Zeichenreihenfolge und Trefferreihenfolge sind
   dasselbe Wissen — sie gehören zusammen geändert.
+- **Beim Messen erst prüfen, ob der Testaufbau die Sache überhaupt
+  enthält.** Beim Ruckeln im Coder habe ich dreimal danebengemessen: einmal
+  nur wache Stichproben gezählt (das ist bei einer wartenden Maschine fast
+  nur der Interrupt-Handler), einmal aus 120 Stichproben ein Profil gedeutet,
+  und einmal ohne gesetzten Dateinamen gemessen — **wodurch die
+  Syntaxfärbung gar nicht lief**, also genau der Teil fehlte, um den es
+  ging. Der Nutzer hatte den entscheidenden Hinweis: „bei Word ist es
+  flüssig" — und Word hat keine Färbung.
 - **Eine Prüfsumme muss messen, was wirklich startet.** Als der Kernel vom
   festen Sektor 1 in die Datei `\SYSTEM\KERNEL.BIN` wanderte, hätte Secure
   Boot weiter die alten Sektoren gerechnet: eine Prüfung, die nie anschlägt.
