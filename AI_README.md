@@ -493,8 +493,10 @@ Klick holt es nach vorn. Rechts außen die **Uhr**.
 | 5 | Paint | Malprogramm |
 | 6 | Word | Textverarbeitung |
 | 7 | Clock | Uhr |
-| 8 | About TOOBAD-OS | Systeminfo |
-| 9 | Exit desktop | zurück zur Kommandozeile |
+| 8 | Settings | Passwort ändern, Rechner zurücksetzen |
+| 9 | About TOOBAD-OS | Systeminfo |
+| 10 | Power options | Restart, Shut down, Sign out |
+| 11 | Exit desktop | zurück zur Kommandozeile |
 
 **Symbole auf dem Schreibtisch.** Dateien aus `\DESKTOP` liegen als Symbole
 da und lassen sich mit der Maus verschieben; die Positionen merkt sich

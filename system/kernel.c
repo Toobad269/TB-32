@@ -1103,10 +1103,24 @@ int main() {
         sys_out(P_BLT_SRC, (int)font8);
         sys_out(P_MCUR_ON, 0);
         sys_flushkeys();
-        if (benutzer_vorhanden() == 0) gui_anmelden(1);
-        else if (mem_get(USER_BUF + USER_HASH) != pw_summe(""))
-            gui_anmelden(0);         /* leeres Passwort = nicht gesperrt */
-        gui_main();
+        /* Abmelden fuehrt zurueck zum Anmeldeschirm, ohne den Rechner
+           auszuschalten -- deshalb die Schleife. Danach wird IMMER gefragt,
+           auch bei einem offenen Konto: wer sich abmeldet, will das. */
+        formatiert = 0;
+        while (1) {
+            /* gui_main() schaltet beim Verlassen in den Textmodus zurueck.
+               Vor jedem Durchgang also wieder Grafik an, sonst malt die
+               Anmeldung ins Leere. */
+            sys_setmode(1 + 256);
+            sys_out(P_BLT_SRC, (int)font8);
+            if (benutzer_vorhanden() == 0) gui_anmelden(1);
+            else if (formatiert || mem_get(USER_BUF + USER_HASH) != pw_summe(""))
+                gui_anmelden(0);
+            gui_abmelden = 0;
+            gui_main();
+            if (gui_abmelden == 0) break;
+            formatiert = 1;
+        }
         sys_setmode(0);
         cls(NORMAL);
     } else {

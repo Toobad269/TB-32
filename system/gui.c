@@ -69,6 +69,7 @@
 #define APP_BIOSFRAGE 13
 #define APP_BIOSHILFE 14
 #define APP_SETTINGS  15
+#define APP_POWER     16
 
 #define EDG_COLS    edg_cols
 #define EDG_ROWS    edg_rows
@@ -1881,6 +1882,7 @@ void draw_window_inhalt(int i) {
     if (win_type[i] == APP_BIOSFRAGE) app_biosfrage(i);
     if (win_type[i] == APP_BIOSHILFE) app_bioshilfe(i);
     if (win_type[i] == APP_SETTINGS)  app_settings(i);
+    if (win_type[i] == APP_POWER)     app_power(i);
 }
 
 void draw_window(int i) {
@@ -1951,7 +1953,7 @@ void gui_im_fenster(char* name) {
    Oberflaechen liegen die Anwendungen jetzt in einem Menue, und die Leiste
    zeigt stattdessen, welche Fenster gerade offen sind. */
 
-#define MENU_ANZ  11
+#define MENU_ANZ  12
 #define MENU_X    2
 #define MENU_W    180
 #define MENU_ZH   14
@@ -1967,6 +1969,7 @@ char* menu_text(int i) {
     if (i == 7) return "Clock";
     if (i == 8) return "Settings";
     if (i == 9) return "About TOOBAD-OS";
+    if (i == 10) return "Power options";
     return "Exit desktop";
 }
 
@@ -1995,6 +1998,7 @@ char* win_kurz(int typ) {
     if (typ == APP_BIOSFRAGE) return "Firmware";
     if (typ == APP_BIOSHILFE) return "Help";
     if (typ == APP_SETTINGS)  return "Settings";
+    if (typ == APP_POWER)     return "Power";
     if (typ == APP_MONITOR) return "Monitor";
     if (typ == APP_CONTROL) return "Control";
     if (typ == APP_CLOCK)   return "Clock";
@@ -2884,6 +2888,43 @@ void st_taste(int k) {
     if (c >= 32 && c < 127 && n < 20) { ziel[n] = c; ziel[n + 1] = 0; }
 }
 
+/* --- Power options -------------------------------------------------------
+   Dasselbe wie der Schalter im Anmeldeschirm, nur aus dem laufenden System
+   heraus -- und mit einem dritten Weg: abmelden, ohne den Rechner
+   auszuschalten. Danach steht wieder der Anmeldeschirm da.               */
+
+int gui_abmelden = 0;                /* 1 = zurueck zum Anmeldeschirm */
+
+void app_power(int i) {
+    int x; int y;
+    x = win_x[i] + 16;
+    y = win_y[i] + TITLE_H + 14;
+    gl_power_symbol(x, y - 2, C_TEXT);
+    g_text(x + 20, y, "Power options", C_ACCENT, 256);
+    g_button(x, y + 26, 180, 20, "Restart", 0);
+    g_button(x, y + 52, 180, 20, "Shut down", 0);
+    g_button(x, y + 78, 180, 20, "Sign out", 0);
+    g_text(x, y + 106, "Sign out returns to the login screen.", C_WINDARK, 256);
+}
+
+/* 0 = nichts, 1 = neu gezeichnet, 2 = der Aufrufer soll den Schreibtisch
+   verlassen (abmelden). */
+int power_klick(int i, int mx, int my) {
+    int x; int y;
+    x = win_x[i] + 16;
+    y = win_y[i] + TITLE_H + 14;
+    if (treffer(mx, my, x, y + 26, 180, 20)) { sys_out(P_POWER, 2); return 1; }
+    if (treffer(mx, my, x, y + 52, 180, 20)) { sys_out(P_POWER, 1); return 1; }
+    if (treffer(mx, my, x, y + 78, 180, 20)) {
+        win_type[i] = 0;
+        win_voll[i] = 0;
+        gui_abmelden = 1;
+        gui_running = 0;
+        return 2;
+    }
+    return 0;
+}
+
 void gui_main() {
     int mx; int my; int btn; int alt_btn; int i; int k;
     int drag; int drag_dx; int drag_dy; int neu; int letzte_sek;
@@ -3095,7 +3136,8 @@ void gui_main() {
                         starte(APP_SETTINGS, "Settings", 420, 200);
                     }
                     if (i == 9) starte(APP_ABOUT, "About TOOBAD-OS", 340, 150);
-                    if (i == 10) gui_running = 0;
+                    if (i == 10) starte(APP_POWER, "Power", 240, 190);
+                    if (i == 11) gui_running = 0;
                     /* Selbst neu zeichnen: das continue unten springt am
                        "if (neu) draw_desktop()" am Schleifenende vorbei, und
                        dann bliebe das Menue stehen, bis man irgendwo anders
@@ -3215,6 +3257,8 @@ void gui_main() {
                             if (wd_klick(i, mx, my)) neu = 1;
                         } else if (win_type[i] == APP_DIALOG) {
                             if (dlg_klick(i, mx, my)) neu = 1;
+                        } else if (win_type[i] == APP_POWER) {
+                            if (power_klick(i, mx, my)) neu = 1;
                         } else if (win_type[i] == APP_SETTINGS) {
                             k = st_klick(i, mx, my);
                             if (k == 2) {          /* zurueckgesetzt */
