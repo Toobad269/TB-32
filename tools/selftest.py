@@ -502,6 +502,28 @@ def main():
                "TB-32 kann TCP" in L.bild(), L.bild())
         pruefe("TCP: der Server antwortet mit 200",
                "200 OK" in L.bild(), L.bild())
+        # --- Der Vermittler --------------------------------------------------
+        # Er ist der Weg zu HTTPS: der TB-32 sagt ihm in schlichtem HTTP, was
+        # er holen soll. Geprueft wird hier die Kette (unverschluesselt, damit
+        # die Pruefung ohne Internet auskommt) -- dass er auch TLS kann, ist
+        # Sache von Python und braucht keinen Beweis im TB-32.
+        with _socket.socket() as _s:
+            _s.bind(("127.0.0.1", 0))
+            proxy_port = _s.getsockname()[1]
+        vermittler = _sub.Popen([sys.executable, "-u",
+                                 os.path.join(ROOT, "proxy.py"), str(proxy_port)],
+                                cwd=ROOT, stdout=_sub.DEVNULL, stderr=_sub.DEVNULL)
+        L.warte(1.5)
+        L.eingabe(f"net proxy 127.0.0.1:{proxy_port}|ENTER", 1.0)
+        pruefe("Vermittler ist eingetragen", "8080" in L.bild()
+               or str(proxy_port) in L.bild(), L.bild())
+        L.eingabe(f"fetch 127.0.0.1:{web.server_port} /a|ENTER", 14.0)
+        pruefe("Der Vermittler holt die Seite",
+               "Erste Seite" in L.bild(), L.bild())
+        L.eingabe("net proxy off|ENTER", 1.0)
+        vermittler.terminate()
+        vermittler.wait(timeout=5)
+
         # --- Der Browser ---------------------------------------------------
         # Zwei Seiten auf dem Mac: die erste verweist auf die zweite. Damit
         # laesst sich pruefen, was einen Browser ausmacht -- HTML lesen,
@@ -550,6 +572,29 @@ def main():
         pruefe("Ein Klick auf den Verweis holt die naechste Seite",
                "Zweite Seite" in seitentext(L.m, sym), seitentext(L.m, sym))
         web.shutdown()
+
+        # --- Der Fenster-Server ---------------------------------------------
+        # Ein Programm von der Platte bekommt ein eigenes Fenster auf dem
+        # Schreibtisch. Geprueft wird die ganze Kette: Fenster anlegen, in den
+        # eigenen Puffer malen, Ereignisse bekommen, sich selbst schliessen.
+        menue(1)                                     # Command Prompt
+        L.warte(1.5)
+        L.eingabe("start fenster.tbx /b|ENTER", 8.0)
+        typen = [wort(L.m, sym["win_type"] + i * 4) for i in range(6)]
+        pruefe("Programm bekommt ein eigenes Fenster", 18 in typen, str(typen))
+        nr = typen.index(18) if 18 in typen else 0 - 1
+        gemalt = 0
+        if nr >= 0:
+            puffer = 0x00800000 + nr * 0x00040000
+            gemalt = sum(L.m.bus.read_block(puffer, 4000))
+        pruefe("Es malt in seinen eigenen Puffer", gemalt > 0, f"Summe {gemalt}")
+        pruefe("Der Bildschirm bleibt dabei heil",
+               sum(L.m.vga.gfx[:64000]) > 0)
+        # ESC geht an das oberste Fenster -- das Programm beendet sich damit
+        L.eingabe("ESC", 4.0)
+        typen = [wort(L.m, sym["win_type"] + i * 4) for i in range(6)]
+        pruefe("Und es raeumt sein Fenster selbst ab", 18 not in typen, str(typen))
+
         menue(MENU_ANZ - 1)                          # zurueck in die Konsole
         L.warte(2.0)
     finally:

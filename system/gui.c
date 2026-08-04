@@ -45,6 +45,7 @@
 
 #define C_DESK     17
 #define C_WIN      7
+#define C_WINBG    7     /* Hintergrund eines fremden Fensters */
 #define C_WINDARK  8
 #define C_WHITE    15
 #define C_BLACK    0
@@ -72,6 +73,41 @@
 #define APP_SETTINGS  15
 #define APP_POWER     16
 #define APP_BROWSER   17
+#define APP_FREMD     18     /* Fenster eines eigenstaendigen Programms */
+
+/* ---------------------------------------------------------------------------
+   Der Fenster-Server.
+
+   Bis hierher war jedes Fenster ein Stueck Kernel: Word, Paint, der Coder --
+   alle malen mit denselben g_-Funktionen direkt auf den Bildschirm. Das ist
+   schnell, aber es heisst auch: ein Fenster kann nur haben, wer im Kernel
+   steht.
+
+   Ein FREMDES Fenster gehoert einem eigenstaendigen Programm (.TBX). Damit
+   das gehen kann, ohne dass ein Programm ueber andere Fenster malt, bekommt
+   jedes seinen eigenen Bildpuffer im Arbeitsspeicher. Der Blitter kann seit
+   Neuestem dorthin malen statt auf den Bildschirm (Ports 0x5B..0x5D), und
+   der Schreibtisch setzt die Puffer beim Zeichnen zusammen -- wie ein
+   Fenster-Server bei den Grossen auch.
+
+   Ereignisse gehen den umgekehrten Weg: der Schreibtisch legt Tasten und
+   Klicks in einen kleinen Ring je Fenster, das Programm holt sie ab.
+   --------------------------------------------------------------------------- */
+#define FW_PUFFER    0x00800000   /* Bildpuffer, je Fenster 256 KB */
+#define FW_ABSTAND   0x00040000
+#define FW_RING      8            /* so viele Ereignisse passen in die Schlange */
+
+#define FE_NICHTS    0
+#define FE_TASTE     1
+#define FE_KLICK     2
+#define FE_SCHLIESS  3
+#define FE_MALEN     4            /* bitte neu zeichnen */
+
+int fw_pid[6];                    /* MAXWIN -- wem gehoert das Fenster */
+int fw_ring[144];                 /* MAXWIN * FW_RING * 3 */
+int fw_lese[6];
+int fw_schreib[6];
+int fw_frisch[6];                 /* Programm hat neu gemalt */
 
 #define EDG_COLS    edg_cols
 #define EDG_ROWS    edg_rows
@@ -2016,6 +2052,117 @@ void win_vollbild(int i) {
 /* Nur der Inhalt, ohne Rahmen und Knoepfe. Getrennt, weil wt_bauen() das
    Fenster ein zweites Mal malen laesst -- in den Textpuffer statt auf den
    Schirm. */
+
+/* Ein Bild aus dem Arbeitsspeicher auf den Schirm bringen (Blitter-Befehl 4). */
+void g_bild(int x, int y, int w, int h, int quelle) {
+    sys_out(P_BLT_SRC, quelle);
+    sys_out(P_BLT_X, x);
+    sys_out(P_BLT_Y, y);
+    sys_out(P_BLT_W, w);
+    sys_out(P_BLT_H, h);
+    sys_out(P_BLT_CMD, 4);
+    sys_out(P_BLT_SRC, (int)font8);      /* der Zeichensatz gehoert zurueck */
+}
+
+/* --- Der Fenster-Server ---------------------------------------------------- */
+
+int fw_addr(int i) { return FW_PUFFER + i * FW_ABSTAND; }
+
+/* Ein Ereignis in die Schlange eines Fensters legen. Ist sie voll, faellt
+   das aelteste heraus -- eine Taste zu verlieren ist besser als ein
+   Programm, das nie wieder Post bekommt. */
+void fw_melden(int i, int art, int a, int b) {
+    int n;
+    if (i < 0 || i >= MAXWIN) return;
+    n = fw_schreib[i];
+    fw_ring[(i * FW_RING + n) * 3 + 0] = art;
+    fw_ring[(i * FW_RING + n) * 3 + 1] = a;
+    fw_ring[(i * FW_RING + n) * 3 + 2] = b;
+    fw_schreib[i] = (n + 1) % FW_RING;
+    if (fw_schreib[i] == fw_lese[i]) fw_lese[i] = (fw_lese[i] + 1) % FW_RING;
+}
+
+/* Das Fenster malen: der Puffer des Programms wird hineinkopiert. Wo noch
+   nichts steht, bleibt es grau -- so sieht man beim Starten kein Rauschen. */
+void app_fremd(int i) {
+    int x; int y;
+    x = win_x[i] + 1;
+    y = win_y[i] + TITLE_H;
+    if (fw_frisch[i] == 0) {
+        g_fill(x, y, win_w[i] - 2, win_h[i] - TITLE_H - 1, C_WINBG);
+        return;
+    }
+    g_bild(x, y, win_w[i] - 2, win_h[i] - TITLE_H - 1, fw_addr(i));
+}
+
+/* --- die Systemaufrufe ---------------------------------------------------- */
+
+/* Ein Fenster aufmachen. Rueckgabe: Nummer, -1 = kein Platz mehr. */
+int fw_neu(char* titel, int breite, int hoehe, int pid) {
+    int i;
+    if (gui_running == 0) return 0 - 1;      /* kein Schreibtisch, kein Fenster */
+    if (breite < 80) breite = 80;
+    if (hoehe < 60) hoehe = 60;
+    if (breite > 620) breite = 620;
+    if (hoehe > 340) hoehe = 340;
+    i = starte(APP_FREMD, titel, breite, hoehe);
+    if (i < 0) return 0 - 1;
+    fw_pid[i] = pid;
+    fw_lese[i] = 0;
+    fw_schreib[i] = 0;
+    fw_frisch[i] = 0;
+    memset((char*)fw_addr(i), C_WINBG, breite * hoehe);
+    fw_melden(i, FE_MALEN, 0, 0);
+    return i;
+}
+
+/* Das naechste Ereignis holen. Rueckgabe: die Art, 0 = nichts da.
+   In <aus> stehen danach drei Zahlen: Art, a, b. */
+int fw_holen(int i, int aus) {
+    int n; int art;
+    if (i < 0 || i >= MAXWIN || win_type[i] != APP_FREMD) return 0 - 1;
+    if (fw_lese[i] == fw_schreib[i]) { mem_put(aus, FE_NICHTS); return 0; }
+    n = fw_lese[i];
+    art = fw_ring[(i * FW_RING + n) * 3 + 0];
+    mem_put(aus + 0, art);
+    mem_put(aus + 4, fw_ring[(i * FW_RING + n) * 3 + 1]);
+    mem_put(aus + 8, fw_ring[(i * FW_RING + n) * 3 + 2]);
+    fw_lese[i] = (n + 1) % FW_RING;
+    return art;
+}
+
+/* Wo darf das Programm malen, und wie gross ist sein Blatt?
+   Es malt in SEINEN Puffer, also immer ab 0,0 -- die Groesse aendert sich
+   aber, wenn der Benutzer das Fenster gross zieht. */
+int fw_groesse(int i, int aus) {
+    if (i < 0 || i >= MAXWIN || win_type[i] != APP_FREMD) return 0 - 1;
+    mem_put(aus + 0, fw_addr(i));
+    mem_put(aus + 4, win_w[i] - 2);
+    mem_put(aus + 8, win_h[i] - TITLE_H - 1);
+    return 0;
+}
+
+int fw_fertig(int i) {
+    if (i < 0 || i >= MAXWIN || win_type[i] != APP_FREMD) return 0 - 1;
+    fw_frisch[i] = 1;
+    /* Nur das eigene Fenster neu zeichnen, und nur wenn es obenauf liegt.
+       Den ganzen Schreibtisch zu malen waere bei jedem Bild eines Programms
+       viel zu teuer -- und ein verdecktes Fenster wuerde sich damit nach
+       vorn draengeln. */
+    if (win_top == i) draw_window(i);
+    return 0;
+}
+
+int fw_zu(int i) {
+    if (i < 0 || i >= MAXWIN) return 0 - 1;
+    win_type[i] = 0;
+    win_voll[i] = 0;
+    fw_pid[i] = 0 - 1;
+    fw_frisch[i] = 0;
+    draw_desktop();
+    return 0;
+}
+
 void draw_window_inhalt(int i) {
     if (win_type[i] == APP_FILES)   app_files(i);
     if (win_type[i] == APP_CLOCK)   app_clock(i);
@@ -2033,6 +2180,7 @@ void draw_window_inhalt(int i) {
     if (win_type[i] == APP_BIOSHILFE) app_bioshilfe(i);
     if (win_type[i] == APP_SETTINGS)  app_settings(i);
     if (win_type[i] == APP_POWER)     app_power(i);
+    if (win_type[i] == APP_FREMD)     app_fremd(i);
 }
 
 void draw_window(int i) {
@@ -2151,6 +2299,7 @@ char* win_kurz(int typ) {
     if (typ == APP_SETTINGS)  return "Settings";
     if (typ == APP_POWER)     return "Power";
     if (typ == APP_BROWSER)   return "Browser";
+    if (typ == APP_FREMD)     return "Program";
     if (typ == APP_MONITOR) return "Monitor";
     if (typ == APP_CONTROL) return "Control";
     if (typ == APP_CLOCK)   return "Clock";
@@ -2515,10 +2664,13 @@ int treffer(int x, int y, int bx, int by, int bw, int bh) {
     return 1;
 }
 
-void starte(int typ, char* titel, int w, int h) {
+int starte(int typ, char* titel, int w, int h) {
     int i; int x; int y;
     i = win_find(typ);
-    if (i >= 0) { win_top = i; return; }
+    /* Fremde Fenster gibt es mehrfach -- zwei Programme sind zwei Fenster.
+       Bei den eingebauten bleibt es beim einen: ein zweiter Coder waere nur
+       verwirrend. */
+    if (i >= 0 && typ != APP_FREMD) { win_top = i; return i; }
     x = 20 + typ * 18;                           /* leicht versetzt stapeln */
     y = 16 + typ * 12;
     if (x + w > G_W) x = G_W - w - 4;            /* aber immer im Bild bleiben */
@@ -2526,6 +2678,7 @@ void starte(int typ, char* titel, int w, int h) {
     if (x < 2) x = 2;
     if (y < 2) y = 2;
     win_open(typ, titel, x, y, w, h);
+    return win_top;
 }
 
 /* Endet der Name auf <endung>? (Vergleich ohne Gross-/Kleinschreibung) */
@@ -3216,6 +3369,8 @@ void gui_main() {
                 if (bh_top < 0) bh_top = 0;
                 if (bh_top > 24) bh_top = 24;
                 if (neu == 0) draw_window(win_top);
+            } else if (win_top >= 0 && win_type[win_top] == APP_FREMD) {
+                fw_melden(win_top, FE_TASTE, keychar(k), keycode(k));
             } else if (win_top >= 0 && win_type[win_top] == APP_BROWSER) {
                 br_taste(k, win_top);
                 draw_window(win_top);
@@ -3432,6 +3587,16 @@ void gui_main() {
                                 term_lauf = 0;
                                 term_aktiv = 0;
                             }
+                            /* Ein fremdes Fenster raeumt sein Programm selbst
+                               ab: es bekommt Bescheid und schliesst dann.
+                               Einfach wegzunehmen waere unhoeflich -- das
+                               Programm liefe weiter und wuesste von nichts. */
+                            if (win_type[i] == APP_FREMD) {
+                                fw_melden(i, FE_SCHLIESS, 0, 0);
+                                neu = 1;
+                                alt_btn = btn;
+                                continue;
+                            }
                             win_type[i] = 0;
                             win_voll[i] = 0;
                             neu = 1;
@@ -3467,6 +3632,10 @@ void gui_main() {
                             if (dlg_klick(i, mx, my)) neu = 1;
                         } else if (win_type[i] == APP_POWER) {
                             if (power_klick(i, mx, my)) neu = 1;
+                        } else if (win_type[i] == APP_FREMD) {
+                            fw_melden(i, FE_KLICK,
+                                      mx - win_x[i] - 1,
+                                      my - win_y[i] - TITLE_H);
                         } else if (win_type[i] == APP_BROWSER) {
                             if (br_klick(i, mx, my)) neu = 1;
                         } else if (win_type[i] == APP_SETTINGS) {

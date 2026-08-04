@@ -141,6 +141,16 @@ int syscall(int fn, int a1, int a2, int a3, int a4) {
         }
         return 0;
     }
+    /* --- Der Fenster-Server ----------------------------------------------
+       Damit kann ein eigenstaendiges Programm ein Fenster auf dem
+       Schreibtisch haben, statt den ganzen Bildschirm zu belegen. Es malt
+       in seinen eigenen Puffer (Blitter-Ports 0x5B..0x5D), der
+       Schreibtisch setzt die Fenster zusammen. */
+    if (fn == 40) return fw_neu((char*)a1, a2, a3, p_current);
+    if (fn == 41) return fw_holen(a1, a2);
+    if (fn == 42) return fw_groesse(a1, a2);
+    if (fn == 43) return fw_fertig(a1);
+    if (fn == 44) return fw_zu(a1);
     return 0 - 1;
 }
 

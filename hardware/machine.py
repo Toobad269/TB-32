@@ -19,6 +19,7 @@ from hardware.isa import (
     PORT_BLT_X, PORT_BLT_Y, PORT_BLT_W, PORT_BLT_H, PORT_BLT_COL,
     PORT_BLT_CMD, PORT_BLT_CHR, PORT_BLT_SRC, PORT_BLT_BG,
     PORT_MCUR_X, PORT_MCUR_Y, PORT_MCUR_ON, PORT_GFX_DOPPEL, PORT_GFX_TAUSCH, PORT_BLT_ZOOM,
+    PORT_BLT_ZIEL, PORT_BLT_ZIELB, PORT_BLT_ZIELH,
     PORT_DMA_SRC, PORT_DMA_DST, PORT_DMA_LEN, PORT_DMA_VAL, PORT_DMA_CMD,
     PORT_SPK_FREQ, PORT_SPK_ON,
     PORT_MOUSE_X, PORT_MOUSE_Y, PORT_MOUSE_BTN, PORT_MOUSE_WHEEL,
@@ -95,7 +96,9 @@ class Machine:
                               PORT_BLT_SRC, PORT_BLT_BG,
                               PORT_MCUR_X, PORT_MCUR_Y, PORT_MCUR_ON,
                               PORT_GFX_DOPPEL, PORT_GFX_TAUSCH,
-                              PORT_BLT_ZOOM])
+                              PORT_BLT_ZOOM,
+                              PORT_BLT_ZIEL, PORT_BLT_ZIELB,
+                              PORT_BLT_ZIELH])
         self.vga.bus = b
         self.dma = DMA()
         self.dma.bus = b

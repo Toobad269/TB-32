@@ -91,6 +91,9 @@
 #define PORT_GFX_DOPPEL    0x0052
 #define PORT_GFX_TAUSCH    0x0053
 #define PORT_BLT_ZOOM      0x0054
+#define PORT_BLT_ZIEL      0x005B   /* Blitter malt in den Speicher */
+#define PORT_BLT_ZIELB     0x005C
+#define PORT_BLT_ZIELH     0x005D
 #define PORT_DMA_SRC       0x0056
 #define PORT_DMA_DST       0x0057
 #define PORT_DMA_LEN       0x0058
@@ -157,6 +160,7 @@ typedef struct {
     /* Blitter */
     int      blt_x, blt_y, blt_w, blt_h;
     uint32_t blt_col, blt_chr, blt_src, blt_bg, blt_zoom;
+    uint32_t blt_ziel, blt_zielb, blt_zielh;   /* Zielpuffer statt Bildschirm */
 
     /* Blockkopierer */
     uint32_t dma_src, dma_dst, dma_len, dma_val;

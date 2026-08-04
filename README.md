@@ -24,31 +24,54 @@ auf dem Mac mit `python3 reset.py`.
 ## Netzwerk
 
 Der TB-32 hat eine Netzwerkkarte und einen eigenen Netzwerk-Stapel — ARP, IP,
-ICMP, UDP und DNS sind **TB-32-Code**, kein Python. Zwei laufende Rechner
-sehen sich sofort:
+ICMP, UDP, DNS und TCP sind **TB-32-Code**, kein Python.
+
+**`python3 pc.py` genügt.** Router und Vermittler starten mit — in eigenen
+Fäden im selben Prozess. Startest du ein zweites Fenster, merkt es, dass
+beide schon laufen, und startet sie kein zweites Mal.
 
 ```bash
-python3 pc.py        # im einen Fenster:  NET   zeigt die eigene Adresse
-python3 pc.py        # im anderen:        PING 10.0.0.1
-```
-
-Für den Weg nach draußen kommt der Router dazu — er tut das, was der Kasten
-an der Wand auch tut:
-
-```bash
-python3 router.py    # in einem dritten Fenster; Strg+C beendet ihn
+python3 pc.py                 # Netz läuft mit
+python3 pc.py --kein-netz     # ohne Router und Vermittler
 ```
 
 Dann geht `HOST example.com` (nennt die Adresse) und `FETCH example.com`
 (holt die Seite wirklich — DNS, TCP-Verbindung, HTTP-Anfrage, Antwort).
+Zwei laufende Rechner sehen sich ebenfalls sofort: `NET` zeigt die eigene
+Adresse, `PING 10.0.0.1` erreicht den anderen.
+
+Router und Vermittler laufen auch einzeln, wenn man ihnen beim Arbeiten
+zusehen will (`python3 router.py`, `python3 proxy.py`) — dann `pc.py
+--kein-netz` benutzen.
 
 Und im Schreibtisch gibt es einen **Browser**: *Start ▸ Browser*, Adresse
 eintippen, ENTER. Überschriften, Absätze, Aufzählungen und anklickbare
-Verweise. Kein CSS, kein JavaScript, keine Bilder — und **kein HTTPS**;
-dafür ist später ein Proxy vorgesehen, der die Verschlüsselung übernimmt.
+Verweise. Kein CSS, kein JavaScript, keine Bilder.
+
+Für **HTTPS** sorgt der Vermittler — der TB-32 spricht weiter nur HTTP,
+die Verschlüsselung macht ein Programm daneben.
+
+Der Vermittler ist voreingestellt (`127.0.0.1:8080`), `https://example.com`
+geht also sofort. Antwortet dort niemand, nimmt der Browser den unmittelbaren
+Weg — dann geht alles außer HTTPS. Ausschalten mit `NET PROXY OFF`.
 
 Befehle: `NET`, `NET IP`, `NET GW`, `NET DNS`, `NET ARP`, `NET SEND`,
 `NET WATCH`, `PING`, `HOST`, `FETCH`.
+
+## Eigene Fenster für eigene Programme
+
+Ein Programm von der Platte kann ein Fenster auf dem Schreibtisch haben — es
+muss dafür nicht im Kernel stehen. `FENSTER.TBX` zeigt es:
+
+```
+WIN                          (Schreibtisch)
+START FENSTER.TBX /B         im Command Prompt
+```
+
+Der Blitter malt dabei in den **eigenen Bildpuffer** des Programms (Ports
+0x5B–0x5D), der Schreibtisch setzt die Fenster daraus zusammen. Ereignisse
+(Tasten, Klicks, Schließen) holt das Programm über die Syscalls 40–44 ab;
+die Bibliothek dazu steht in `programs/gfxlib.c`.
 
 ## Tasten am Gehäuse
 

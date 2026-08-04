@@ -9,6 +9,113 @@ Die tiefer liegenden Fallen haben zusätzlich einen ausführlichen Eintrag in
 
 ---
 
+## Der Fenster-Server: ein Programm von der Platte bekommt ein Fenster
+
+Bis hierher galt: entweder ein Programm hat den **ganzen** Bildschirm
+(Flappy, Calc), oder es ist als Fenster in den Kernel einkompiliert (Word,
+Paint, der Coder). `FENSTER.TBX` ist beides nicht -- es liegt als Datei auf
+der Platte, läuft als eigener Prozess, und hat trotzdem ein Fenster, das man
+verschieben kann, während daneben alles weiterläuft.
+
+**Der Kern der Sache: der Blitter kann jetzt in den Speicher malen.**
+Ports 0x5B–0x5D geben ihm einen Zielpuffer statt des Bildschirms. Jedes
+fremde Fenster hat einen (256 KB, ab 0x00800000), das Programm malt dort
+hinein, und der Schreibtisch setzt die Puffer zusammen. Damit kann kein
+Programm über ein fremdes Fenster malen, und ein verdecktes Fenster darf
+weiterzeichnen, ohne dass man etwas davon sieht -- genau wie bei einem
+Compositor.
+
+Ereignisse gehen den umgekehrten Weg: der Schreibtisch legt Tasten, Klicks
+und „bitte schließen" in einen Ring von acht Einträgen je Fenster, das
+Programm holt sie ab. Syscalls 40–44, Bibliothek in `gfxlib.c`.
+
+**Der Fehler, der die eigentliche Lehre war.** Der Bildschirm wurde
+schwarz. Ursache: der Blitter ist **ein einziges Stück Hardware**, und sein
+Zielpuffer ist ein Register. Das Programm stellte ihn auf seinen Puffer,
+wurde mitten im Malen unterbrochen -- und der Schreibtisch malte danach sein
+Bild in den **fremden Puffer** statt auf den Schirm. Auf dem Schirm blieb
+nichts.
+
+Die Lösung ist die, die jedes echte Betriebssystem nimmt: **der Zustand der
+Grafikhardware gehört zum Prozess** und wird beim Wechsel gesichert, genau
+wie die Register. `proc_schedule()` liest jetzt Zielpuffer, Größe und
+Zeichensatzadresse aus und legt sie zurück, wenn der Prozess wieder dran ist.
+Dafür wurden die vier Ports lesbar gemacht -- in beiden Emulatoren, sonst
+liefen sie auseinander.
+
+**Zweiter Fehler, gleiche Familie:** das Programm rief `gx_start()`. Das
+schaltet den Bildschirmmodus um und löscht das Bild -- für ein
+Vollbildprogramm richtig, für ein Fenster das Ende des Schreibtischs. Ein
+Fenster braucht nur die Adresse des Zeichensatzes.
+
+Vier neue Prüfungen: Fenster entsteht, Programm malt in seinen Puffer, der
+Bildschirm bleibt dabei heil, und das Programm räumt sein Fenster selbst ab.
+**82/82**, und beide Emulatoren rechnen weiter Befehl für Befehl gleich.
+
+**Was das für Word, Paint und den Coder heißt:** der Weg steht jetzt offen.
+Sie brauchen dafür Zeichenfunktionen, die in den eigenen Puffer malen statt
+auf den Schirm -- das ist Fleißarbeit, keine Forschung mehr.
+
+---
+
+## Ein Aufruf genügt: pc.py startet das Netz mit
+
+Colin: *„ich will aber nur pc.py starten müssen damit Netz geht."* Recht hat
+er -- drei Fenster für einen Rechner ist keine Bedienung.
+
+Router und Vermittler laufen jetzt in eigenen Fäden **im selben Prozess** wie
+das Gehäuse. Beide sind reines Python, beide warten ohnehin die meiste Zeit,
+und beide gehen mit dem Fenster aus.
+
+**Der Türsteher ist der Port des Vermittlers.** Startet man ein zweites
+TOOBAD-Fenster, ist 8080 belegt -- dann startet dieses weder Vermittler noch
+Router. Das ist wichtig: **zwei Router am selben Draht** würden sich beim
+Beantworten von ARP gegenseitig ins Wort fallen, und die Verbindungen
+lägen halb beim einen und halb beim anderen.
+
+**Der Vermittler ist voreingestellt** (127.0.0.1:8080). Antwortet dort
+niemand, fällt Browser wie `FETCH` auf den unmittelbaren Weg zurück -- dann
+geht alles außer HTTPS. Wer den Kernel ohne `pc.py` benutzt, sitzt so nicht
+vor einer toten Anzeige.
+
+`python3 pc.py --kein-netz` lässt beides aus. Einzeln starten geht weiterhin
+(`router.py`, `proxy.py`) -- dann sieht man ihnen beim Arbeiten zu.
+
+78/78.
+
+---
+
+## Netzwerk fertig: der Vermittler bringt HTTPS
+
+`https://example.com` steht im Browserfenster. Der TB-32 spricht dabei
+**weiterhin nur HTTP** -- die Verschlüsselung macht `proxy.py`.
+
+**Warum das der ehrliche Weg ist.** HTTPS heißt: TLS, Zertifikate, ein
+halbes Dutzend kryptografische Verfahren. Im TB-32 wäre das Jahre Arbeit für
+etwas, das man am Ende nicht sieht. Ein Vermittler ist keine Krücke, sondern
+die Lösung, die es im Netz seit jeher gibt -- in Firmen und Schulen steht
+genau so einer. Der TB-32 gibt ab, was er nicht kann, statt so zu tun als ob.
+
+**Wie der Browser ihn benutzt:** ist ein Vermittler eingetragen, geht die
+Verbindung zu IHM statt zum Server, und in der Anfrage steht die **volle**
+Adresse (`GET https://example.com/ HTTP/1.0`) statt nur des Pfads. Genau so
+macht es jeder Browser mit Proxy. `FETCH` nimmt denselben Weg.
+
+**Eine Kleinigkeit mit Folgen:** zum Abschalten war `NET PROXY 0.0.0.0`
+gedacht. Das geht nicht -- `ip_lesen` gibt dafür 0 zurück, und 0 heißt auch
+„unbrauchbare Eingabe". Der Vermittler blieb also an, und im Selbsttest
+liefen danach vier Prüfungen ins Leere, weil sie über einen längst beendeten
+Vermittler gingen. Jetzt heißt es `NET PROXY OFF`.
+
+Zwei neue Prüfungen, unverschlüsselt gegen einen Server auf dem Mac -- dass
+der Vermittler auch TLS kann, ist Sache von Python und braucht keinen Beweis
+im TB-32. **78/78.**
+
+Damit ist das Netz fertig: Karte, ARP, IP, ICMP, UDP, DNS, TCP, HTTP,
+Browser, Vermittler. Als Nächstes der Weg zum Pi.
+
+---
+
 ## Netzwerk, Stufe 5: der Browser
 
 *Start ▸ Browser*, Adresse eintippen, ENTER. Der TB-32 schlägt den Namen

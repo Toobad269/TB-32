@@ -26,6 +26,7 @@ from hardware.isa import (
     PORT_TIMER_HZ, PORT_TIMER_TICKS, PORT_VGA_CURSOR, PORT_VGA_MODE,
     PORT_VGA_PALIDX, PORT_VGA_PALVAL, VRAM_GFX_SIZE, VRAM_TEXT_SIZE,
     PORT_FLASH_CMD, PORT_FLASH_SIZE, PORT_FLASH_ADDR, ROM_SIZE,
+    PORT_BLT_ZIEL, PORT_BLT_ZIELB, PORT_BLT_ZIELH,
     IRQ_NET, PORT_NET_STATUS, PORT_NET_ADDR, PORT_NET_LEN, PORT_NET_CMD,
     PORT_NET_MAC_HI, PORT_NET_MAC_LO, PORT_NET_ZAEHLER, PORT_NET_ZINDEX,
 )
@@ -69,7 +70,8 @@ class VGA:
         self.bus = None
         # Register des 2D-Beschleunigers
         self.blt = {"x": 0, "y": 0, "w": 0, "h": 0, "col": 15,
-                    "chr": 32, "src": 0, "bg": 256, "zoom": 1}
+                    "chr": 32, "src": 0, "bg": 256, "zoom": 1,
+                    "ziel": 0, "zielb": 0, "zielh": 0}
         self._glyph_cache = {}          # (Bitmuster, Farbe, Hintergrund) -> 8 Bytes
         self._zeile_cache = {}          # (Farbe, Breite) -> fertige Zeile
         self.mcur_x = 320
@@ -109,14 +111,25 @@ class VGA:
         b = self.blt
         x, y, w, h = b["x"], b["y"], b["w"], b["h"]
         col = b["col"] & 0xFF
-        fb = self.gfx
-        self.dirty = True
+        # Ziel: der Bildschirm, oder ein Puffer im Arbeitsspeicher. Alles
+        # Weitere rechnet mit GFX_W_L/GFX_H_L -- deshalb werden die hier zu
+        # Groessen des Ziels, und der Rest des Blitters merkt keinen
+        # Unterschied.
+        if b["ziel"]:
+            GFX_W_L, GFX_H_L = b["zielb"], b["zielh"]
+            if GFX_W_L <= 0 or GFX_H_L <= 0:
+                return
+            fb = memoryview(self.bus.ram)[b["ziel"]:b["ziel"] + GFX_W_L * GFX_H_L]
+        else:
+            GFX_W_L, GFX_H_L = GFX_W, GFX_H
+            fb = self.gfx
+            self.dirty = True
 
         if cmd == 1:                                   # gefüllte Fläche
             if w <= 0 or h <= 0:
                 return
             x0, y0 = max(0, x), max(0, y)
-            x1, y1 = min(GFX_W, x + w), min(GFX_H, y + h)
+            x1, y1 = min(GFX_W_L, x + w), min(GFX_H_L, y + h)
             if x1 <= x0 or y1 <= y0:
                 return
             breit = x1 - x0
@@ -127,26 +140,26 @@ class VGA:
                 if len(self._zeile_cache) > 512:
                     self._zeile_cache.clear()
                 self._zeile_cache[schl] = row
-            if breit == GFX_W:
+            if breit == GFX_W_L:
                 # ganze Zeilen: ein einziger Schreibvorgang statt h Stueck
-                fb[y0 * GFX_W:y1 * GFX_W] = row * (y1 - y0)
+                fb[y0 * GFX_W_L:y1 * GFX_W_L] = row * (y1 - y0)
             else:
-                off = y0 * GFX_W + x0
+                off = y0 * GFX_W_L + x0
                 for _ in range(y1 - y0):
                     fb[off:off + breit] = row
-                    off += GFX_W
+                    off += GFX_W_L
 
         elif cmd == 2:                                 # Rahmen
-            for xx in range(max(0, x), min(GFX_W, x + w)):
-                if 0 <= y < GFX_H:
-                    fb[y * GFX_W + xx] = col
-                if 0 <= y + h - 1 < GFX_H:
-                    fb[(y + h - 1) * GFX_W + xx] = col
-            for yy in range(max(0, y), min(GFX_H, y + h)):
-                if 0 <= x < GFX_W:
-                    fb[yy * GFX_W + x] = col
-                if 0 <= x + w - 1 < GFX_W:
-                    fb[yy * GFX_W + x + w - 1] = col
+            for xx in range(max(0, x), min(GFX_W_L, x + w)):
+                if 0 <= y < GFX_H_L:
+                    fb[y * GFX_W_L + xx] = col
+                if 0 <= y + h - 1 < GFX_H_L:
+                    fb[(y + h - 1) * GFX_W_L + xx] = col
+            for yy in range(max(0, y), min(GFX_H_L, y + h)):
+                if 0 <= x < GFX_W_L:
+                    fb[yy * GFX_W_L + x] = col
+                if 0 <= x + w - 1 < GFX_W_L:
+                    fb[yy * GFX_W_L + x + w - 1] = col
 
         elif cmd == 3:                                 # Zeichen aus dem Zeichensatz
             if self.bus is None:
@@ -163,7 +176,7 @@ class VGA:
             # Zoom 3 sind das 576 Schreibvorgaenge fuer EINE Ziffer.
             if zoom > 1:
                 br = 8 * zoom
-                if 0 <= x <= GFX_W - br and 0 <= y <= GFX_H - br:
+                if 0 <= x <= GFX_W_L - br and 0 <= y <= GFX_H_L - br:
                     cache = self._glyph_cache
                     for r in range(8):
                         schl = (muster[r], col, bg, zoom)
@@ -179,11 +192,11 @@ class VGA:
                                 if len(cache) > 4096:
                                     cache.clear()
                                 cache[schl] = zeile
-                        off = (y + r * zoom) * GFX_W + x
+                        off = (y + r * zoom) * GFX_W_L + x
                         if zeile is not None:
                             for _ in range(zoom):
                                 fb[off:off + br] = zeile
-                                off += GFX_W
+                                off += GFX_W_L
                         else:
                             bits = muster[r]
                             if bits:
@@ -192,15 +205,15 @@ class VGA:
                                     o2 = off + c * zoom
                                     for _ in range(zoom):
                                         fb[o2:o2 + zoom] = punkte
-                                        o2 += GFX_W
+                                        o2 += GFX_W_L
                 return
             # Der schnelle Weg: Buchstabe liegt ganz auf dem Schirm, also ohne
             # Randpruefung je Bildpunkt. Mit Hintergrundfarbe wird jede der
             # acht Zeilen als fertige Acht-Byte-Folge in einem Rutsch gesetzt;
             # die Folgen wiederholen sich staendig und stehen deshalb im
             # Zwischenspeicher. Vorher waren es 64 einzelne Schreibvorgaenge.
-            if 0 <= x <= GFX_W - 8 and 0 <= y <= GFX_H - 8:
-                off = y * GFX_W + x
+            if 0 <= x <= GFX_W_L - 8 and 0 <= y <= GFX_H_L - 8:
+                off = y * GFX_W_L + x
                 if bg < 256:
                     cache = self._glyph_cache
                     for r in range(8):
@@ -214,24 +227,24 @@ class VGA:
                                 cache.clear()
                             cache[schl] = zeile
                         fb[off:off + 8] = zeile
-                        off += GFX_W
+                        off += GFX_W_L
                 else:
                     for r in range(8):
                         bits = muster[r]
                         if bits:
                             for c in _GESETZT[bits]:
                                 fb[off + c] = col
-                        off += GFX_W
+                        off += GFX_W_L
                 return
             for row in range(8):
                 bits = muster[row]
                 yy = y + row
-                if not (0 <= yy < GFX_H):
+                if not (0 <= yy < GFX_H_L):
                     continue
-                off = yy * GFX_W
+                off = yy * GFX_W_L
                 for cx in range(8):
                     xx = x + cx
-                    if not (0 <= xx < GFX_W):
+                    if not (0 <= xx < GFX_W_L):
                         continue
                     if bits & (0x80 >> cx):
                         fb[off + xx] = col
@@ -246,8 +259,8 @@ class VGA:
             # Stueck. Nur Zeilen, in denen wirklich ein durchsichtiger Punkt
             # (255) vorkommt, muessen einzeln behandelt werden -- das "in"
             # sucht danach im Maschinencode und ist praktisch umsonst.
-            if 0 <= x and x + w <= GFX_W and 0 <= y and y + h <= GFX_H:
-                off = y * GFX_W + x
+            if 0 <= x and x + w <= GFX_W_L and 0 <= y and y + h <= GFX_H_L:
+                off = y * GFX_W_L + x
                 i = 0
                 for _ in range(h):
                     zeile = data[i:i + w]
@@ -257,17 +270,17 @@ class VGA:
                                 fb[off + c] = v
                     else:
                         fb[off:off + w] = zeile
-                    off += GFX_W
+                    off += GFX_W_L
                     i += w
                 return
             i = 0
             for yy in range(y, y + h):
-                if 0 <= yy < GFX_H:
+                if 0 <= yy < GFX_H_L:
                     for xx in range(x, x + w):
-                        if 0 <= xx < GFX_W:
+                        if 0 <= xx < GFX_W_L:
                             v = data[i + (xx - x)]
                             if v != 255:               # 255 = durchsichtig
-                                fb[yy * GFX_W + xx] = v
+                                fb[yy * GFX_W_L + xx] = v
                 i += w
 
         elif cmd == 6:                                 # Zeichenkette aus dem RAM
@@ -285,17 +298,17 @@ class VGA:
             font = b["src"]
             zoom = b["zoom"]
             br = 8 * zoom
-            if not (0 <= y <= GFX_H - br):
+            if not (0 <= y <= GFX_H_L - br):
                 return
             for i in range(len(txt)):
                 zx = x + i * br
-                if zx < 0 or zx > GFX_W - br:
+                if zx < 0 or zx > GFX_W_L - br:
                     continue
                 code = txt[i]
                 if code < 32 or code > 127:
                     code = 32
                 muster = self.bus.read_block(font + (code - 32) * 8, 8)
-                off = y * GFX_W + zx
+                off = y * GFX_W_L + zx
                 if bg < 256:
                     for r in range(8):
                         schl = (muster[r], col, bg, zoom)
@@ -309,7 +322,7 @@ class VGA:
                             cache[schl] = zeile
                         for _ in range(zoom):
                             fb[off:off + br] = zeile
-                            off += GFX_W
+                            off += GFX_W_L
                 else:
                     for r in range(8):
                         bits = muster[r]
@@ -323,8 +336,8 @@ class VGA:
                                     o2 = off + c * zoom
                                     for _ in range(zoom):
                                         fb[o2:o2 + zoom] = punkte
-                                        o2 += GFX_W
-                        off += GFX_W * zoom
+                                        o2 += GFX_W_L
+                        off += GFX_W_L * zoom
 
         elif cmd == 7:                                 # Bild skaliert aus dem RAM
             # Nachster-Nachbar-Verfahren: fuer jede Zielzeile wird die
@@ -345,7 +358,7 @@ class VGA:
             spalten = [(i * qb) // w for i in range(w)]
             for zy in range(h):
                 yy = y + zy
-                if not (0 <= yy < GFX_H):
+                if not (0 <= yy < GFX_H_L):
                     continue
                 qz = (zy * qh) // h
                 zeile = quelle[qz * qb:qz * qb + qb]
@@ -356,11 +369,11 @@ class VGA:
                 if x0 < 0:
                     neu = neu[-x0:]
                     x0 = 0
-                if x0 + len(neu) > GFX_W:
-                    neu = neu[:GFX_W - x0]
+                if x0 + len(neu) > GFX_W_L:
+                    neu = neu[:GFX_W_L - x0]
                 if not neu:
                     continue
-                off = yy * GFX_W + x0
+                off = yy * GFX_W_L + x0
                 if 255 in neu:
                     for c in range(len(neu)):
                         if neu[c] != 255:
@@ -371,9 +384,9 @@ class VGA:
         elif cmd == 5:                                 # Bereich kopieren
             sx, sy = b["chr"], b["src"]                # Quelle in CHR/SRC
             for r in range(h):
-                s = (sy + r) * GFX_W + sx
-                d = (y + r) * GFX_W + x
-                if 0 <= sy + r < GFX_H and 0 <= y + r < GFX_H:
+                s = (sy + r) * GFX_W_L + sx
+                d = (y + r) * GFX_W_L + x
+                if 0 <= sy + r < GFX_H_L and 0 <= y + r < GFX_H_L:
                     fb[d:d + w] = fb[s:s + w]
 
     def doppel_setzen(self, an):
@@ -422,6 +435,15 @@ class VGA:
         # Die Namen stehen jetzt oben in der Datei. Hier eine import-Zeile zu
         # haben sah harmlos aus -- sie lief aber bei JEDEM Portzugriff, und
         # ein Malbefehl schreibt sechs davon.
+        if port == PORT_BLT_ZIEL:
+            self.blt["ziel"] = value
+            return
+        if port == PORT_BLT_ZIELB:
+            self.blt["zielb"] = value
+            return
+        if port == PORT_BLT_ZIELH:
+            self.blt["zielh"] = value
+            return
         if port == PORT_BLT_X:    self.blt["x"] = value if value < 0x8000 else value - 0x10000
         elif port == PORT_BLT_Y:  self.blt["y"] = value if value < 0x8000 else value - 0x10000
         elif port == PORT_BLT_W:  self.blt["w"] = value
@@ -465,6 +487,17 @@ class VGA:
             return self.mode
         if port == PORT_VGA_CURSOR:
             return self.cursor
+        # Lesbar, damit das Betriebssystem den Blitter-Zustand beim
+        # Prozesswechsel sichern kann: er gehoert dem Programm, das gerade
+        # malt, nicht dem naechsten.
+        if port == PORT_BLT_ZIEL:
+            return self.blt["ziel"]
+        if port == PORT_BLT_ZIELB:
+            return self.blt["zielb"]
+        if port == PORT_BLT_ZIELH:
+            return self.blt["zielh"]
+        if port == PORT_BLT_SRC:
+            return self.blt["src"]
         return 0
 
 

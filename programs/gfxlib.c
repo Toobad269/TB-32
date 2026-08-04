@@ -35,6 +35,9 @@
 #define P_BLT_ZOOM 0x54
 #define P_GFX_DOPPEL 0x52
 #define P_GFX_TAUSCH 0x53
+#define P_BLT_ZIEL   0x5B          /* der Blitter malt in den Speicher ... */
+#define P_BLT_ZIELB  0x5C          /* ... so breit ... */
+#define P_BLT_ZIELH  0x5D          /* ... und so hoch */
 #define P_MCUR_X   0x4D
 #define P_MCUR_Y   0x4E
 #define P_MCUR_ON  0x4F
@@ -187,6 +190,26 @@ void gx_text(int x, int y, char* s, int farbe) {
 
 int gx_breite(char* s) { return strlen(s) * 8; }
 
+/* Eine Zahl malen. Ohne die muesste jedes Programm sich selbst eine
+   Umwandlung schreiben -- und das haben schon drei getan. */
+void gx_zahl(int x, int y, int n, int farbe) {
+    char puffer[14];
+    int i; int stelle; int minus;
+    minus = 0;
+    if (n < 0) { minus = 1; n = 0 - n; }
+    i = 0;
+    stelle = 1000000000;
+    while (stelle > 1 && n < stelle) stelle = stelle / 10;
+    if (minus) { puffer[i] = '-'; i++; }
+    while (stelle > 0) {
+        puffer[i] = '0' + (n / stelle) % 10;
+        i++;
+        stelle = stelle / 10;
+    }
+    puffer[i] = 0;
+    gx_text(x, y, puffer, farbe);
+}
+
 /* Text mittig in einem Feld der Breite w */
 void gx_text_mitte(int x, int y, int w, char* s, int farbe) {
     gx_text(x + (w - gx_breite(s)) / 2, y, s, farbe);
@@ -273,4 +296,94 @@ int gx_maus_rad() { return portin(P_MAUS_RAD); }
    Argumenten auskommt -- CC auf dem Geraet kann nicht mehr als fuenf. */
 int gx_treffer(int x, int y, int w, int h) {
     return gx_mx >= x && gx_mx < x + w && gx_my >= y && gx_my < y + h;
+}
+
+
+/* ===========================================================================
+   Ein Fenster auf dem Schreibtisch.
+
+   Bis hierher hatte ein Programm den ganzen Bildschirm oder gar nichts. Mit
+   diesen Funktionen bekommt es ein Fenster wie Word oder der Coder -- man
+   kann es verschieben, es hat eine Titelleiste, und daneben laeuft alles
+   andere weiter.
+
+   Der Trick: das Programm malt NICHT auf den Bildschirm, sondern in seinen
+   eigenen Puffer. Der Blitter kann das (Ports 0x5B..0x5D), und der
+   Schreibtisch setzt die Puffer der Fenster zusammen. Deshalb kann kein
+   Programm ueber ein fremdes Fenster malen, und ein verdecktes Fenster darf
+   trotzdem weiterzeichnen, ohne dass man etwas davon sieht.
+
+   Ablauf:
+       nr = fenster_neu("Titel", 300, 200);
+       while (1) {
+           art = fenster_ereignis(e);
+           if (art == FE_SCHLIESS) break;
+           ... malen ...
+           fenster_fertig();
+       }
+       fenster_zu();
+   =========================================================================== */
+
+#define FE_NICHTS    0
+#define FE_TASTE     1             /* e[1] = Zeichen, e[2] = Tastennummer */
+#define FE_KLICK     2             /* e[1] = x, e[2] = y im Fenster */
+#define FE_SCHLIESS  3             /* der Benutzer hat auf das Kreuz geklickt */
+#define FE_MALEN     4             /* bitte neu zeichnen */
+
+int fn_nr = 0 - 1;                 /* unsere Fensternummer */
+int fn_puffer = 0;                 /* wohin wir malen */
+int fn_breite = 0;
+int fn_hoehe = 0;
+
+/* Den Blitter auf unseren Puffer richten. Muss vor jedem Malen stehen --
+   dazwischen malt der Schreibtisch auf den Bildschirm und stellt ihn zurueck. */
+void fenster_malziel() {
+    portout(P_BLT_ZIEL, fn_puffer);
+    portout(P_BLT_ZIELB, fn_breite);
+    portout(P_BLT_ZIELH, fn_hoehe);
+    portout(P_BLT_SRC, gx_font);
+}
+
+int fenster_neu(char* titel, int breite, int hoehe) {
+    int daten[4];
+    /* KEIN gx_start() hier -- das schaltet den Bildschirmmodus um und
+       loescht das Bild. Fuer ein Vollbildprogramm ist das richtig, fuer ein
+       Fenster waere es das Ende des Schreibtischs: schwarz, und der
+       Schreibtisch weiss nichts davon. Ein Fenster braucht nur den
+       Zeichensatz. */
+    gx_font = fontaddr();
+    fn_nr = sc(40, (int)titel, breite, hoehe, 0);
+    if (fn_nr < 0) return 0 - 1;
+    sc(42, fn_nr, (int)daten, 0, 0);
+    fn_puffer = daten[0];
+    fn_breite = daten[1];
+    fn_hoehe = daten[2];
+    return fn_nr;
+}
+
+/* Holt das naechste Ereignis. <e> muss Platz fuer drei Zahlen haben. */
+int fenster_ereignis(int* e) {
+    int daten[4];
+    int art;
+    art = sc(41, fn_nr, (int)e, 0, 0);
+    if (art == FE_MALEN) {                 /* Groesse koennte sich geaendert haben */
+        sc(42, fn_nr, (int)daten, 0, 0);
+        fn_puffer = daten[0];
+        fn_breite = daten[1];
+        fn_hoehe = daten[2];
+    }
+    return art;
+}
+
+/* Fertig gemalt -- der Schreibtisch darf es zeigen. Danach gehoert der
+   Blitter wieder dem Bildschirm. */
+void fenster_fertig() {
+    portout(P_BLT_ZIEL, 0);
+    sc(43, fn_nr, 0, 0, 0);
+}
+
+void fenster_zu() {
+    portout(P_BLT_ZIEL, 0);
+    sc(44, fn_nr, 0, 0, 0);
+    fn_nr = 0 - 1;
 }

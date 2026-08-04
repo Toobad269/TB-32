@@ -19,6 +19,11 @@
 #define PSTACK_BASE 0x000A0000       /* je Prozess 8 KB Stack, ueber dem Kernel-Stack */
 #define PSTACK_SIZE 8192
 
+#define P_BLT_ZIEL   0x5B
+#define P_BLT_ZIELB  0x5C
+#define P_BLT_ZIELH  0x5D
+#define P_BLT_SRC_P  0x4B
+
 #define PS_FREI     0
 #define PS_BEREIT   1
 #define PS_LAEUFT   2
@@ -26,6 +31,16 @@
 
 int p_state[MAXPROC];
 int p_sp[MAXPROC];
+/* Der Blitter gehoert dem Prozess, der gerade malt.
+   Ohne das hier war der Bildschirm schwarz, sobald ein Programm ein eigenes
+   Fenster hatte: es stellte den Blitter auf seinen Bildpuffer, wurde mitten
+   im Malen unterbrochen, und der Schreibtisch malte danach SEIN Bild in den
+   fremden Puffer statt auf den Schirm. Der Zustand der Grafikhardware muss
+   beim Wechsel gesichert werden -- genau wie die Register. */
+int p_blt_ziel[MAXPROC];
+int p_blt_b[MAXPROC];
+int p_blt_h[MAXPROC];
+int p_blt_src[MAXPROC];
 int p_wake[MAXPROC];                 /* Weckzeit fuer schlafende Prozesse */
 int p_ticks[MAXPROC];                /* wie viel Rechenzeit verbraucht wurde */
 int p_bg[MAXPROC];                   /* 1 = im Hintergrund gestartet (/B) */
@@ -74,6 +89,10 @@ int proc_start(char* name, int einsprung) {
            weil die Kommandozeile den frei gewordenen Platz des Compilers
            geerbt hatte. */
         p_bg[i] = 0;
+        p_blt_ziel[i] = 0;               /* ein neuer Prozess malt auf den Schirm */
+        p_blt_b[i] = 0;
+        p_blt_h[i] = 0;
+        p_blt_src[i] = 0;
         memset(proc_name(i), 0, 16);
         strncpy(proc_name(i), name, 15);
         p_state[i] = PS_BEREIT;
@@ -86,10 +105,18 @@ int proc_start(char* name, int einsprung) {
    naechsten Prozess auswaehlen, dessen Stackpointer zurueckgeben. */
 int proc_schedule(int alter_sp) {
     p_sp[p_current] = alter_sp;
+    p_blt_ziel[p_current] = sys_in(P_BLT_ZIEL);
+    p_blt_b[p_current] = sys_in(P_BLT_ZIELB);
+    p_blt_h[p_current] = sys_in(P_BLT_ZIELH);
+    p_blt_src[p_current] = sys_in(P_BLT_SRC_P);
     p_ticks[p_current]++;
     if (p_state[p_current] == PS_LAEUFT) p_state[p_current] = PS_BEREIT;
     p_current = proc_next();
     p_state[p_current] = PS_LAEUFT;
+    sys_out(P_BLT_ZIEL, p_blt_ziel[p_current]);
+    sys_out(P_BLT_ZIELB, p_blt_b[p_current]);
+    sys_out(P_BLT_ZIELH, p_blt_h[p_current]);
+    sys_out(P_BLT_SRC_P, p_blt_src[p_current]);
     p_switches++;
     return p_sp[p_current];
 }

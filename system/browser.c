@@ -40,6 +40,33 @@ int  br_port = 80;
 char br_status[80];
 char br_titel[64];
 char br_zurueck[160];                /* die Adresse davor */
+/* Der Vermittler. 0 = keiner, dann redet der Browser direkt mit dem Server.
+   Ist einer gesetzt, geht JEDE Anfrage an ihn -- und dann darf die Adresse
+   auch https sein, denn die Verschluesselung macht er. */
+/* Voreingestellt auf den Vermittler, den pc.py mitstartet. Antwortet dort
+   niemand, faellt der Browser auf den unmittelbaren Weg zurueck -- dann geht
+   alles ausser HTTPS. Abschalten mit NET PROXY OFF. */
+int  br_proxy = 0x7F000001;          /* 127.0.0.1 */
+int  br_proxy_port = 8080;
+int  br_https = 0;                   /* war die Adresse verschluesselt? */
+
+/* Eine Zahl als Text in den Speicher. Rueckgabe: wie viele Stellen. */
+int zahl_nach(int addr, int n) {
+    int stelle; int aus; int z;
+    if (n == 0) { net_putb(addr, '0'); return 1; }
+    stelle = 10000;
+    aus = 0;
+    z = 0;
+    while (stelle > 0) {
+        if (n >= stelle || z) {
+            net_putb(addr + aus, '0' + (n / stelle) % 10);
+            aus = aus + 1;
+            z = 1;
+        }
+        stelle = stelle / 10;
+    }
+    return aus;
+}
 
 int  br_zeile_addr(int n) { return BR_TEXT + n * BR_ZEILEMAX; }
 int  br_link_addr(int n)  { return BR_LINKS + n * 160; }
@@ -57,9 +84,10 @@ void br_setz(char* ziel, char* quelle, int max) {
 void br_url_zerlegen(char* url) {
     int i; int n; int p;
     i = 0;
+    br_https = 0;
     if (url[0] == 'h' && url[1] == 't' && url[2] == 't' && url[3] == 'p') {
         i = 4;
-        if (url[i] == 's') i++;              /* https:// -- geht nicht, gleich */
+        if (url[i] == 's') { br_https = 1; i++; }
         if (url[i] == ':') i++;
         while (url[i] == '/') i++;
     }
@@ -324,6 +352,14 @@ void br_html(int quelle, int len) {
 int br_bau_anfrage() {
     int n;
     n = str_nach(BR_KRATZ + 512, "GET ");
+    if (br_proxy != 0) {                 /* dem Vermittler die ganze Adresse */
+        n = n + str_nach(BR_KRATZ + 512 + n, br_https ? "https://" : "http://");
+        n = n + str_nach(BR_KRATZ + 512 + n, br_wirt);
+        if (br_port != 80) {
+            n = n + str_nach(BR_KRATZ + 512 + n, ":");
+            n = n + zahl_nach(BR_KRATZ + 512 + n, br_port);
+        }
+    }
     n = n + str_nach(BR_KRATZ + 512 + n, br_pfad);
     n = n + str_nach(BR_KRATZ + 512 + n, " HTTP/1.0\r\nHost: ");
     n = n + str_nach(BR_KRATZ + 512 + n, br_wirt);
@@ -339,24 +375,42 @@ int br_holen(char* url) {
     if (net_da() == 0) { br_setz(br_status, "No network card.", 78); return 0; }
     if (ip_meine == 0) { br_setz(br_status, "No address. Use NET IP.", 78); return 0; }
 
-    if (url[0] == 'h' && url[1] == 't' && url[2] == 't' && url[3] == 'p'
-        && url[4] == 's') {
-        br_setz(br_status, "HTTPS is not supported -- try http://", 78);
-        return 0;
-    }
-
     br_url_zerlegen(url);
     if (br_wirt[0] == 0) { br_setz(br_status, "No address given.", 78); return 0; }
 
-    br_setz(br_status, "Looking up the name ...", 78);
-    ip = ip_lesen(br_wirt);
-    if (ip == 0) ip = dns_aufloesen(br_wirt);
-    if (ip == 0) { br_setz(br_status, "Unknown name.", 78); return 0; }
-
-    br_setz(br_status, "Connecting ...", 78);
-    if (tcp_verbinden(ip, br_port) == 0) {
-        br_setz(br_status, "No connection -- is the router running?", 78);
+    if (br_https && br_proxy == 0) {
+        br_setz(br_status,
+                "HTTPS needs the proxy. Set it with NET PROXY.", 78);
         return 0;
+    }
+
+    if (br_proxy != 0) {
+        /* Mit Vermittler geht die Verbindung zu IHM, nicht zum Server. Die
+           volle Adresse steht dann in der Anfrage -- so weiss er, was er
+           holen soll. Genau so macht es jeder Browser mit Proxy. */
+        br_setz(br_status, "Asking the proxy ...", 78);
+        if (tcp_verbinden(br_proxy, br_proxy_port) == 0) {
+            if (br_https) {
+                br_setz(br_status,
+                        "The proxy does not answer -- HTTPS needs it.", 78);
+                return 0;
+            }
+            /* Kein Vermittler da? Dann eben selbst. Wer den Kernel ohne
+               pc.py benutzt, soll nicht vor einer toten Anzeige sitzen. */
+            br_proxy = 0;
+        }
+    }
+    if (br_proxy == 0) {
+        br_setz(br_status, "Looking up the name ...", 78);
+        ip = ip_lesen(br_wirt);
+        if (ip == 0) ip = dns_aufloesen(br_wirt);
+        if (ip == 0) { br_setz(br_status, "Unknown name.", 78); return 0; }
+
+        br_setz(br_status, "Connecting ...", 78);
+        if (tcp_verbinden(ip, br_port) == 0) {
+            br_setz(br_status, "No connection -- is the router running?", 78);
+            return 0;
+        }
     }
 
     n = br_bau_anfrage();
@@ -421,6 +475,7 @@ int br_folgen(int nummer) {
        uebliche 80 ist. Ohne ihn landete jeder Verweis auf einer Seite, die
        auf einem anderen Port liegt, ins Leere. */
     n = 0;
+    if (br_https) { for (i = 0; i < 8; i++) br_pfad[n + i] = "https://"[i]; n = 8; }
     for (i = 0; br_wirt[i] != 0; i++) { br_pfad[n] = br_wirt[i]; n++; }
     if (br_port != 80) {
         br_pfad[n] = ':';
