@@ -340,6 +340,37 @@ def main():
         if "Frames received" in zeile:
             empfangen = int(zeile.split()[-1])
     pruefe("Rahmen von aussen kommt an", empfangen >= 1, bild)
+
+    # ARP und ICMP: eine zweite Maschine anpingen. Das ist der Beweis, dass
+    # die Kette bis oben steht -- "wer hat 10.0.0.x", Antwort, IP-Kopf mit
+    # Pruefsumme, ICMP-Echo, und die Antwort wieder zurueck.
+    L.eingabe("net ip|ENTER", 0.8)
+    meine = ""
+    for zeile in L.bild().splitlines():
+        if "IP address" in zeile:
+            meine = zeile.split()[-1]
+    pruefe("Karte hat eine eigene IP-Adresse", meine.startswith("10.0.0."), L.bild())
+
+    P = Lauf()                                   # der Rechner am anderen Ende
+    P.warte(6.0)
+    P.eingabe("net ip|ENTER", 0.8)
+    gegen = ""
+    for zeile in P.bild().splitlines():
+        if "IP address" in zeile:
+            gegen = zeile.split()[-1]
+
+    # Beide muessen abwechselnd laufen, sonst hoert keiner zu, waehrend der
+    # andere fragt.
+    for sc, a in tippe(L.m, "ping " + gegen + "|ENTER"):
+        L.m.keyboard.push(a, sc)
+        for _ in range(3):
+            L.m.run_slice(L.dt); P.m.run_slice(P.dt)
+    for _ in range(int(9.0 / L.dt)):
+        L.m.run_slice(L.dt)
+        P.m.run_slice(P.dt)
+    pruefe("PING bekommt Antwort", "4 of 4 answered" in L.bild(), L.bild())
+    P.eingabe("net arp|ENTER", 0.8)
+    pruefe("Der andere hat uns in seiner Adresstabelle", meine in P.bild(), P.bild())
     fremd.close()
 
     print("\n--- Programme von der Platte -----------------------------------")

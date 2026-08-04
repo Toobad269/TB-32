@@ -27,6 +27,7 @@ int sys_diskwrite(int lba, int count, int addr);
 int sys_disksize();
 int sys_getkey();
 int sys_haskey();
+int net_bearbeiten();   /* steht in net.c, wird hier schon gebraucht */
 int sys_flushkeys();
 int sys_ticks();
 int sys_clock();
@@ -300,6 +301,15 @@ void word_put(int addr, int v) { int* p; p = (int*)addr; *p = v; }
 
 int getkey() {
     if (term_aktiv) return term_getkey();
+    /* Waehrend niemand tippt, wird die Post bearbeitet. Nur so antwortet
+       der Rechner auf ARP und PING, ohne dass jemand davor sitzt -- genau
+       das erwartet man von einem Rechner im Netz. Das sys_halt() dazwischen
+       haelt ihn dabei ruhig: es weckt der naechste Interrupt, also der
+       Zeitgeber oder ein ankommender Rahmen. */
+    while (sys_haskey() == 0) {
+        net_bearbeiten();
+        sys_halt();
+    }
     return sys_getkey();
 }
 int keychar(int k)  { return k & 255; }

@@ -9,6 +9,43 @@ Die tiefer liegenden Fallen haben zusätzlich einen ausführlichen Eintrag in
 
 ---
 
+## Netzwerk, Stufe 2: ARP, IP und ICMP -- PING antwortet
+
+Die Karte kennt nur Hardware-Adressen, das Internet nur IP-Adressen. Was
+beides zusammenbringt, ist **ARP**: *"Wer hat 10.0.0.2? Bitte an mich."* Wer
+sie hat, antwortet mit seiner Hardware-Adresse, und die merken wir uns in
+einer Tabelle mit acht Plätzen.
+
+Darüber liegt **IP** (Kopf mit Absender, Ziel, Lebenszeit, Prüfsumme) und
+darin **ICMP** -- das Protokoll hinter PING. Alles in `system/net.c`, alles
+TB-32-Code. Damit läuft es später auf dem Pi unverändert.
+
+**Die eine Rechnung, die im ganzen Internet steckt**, ist die Prüfsumme: alle
+Zahlen zu 16 Bit addieren, den Überlauf wieder unten drauf, Ergebnis umdrehen.
+Wer nachrechnet und 0 bekommt, weiß: unterwegs ist nichts kaputtgegangen.
+
+**Zahlen stehen im Netz mit dem höchsten Byte zuerst**, der TB-32 legt sie
+andersherum ab. Deshalb `net_get16`/`net_put16` Byte für Byte -- ein
+Wortzugriff gäbe sie verdreht, und zwar ohne Fehlermeldung.
+
+**Warum der Rechner antwortet, wenn niemand davor sitzt.** `net_bearbeiten()`
+hängt in `getkey()` (Konsole) und in der Schleife des Schreibtischs. Während
+niemand tippt, wird die Post bearbeitet. Das `sys_halt()` dazwischen hält die
+Maschine dabei ruhig: sie weckt der nächste Interrupt -- der Zeitgeber oder
+ein ankommender Rahmen.
+
+Die Adresse leitet sich beim Start aus der Hardware-Adresse ab
+(`10.0.0.<letztes Byte>`), damit ohne Zutun schon etwas geht. `NET IP 10.0.0.5`
+setzt sie, `NET ARP` zeigt, wen die Maschine kennt.
+
+Nachgewiesen mit zwei Maschinen: `PING 10.0.0.2` → *4 of 4 answered*, und in
+der Adresstabelle der Gegenseite steht danach unsere Adresse. Drei neue
+Prüfungen, 68/68.
+
+Als Nächstes: UDP und DNS, dann TCP.
+
+---
+
 ## Netzwerk, Stufe 1: die Karte, der Treiber, der NET-Befehl
 
 Der Anfang eines eigenen Netzwerks. Der Grundsatz bleibt: **Python emuliert

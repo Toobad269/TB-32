@@ -178,6 +178,37 @@ void cmd_net(char* option, char* rest) {
         return;
     }
 
+    if (stricmp(option, "ip") == 0) {
+        if (rest[0] != 0) {
+            n = ip_lesen(rest);
+            if (n == 0) { printc("Syntax: NET IP 10.0.0.5\n", RED); return; }
+            ip_meine = n;
+        }
+        ip_text(ip_meine, text);
+        print("  IP address                 ");
+        printc(text, BRIGHT);
+        nl();
+        return;
+    }
+
+    if (stricmp(option, "arp") == 0) {
+        printc("\n  Address table\n", BRIGHT);
+        n = 0;
+        for (i = 0; i < ARP_MAX; i++) {
+            if (arp_frei[i] == 0) continue;
+            ip_text(arp_ip[i], text);
+            print("  ");
+            print(text);
+            print("   ");
+            net_mac_text(arp_mac + i * 6, mac);
+            print(mac);
+            nl();
+            n++;
+        }
+        if (n == 0) print("  (empty -- nobody has answered yet)\n");
+        return;
+    }
+
     if (stricmp(option, "watch") == 0) {
         print("Listening. Any key stops.\n");
         while (1) {
@@ -203,8 +234,50 @@ void cmd_net(char* option, char* rest) {
     print("  Frames sent                ");
     printnc(net_zaehler(1), BRIGHT);
     nl();
-    print("\n  NET SEND <text>   send to everyone\n");
-    print("  NET WATCH         show what arrives\n");
+    ip_text(ip_meine, text);
+    print("  IP address                 ");
+    printc(text, BRIGHT);
+    nl();
+    print("\n  NET IP <addr>     set the address    NET ARP    who is known\n");
+    print("  NET SEND <text>   send to everyone   NET WATCH  show arrivals\n");
+    print("  PING <addr>       is somebody there\n");
+}
+
+
+/* --- PING: ist da jemand? ------------------------------------------------
+   Viermal fragen, jedes Mal die Zeit messen. Genau das macht PING auf jedem
+   anderen Rechner auch -- es schickt ein ICMP-Echo und wartet auf das
+   Echo zurueck. */
+void cmd_ping(char* ziel) {
+    int ip; int i; int t; int gut;
+    char text[24];
+
+    if (net_da() == 0) { printc("No network card.\n", RED); return; }
+    if (ziel[0] == 0) { printc("Syntax: PING 10.0.0.5\n", RED); return; }
+    ip = ip_lesen(ziel);
+    if (ip == 0) { printc("That is not an address.\n", RED); return; }
+    if (ip_meine == 0) { printc("No address of our own. Use NET IP.\n", RED); return; }
+
+    ip_text(ip, text);
+    print("\nPinging ");
+    print(text);
+    print("\n");
+    gut = 0;
+    for (i = 1; i <= 4; i++) {
+        t = icmp_ping(ip, i);
+        if (t == 0 - 2) { printc("  no answer to who-has\n", YELLOW); continue; }
+        if (t < 0) { printc("  timed out\n", YELLOW); continue; }
+        print("  reply from ");
+        print(text);
+        print("   time ");
+        printn(t * 10);
+        print(" ms\n");
+        gut++;
+        sleep(30);
+    }
+    print("\n  ");
+    printn(gut);
+    print(" of 4 answered\n");
 }
 
 void cmd_ver() {
@@ -912,6 +985,7 @@ void shell() {
         else if (stricmp(cmd, "echo") == 0)       { print(cmdline + 5); nl(); }
         else if (stricmp(cmd, "color") == 0)      cmd_color(arg1);
         else if (stricmp(cmd, "net") == 0)        cmd_net(arg1, cmdline + 4 + strlen(arg1) + 1);
+        else if (stricmp(cmd, "ping") == 0)       cmd_ping(arg1);
 
         else if (stricmp(cmd, "dir") == 0)        cmd_dir(arg1);
         else if (stricmp(cmd, "type") == 0)       cmd_type(arg1);
@@ -1192,6 +1266,8 @@ int main() {
     formatiert = fs_mount();
     if (formatiert) printc("OK\n", GREEN);
     else printc("new disk, initialised\n", YELLOW);
+
+    net_start();                     /* Netzwerkkarte und eigene Adresse */
 
     /* Startziel: Schreibtisch oder Textkonsole. Steht im CMOS neben Quick
        Boot, aenderbar im Setup und im Control Panel. Standard ist der

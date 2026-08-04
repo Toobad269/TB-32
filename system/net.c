@@ -110,3 +110,326 @@ void net_mac_text(char* mac, char* out) {
     }
     out[n] = 0;
 }
+
+/* ===========================================================================
+   Stufe 2: ARP und IP.
+
+   Die Karte kennt nur Hardware-Adressen (02:54:42:...). Das Internet kennt
+   nur IP-Adressen (10.0.0.5). Beides muss zusammenfinden, und genau das ist
+   ARP: "Wer hat 10.0.0.5? Bitte an mich antworten." Wer sie hat, antwortet
+   mit seiner Hardware-Adresse, und die merken wir uns eine Weile.
+
+   Darueber liegt IP: ein Kopf mit Absender, Ziel, Lebenszeit und einer
+   Pruefsumme. Und darin steckt ICMP -- das ist das, was PING benutzt.
+   =========================================================================== */
+
+#define ART_IP        0x0800
+#define ART_ARP       0x0806
+
+#define PROTO_ICMP    1
+
+#define NET_SENDE     0x00161000     /* Rahmen zum Senden */
+#define ARP_MAX       8
+
+/* Zahlen stehen im Netz mit dem hoechsten Byte zuerst -- "Netzwerk-Ordnung".
+   Der TB-32 legt sie andersherum ab. Deshalb Byte fuer Byte, nie mit einem
+   Wortzugriff: das gaebe die Bytes verdreht. */
+int  net_get16(int a) { return (net_getb(a) << 8) | net_getb(a + 1); }
+void net_put16(int a, int v) {
+    net_putb(a, (v >> 8) & 0xFF);
+    net_putb(a + 1, v & 0xFF);
+}
+int net_get32(int a) {
+    return (net_getb(a) << 24) | (net_getb(a + 1) << 16) |
+           (net_getb(a + 2) << 8) | net_getb(a + 3);
+}
+void net_put32(int a, int v) {
+    net_putb(a, (v >> 24) & 0xFF);
+    net_putb(a + 1, (v >> 16) & 0xFF);
+    net_putb(a + 2, (v >> 8) & 0xFF);
+    net_putb(a + 3, v & 0xFF);
+}
+
+int  ip_meine = 0;                   /* eigene Adresse, 0 = keine */
+int  ip_maske = 0xFFFFFF00;          /* /24 -- alles im selben Netz */
+int  arp_ip[ARP_MAX];
+char arp_mac[48];                    /* ARP_MAX * 6 */
+int  arp_frei[ARP_MAX];              /* 0 = Platz leer, 1 = belegt */
+int  arp_naechster = 0;
+int  ping_von = 0;                   /* Antwort auf unser PING: von wem */
+int  ping_folge = 0;                 /* ... und welche Nummer */
+int  ip_kennung = 1;                 /* laufende Nummer im IP-Kopf */
+
+/* --- Pruefsumme -----------------------------------------------------------
+   Die eine Rechnung, die im ganzen Internet steckt: alle Zahlen zu 16 Bit
+   addieren, den Ueberlauf wieder unten drauf, und das Ergebnis umdrehen.
+   Wer sie nachrechnet und 0 bekommt, weiss: unterwegs ist nichts kaputt
+   gegangen. */
+int net_pruefsumme(int addr, int len) {
+    int summe; int i;
+    summe = 0;
+    i = 0;
+    while (i + 1 < len) {
+        summe = summe + net_get16(addr + i);
+        i = i + 2;
+    }
+    if (i < len) summe = summe + (net_getb(addr + i) << 8);
+    while (summe >> 16) summe = (summe & 0xFFFF) + (summe >> 16);
+    return (~summe) & 0xFFFF;
+}
+
+/* --- ARP-Tabelle ---------------------------------------------------------- */
+
+void arp_merken(int ip, int macaddr) {
+    int i; int platz;
+    platz = 0 - 1;
+    for (i = 0; i < ARP_MAX; i++) {
+        if (arp_frei[i] && arp_ip[i] == ip) { platz = i; break; }
+        if (arp_frei[i] == 0 && platz < 0) platz = i;
+    }
+    if (platz < 0) {                 /* alles voll: den aeltesten ueberschreiben */
+        platz = arp_naechster;
+        arp_naechster = (arp_naechster + 1) % ARP_MAX;
+    }
+    arp_ip[platz] = ip;
+    for (i = 0; i < 6; i++) arp_mac[platz * 6 + i] = net_getb(macaddr + i);
+    arp_frei[platz] = 1;
+}
+
+int arp_finden(int ip, char* out) {
+    int i; int j;
+    for (i = 0; i < ARP_MAX; i++) {
+        if (arp_frei[i] == 0 || arp_ip[i] != ip) continue;
+        for (j = 0; j < 6; j++) out[j] = arp_mac[i * 6 + j];
+        return 1;
+    }
+    return 0;
+}
+
+/* "Wer hat diese IP?" -- an alle im Netz. */
+void arp_anfragen(int ip) {
+    int p; int i;
+    char alle[8];
+    char selbst[8];
+    net_alle(alle);
+    net_mac(selbst);
+    p = net_kopf_bauen(NET_SENDE, alle, ART_ARP);
+    net_put16(p, 1);                 /* Hardware: Ethernet */
+    net_put16(p + 2, ART_IP);        /* danach wird gefragt: eine IP */
+    net_putb(p + 4, 6);
+    net_putb(p + 5, 4);
+    net_put16(p + 6, 1);             /* 1 = Frage */
+    for (i = 0; i < 6; i++) net_putb(p + 8 + i, selbst[i]);
+    net_put32(p + 14, ip_meine);
+    for (i = 0; i < 6; i++) net_putb(p + 18 + i, 0);
+    net_put32(p + 24, ip);
+    net_senden(NET_SENDE, NET_KOPF + 28);
+}
+
+/* Auf eine Frage antworten, die uns gilt. */
+void arp_antworten(int rx) {
+    int p; int q; int i;
+    char an[8];
+    char selbst[8];
+    p = rx + NET_KOPF;
+    for (i = 0; i < 6; i++) an[i] = net_getb(p + 8 + i);
+    net_mac(selbst);
+    q = net_kopf_bauen(NET_SENDE, an, ART_ARP);
+    net_put16(q, 1);
+    net_put16(q + 2, ART_IP);
+    net_putb(q + 4, 6);
+    net_putb(q + 5, 4);
+    net_put16(q + 6, 2);             /* 2 = Antwort */
+    for (i = 0; i < 6; i++) net_putb(q + 8 + i, selbst[i]);
+    net_put32(q + 14, ip_meine);
+    for (i = 0; i < 6; i++) net_putb(q + 18 + i, an[i]);
+    net_put32(q + 24, net_get32(p + 14));
+    net_senden(NET_SENDE, NET_KOPF + 28);
+}
+
+/* --- IP -------------------------------------------------------------------
+   Baut Ethernet-Kopf, IP-Kopf und haengt <len> Byte ab <daten> an. Wen wir
+   nicht kennen, nach dem fragen wir erst -- und melden Fehlschlag, wenn
+   niemand antwortet. */
+int ip_senden(int zielip, int proto, int daten, int len) {
+    int p; int i; int gesamt; int frist;
+    char mac[8];
+
+    if (ip_meine == 0) return 0 - 2;             /* keine eigene Adresse */
+
+    if (arp_finden(zielip, mac) == 0) {
+        arp_anfragen(zielip);
+        frist = sys_ticks() + 100;               /* eine Sekunde warten */
+        while (sys_ticks() < frist) {
+            net_bearbeiten();
+            if (arp_finden(zielip, mac)) break;
+        }
+        if (arp_finden(zielip, mac) == 0) return 0 - 1;   /* niemand da */
+    }
+
+    p = net_kopf_bauen(NET_SENDE, mac, ART_IP);
+    gesamt = 20 + len;
+    net_putb(p, 0x45);                           /* Fassung 4, Kopf 20 Byte */
+    net_putb(p + 1, 0);
+    net_put16(p + 2, gesamt);
+    net_put16(p + 4, ip_kennung);
+    ip_kennung = (ip_kennung + 1) & 0xFFFF;
+    net_put16(p + 6, 0);                         /* nicht zerlegt */
+    net_putb(p + 8, 64);                         /* Lebenszeit */
+    net_putb(p + 9, proto);
+    net_put16(p + 10, 0);                        /* Pruefsumme, gleich */
+    net_put32(p + 12, ip_meine);
+    net_put32(p + 16, zielip);
+    net_put16(p + 10, net_pruefsumme(p, 20));
+    for (i = 0; i < len; i++) net_putb(p + 20 + i, net_getb(daten + i));
+    gesamt = NET_KOPF + 20 + len;
+    if (gesamt < 60) gesamt = 60;
+    return net_senden(NET_SENDE, gesamt);
+}
+
+/* --- ICMP: das Protokoll hinter PING -------------------------------------- */
+
+void icmp_antworten(int rx, int kopf, int nutz, int len) {
+    int i; int p;
+    char mac[8];
+    for (i = 0; i < 6; i++) mac[i] = net_getb(rx + 6 + i);
+    arp_merken(net_get32(kopf + 12), rx + 6);
+    /* Die Antwort ist die Frage mit Art 0 statt 8 -- Inhalt bleibt gleich,
+       damit der Fragende seine eigenen Daten wiedererkennt. */
+    for (i = 0; i < len; i++) net_putb(NET_PUFFER + 1200 + i, net_getb(nutz + i));
+    net_putb(NET_PUFFER + 1200, 0);
+    net_putb(NET_PUFFER + 1202, 0);
+    net_putb(NET_PUFFER + 1203, 0);
+    net_put16(NET_PUFFER + 1202, net_pruefsumme(NET_PUFFER + 1200, len));
+    ip_senden(net_get32(kopf + 12), PROTO_ICMP, NET_PUFFER + 1200, len);
+}
+
+/* --- Die Poststelle -------------------------------------------------------
+   Holt einen Rahmen ab und tut das Naheliegende damit. Wird ueberall dort
+   aufgerufen, wo der Rechner sonst nur warten wuerde -- an der Eingabezeile
+   und in der Schleife des Schreibtischs. Deshalb antwortet die Maschine auf
+   PING, auch wenn niemand davor sitzt.
+   Rueckgabe: 1 = es lag etwas an. */
+int net_bearbeiten() {
+    int len; int p; int art; int kopf; int nutz; int nlen;
+    len = net_empfangen(NET_PUFFER);
+    if (len <= 0) return 0;
+    art = (net_getb(NET_PUFFER + 12) << 8) | net_getb(NET_PUFFER + 13);
+
+    if (art == ART_ARP) {
+        p = NET_PUFFER + NET_KOPF;
+        if (net_get16(p + 6) == 1 && net_get32(p + 24) == ip_meine
+            && ip_meine != 0) {
+            arp_merken(net_get32(p + 14), p + 8);
+            arp_antworten(NET_PUFFER);
+        } else if (net_get16(p + 6) == 2) {
+            arp_merken(net_get32(p + 14), p + 8);
+        }
+        return 1;
+    }
+
+    if (art == ART_IP) {
+        kopf = NET_PUFFER + NET_KOPF;
+        if (net_get32(kopf + 16) != ip_meine || ip_meine == 0) return 1;
+        nutz = kopf + (net_getb(kopf) & 0x0F) * 4;
+        nlen = net_get16(kopf + 2) - (net_getb(kopf) & 0x0F) * 4;
+        if (net_getb(kopf + 9) == PROTO_ICMP && nlen > 0) {
+            if (net_getb(nutz) == 8) {                  /* Frage: bist du da? */
+                icmp_antworten(NET_PUFFER, kopf, nutz, nlen);
+            } else if (net_getb(nutz) == 0) {           /* Antwort auf unsere */
+                ping_von = net_get32(kopf + 12);
+                ping_folge = net_get16(nutz + 6);
+            }
+        }
+        return 1;
+    }
+    return 1;
+}
+
+/* Einmal anpingen. Rueckgabe: Zeit in Hundertstelsekunden, -1 = keine
+   Antwort, -2 = niemand mit dieser Adresse gefunden. */
+int icmp_ping(int zielip, int folge) {
+    int i; int frist; int start; int r;
+    net_putb(NET_PUFFER + 1100, 8);              /* Art 8 = Frage */
+    net_putb(NET_PUFFER + 1101, 0);
+    net_put16(NET_PUFFER + 1102, 0);
+    net_put16(NET_PUFFER + 1104, 0x5442);        /* Kennung: "TB" */
+    net_put16(NET_PUFFER + 1106, folge);
+    for (i = 0; i < 24; i++) net_putb(NET_PUFFER + 1108 + i, 'a' + (i % 26));
+    net_put16(NET_PUFFER + 1102, net_pruefsumme(NET_PUFFER + 1100, 32));
+
+    ping_von = 0;
+    ping_folge = 0 - 1;
+    start = sys_ticks();
+    r = ip_senden(zielip, PROTO_ICMP, NET_PUFFER + 1100, 32);
+    if (r == 0 - 1) return 0 - 2;
+    if (r < 0) return 0 - 1;
+    frist = sys_ticks() + 100;
+    while (sys_ticks() < frist) {
+        net_bearbeiten();
+        if (ping_von == zielip && ping_folge == folge)
+            return sys_ticks() - start;
+    }
+    return 0 - 1;
+}
+
+/* --- Adressen als Text ---------------------------------------------------- */
+
+void ip_text(int ip, char* out) {
+    int i; int n; int teil; int z; int stelle;
+    n = 0;
+    for (i = 3; i >= 0; i--) {
+        teil = (ip >> (i * 8)) & 0xFF;
+        stelle = 100;
+        z = 0;
+        while (stelle > 0) {
+            if (teil >= stelle || z || stelle == 1) {
+                out[n] = '0' + (teil / stelle);
+                n++;
+                z = 1;
+            }
+            teil = teil % stelle;
+            stelle = stelle / 10;
+        }
+        if (i > 0) { out[n] = '.'; n++; }
+    }
+    out[n] = 0;
+}
+
+/* "10.0.0.5" einlesen. Rueckgabe: die Adresse, 0 = unbrauchbar. */
+int ip_lesen(char* s) {
+    int teil[4];
+    int i; int n; int wert; int ziffern;
+    n = 0;
+    i = 0;
+    while (n < 4) {
+        wert = 0;
+        ziffern = 0;
+        while (s[i] >= '0' && s[i] <= '9') {
+            wert = wert * 10 + (s[i] - '0');
+            i++;
+            ziffern++;
+        }
+        if (ziffern == 0 || wert > 255) return 0;
+        teil[n] = wert;
+        n++;
+        if (n < 4) {
+            if (s[i] != '.') return 0;
+            i++;
+        }
+    }
+    if (s[i] != 0 && s[i] != ' ') return 0;
+    return (teil[0] << 24) | (teil[1] << 16) | (teil[2] << 8) | teil[3];
+}
+
+/* Beim Start: eine Adresse aus der eigenen Hardware-Adresse ableiten, damit
+   ohne Zutun schon etwas geht. 10.0.0.<letztes Byte> -- zwei Rechner auf
+   demselben Mac bekommen so verschiedene Adressen. */
+void net_start() {
+    int i;
+    char mac[8];
+    for (i = 0; i < ARP_MAX; i++) arp_frei[i] = 0;
+    if (net_da() == 0) return;
+    net_mac(mac);
+    ip_meine = 0x0A000000 | (mac[5] & 0xFF);
+}

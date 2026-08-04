@@ -3035,6 +3035,7 @@ void gui_main() {
         sys_out(P_MCUR_Y, my);
         neu = 0;
 
+        net_bearbeiten();            /* die Post nebenbei, auch hier */
         if (sys_haskey()) {
             k = sys_getkey();
             if (win_top >= 0 && win_type[win_top] == APP_TERM && term_lauf) {
