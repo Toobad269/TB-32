@@ -1,6 +1,6 @@
 """
 Die Peripherie des Rechners: Grafikkarte, Tastatur, Festplatte, Timer,
-Lautsprecher, Maus, CMOS-Uhr und Netzteil.
+Lautsprecher, Maus, CMOS-Uhr, Netzwerkkarte und Netzteil.
 
 Jedes Gerät hängt an I/O-Ports (wie bei einem echten PC über IN/OUT) und
 manche zusätzlich an einem Speicherbereich (memory-mapped, z.B. der
@@ -26,6 +26,8 @@ from hardware.isa import (
     PORT_TIMER_HZ, PORT_TIMER_TICKS, PORT_VGA_CURSOR, PORT_VGA_MODE,
     PORT_VGA_PALIDX, PORT_VGA_PALVAL, VRAM_GFX_SIZE, VRAM_TEXT_SIZE,
     PORT_FLASH_CMD, PORT_FLASH_SIZE, PORT_FLASH_ADDR, ROM_SIZE,
+    IRQ_NET, PORT_NET_STATUS, PORT_NET_ADDR, PORT_NET_LEN, PORT_NET_CMD,
+    PORT_NET_MAC_HI, PORT_NET_MAC_LO, PORT_NET_ZAEHLER, PORT_NET_ZINDEX,
 )
 
 SECTOR = 512
@@ -1152,3 +1154,149 @@ class Flash:
             return self.OK
 
         return self.KEIN_PUFFER
+
+
+# ---------------------------------------------------------------------------
+# Netzwerkkarte
+# ---------------------------------------------------------------------------
+
+class Netzkarte:
+    """TB-NET: schickt und empfängt Rahmen. Mehr weiß sie nicht.
+
+    Eine echte Netzwerkkarte versteht nichts von IP, von Namen oder von
+    Webseiten. Sie kennt genau zwei Dinge: „schick diese Bytes raus" und
+    „hier sind Bytes angekommen". Alles andere — Adressen, Verbindungen,
+    Protokolle — macht das Betriebssystem. Deshalb steht hier auch nicht mehr.
+
+    Der Draht ist auf dem Mac eine UDP-Multicast-Gruppe über den Rückkanal
+    (127.0.0.1). Zwei laufende TB-32 hören dieselbe Gruppe und sehen deshalb
+    gegenseitig ihre Rahmen — wie zwei Rechner an einem Hub. Die Pakete
+    verlassen den Mac nicht.
+
+    Auf dem Pi ersetzt später die echte Karte den Draht. Die Ports bleiben,
+    und damit bleibt auch der ganze TB-32-Code unverändert.
+    """
+
+    GRUPPE = "239.32.32.32"
+    PORT = 32032
+    karten = 0                         # laufende Nummer für die Adresse
+    MAXRAHMEN = 1518                   # wie bei Ethernet: 1500 Nutzdaten + Kopf
+
+    def __init__(self, cpu_ref, mac=None):
+        self.cpu = cpu_ref
+        self.bus = None
+        self.addr = 0
+        self.len = 0
+        self.zindex = 0
+        self.empfangen = 0
+        self.gesendet = 0
+        self.eingang = deque(maxlen=64)
+        self.sock = None
+        # Eigene Adresse: 02:TB:.. -- das Bit 0x02 im ersten Byte heißt
+        # "selbst vergeben", genau dafür ist es da. Der Rest kommt aus der
+        # Prozessnummer, damit zwei Fenster auf demselben Mac sich nicht
+        # dieselbe Adresse geben, und aus einem Zähler, damit auch zwei
+        # Karten im selben Prozess (Tests) sich unterscheiden.
+        Netzkarte.karten += 1
+        self.mac = mac or bytes([0x02, 0x54, 0x42,
+                                 (os.getpid() >> 8) & 0xFF,
+                                 os.getpid() & 0xFF,
+                                 Netzkarte.karten & 0xFF])
+        self._anschliessen()
+
+    def _anschliessen(self):
+        """Steckt das Kabel ein. Geht es nicht, bleibt die Karte stumm."""
+        import socket
+        try:
+            s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+            s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            if hasattr(socket, "SO_REUSEPORT"):
+                s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT, 1)
+            s.bind(("", self.PORT))
+            # Ausdruecklich ueber 127.0.0.1 -- nicht ueber "irgendeine
+            # Schnittstelle". Mit INADDR_ANY sucht macOS sich die Karte des
+            # Standardwegs (WLAN) aus; die Rahmen gehen dann hinaus und
+            # kommen auf demselben Rechner nie an. Mit dem Rueckkanal sehen
+            # sich zwei TB-32 auf demselben Mac zuverlaessig.
+            lo = socket.inet_aton("127.0.0.1")
+            s.setsockopt(socket.IPPROTO_IP, socket.IP_ADD_MEMBERSHIP,
+                         struct.pack("4s4s", socket.inet_aton(self.GRUPPE), lo))
+            s.setsockopt(socket.IPPROTO_IP, socket.IP_MULTICAST_IF, lo)
+            s.setsockopt(socket.IPPROTO_IP, socket.IP_MULTICAST_TTL, 1)
+            s.setsockopt(socket.IPPROTO_IP, socket.IP_MULTICAST_LOOP, 1)
+            s.setblocking(False)
+            self.sock = s
+        except OSError:
+            self.sock = None               # kein Netz: Bit 0 bleibt 0
+
+    def close(self):
+        if self.sock is not None:
+            self.sock.close()
+            self.sock = None
+
+    # -- vom Draht abholen; ruft die Maschine jede Zeitscheibe auf ----------
+    def poll(self):
+        if self.sock is None:
+            return
+        while True:
+            try:
+                daten, _ = self.sock.recvfrom(2048)
+            except (BlockingIOError, OSError):
+                return
+            if len(daten) < 14:
+                continue
+            if daten[6:12] == self.mac:    # der eigene Rahmen kommt zurück
+                continue
+            ziel = daten[:6]
+            if ziel != self.mac and ziel != b"\xff\xff\xff\xff\xff\xff":
+                continue                   # nicht an uns gerichtet
+            self.eingang.append(daten[:self.MAXRAHMEN])
+            self.empfangen += 1
+            if self.cpu[0] is not None:
+                self.cpu[0].raise_irq(IRQ_NET)
+
+    # -- Ports -------------------------------------------------------------
+    def port_out(self, port, value):
+        if port == PORT_NET_ADDR:
+            self.addr = value
+        elif port == PORT_NET_LEN:
+            self.len = value
+        elif port == PORT_NET_ZINDEX:
+            self.zindex = value
+        elif port == PORT_NET_CMD:
+            self._befehl(value)
+
+    def _befehl(self, cmd):
+        if cmd == 1:                       # senden
+            n = max(14, min(self.len, self.MAXRAHMEN))
+            rahmen = bytearray(self.bus.read_block(self.addr, n))
+            rahmen[6:12] = self.mac        # der Absender kommt von der Karte
+            if self.sock is not None:
+                try:
+                    self.sock.sendto(bytes(rahmen), (self.GRUPPE, self.PORT))
+                    self.gesendet += 1
+                except OSError:
+                    pass
+        elif cmd == 2:                     # den nächsten Rahmen abholen
+            if self.eingang:
+                r = self.eingang.popleft()
+                self.bus.write_block(self.addr, r)
+                self.len = len(r)
+            else:
+                self.len = 0
+        elif cmd == 3:                     # Warteschlange leeren
+            self.eingang.clear()
+
+    def port_in(self, port):
+        if port == PORT_NET_STATUS:
+            return (1 if self.sock is not None else 0) | \
+                   (2 if self.eingang else 0)
+        if port == PORT_NET_LEN:
+            return self.len
+        if port == PORT_NET_MAC_HI:
+            return (self.mac[0] << 8) | self.mac[1]
+        if port == PORT_NET_MAC_LO:
+            return int.from_bytes(self.mac[2:6], "big")
+        if port == PORT_NET_ZAEHLER:
+            return self.gesendet if self.zindex == 1 else self.empfangen
+        return 0

@@ -10,6 +10,8 @@ import time
 
 from hardware.isa import (
     PORT_PIC_ACK, PORT_PIC_MASK, PORT_TIMER_HZ, PORT_TIMER_TICKS,
+    PORT_NET_STATUS, PORT_NET_ADDR, PORT_NET_LEN, PORT_NET_CMD,
+    PORT_NET_MAC_HI, PORT_NET_MAC_LO, PORT_NET_ZAEHLER, PORT_NET_ZINDEX,
     PORT_KBD_DATA, PORT_KBD_STATUS,
     PORT_DISK_LBA, PORT_DISK_COUNT, PORT_DISK_ADDR, PORT_DISK_CMD,
     PORT_DISK_STATUS, PORT_DISK_SIZE,
@@ -28,7 +30,7 @@ from hardware.isa import (
 from hardware.bus import Bus
 from hardware.cpu import CPU
 from hardware.devices import (DMA, VGA, Keyboard, Disk, Timer, Speaker, Mouse, CMOS,
-                              Power, Thermal, Flash, CMOS_CPUSPEED)
+                              Power, Thermal, Flash, Netzkarte, CMOS_CPUSPEED)
 
 # Auswählbare Taktraten im BIOS-Setup (Befehle pro Sekunde)
 CPU_SPEEDS = [400_000, 1_000_000, 2_000_000, 4_000_000, 8_000_000]
@@ -111,6 +113,11 @@ class Machine:
         self.flash.bus = b
         b.register(self.flash, [PORT_FLASH_CMD, PORT_FLASH_SIZE,
                                 PORT_FLASH_ADDR])
+        self.netz = Netzkarte(self.cpu_ref)
+        self.netz.bus = b
+        b.register(self.netz, [PORT_NET_STATUS, PORT_NET_ADDR, PORT_NET_LEN,
+                               PORT_NET_CMD, PORT_NET_MAC_HI, PORT_NET_MAC_LO,
+                               PORT_NET_ZAEHLER, PORT_NET_ZINDEX])
         b.register(self, [PORT_PIC_ACK, PORT_PIC_MASK])
 
         self.running = False
@@ -264,6 +271,7 @@ class Machine:
         if not self.running:
             return 0
         self.timer.advance(dt)
+        self.netz.poll()                 # Post vom Draht abholen
         budget = max(1, int(self.ips * min(dt, 0.1)))
 
         if max_ms is None:
@@ -312,5 +320,6 @@ class Machine:
         return n
 
     def shutdown(self):
+        self.netz.close()
         self.disk.close()
         self.cmos.save()

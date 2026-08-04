@@ -9,6 +9,44 @@ Die tiefer liegenden Fallen haben zusätzlich einen ausführlichen Eintrag in
 
 ---
 
+## Netzwerk, Stufe 1: die Karte, der Treiber, der NET-Befehl
+
+Der Anfang eines eigenen Netzwerks. Der Grundsatz bleibt: **Python emuliert
+nur den Chip.** Die Karte kennt Rahmen und sonst nichts -- sechs Byte Ziel,
+sechs Byte Absender, zwei Byte Art, dann Nutzdaten, genau wie bei Ethernet.
+Was darin steht, entscheidet der TB-32 selbst.
+
+**Ports 0xC0–0xC7, IRQ 0x0D.** Senden: Adresse und Länge hinlegen, Befehl 1.
+Empfangen: Adresse hinlegen, Befehl 2, Länge zurücklesen. Den Absender
+trägt die **Karte** ein, nicht der Absender selbst -- man kann sich also
+nicht als jemand anderes ausgeben, wie bei echter Hardware auch.
+
+**Der Draht** ist auf dem Mac eine UDP-Multicast-Gruppe (239.32.32.32:32032).
+Zwei laufende TB-32 hängen daran wie zwei Rechner an einem Hub.
+
+**Die Falle dabei -- eine Stunde gekostet:** mit `INADDR_ANY` sucht macOS
+sich für Multicast die Karte des Standardwegs aus, also das WLAN. Die Rahmen
+gehen dann hinaus und kommen auf demselben Rechner **nie** an; gesendet
+wurde ohne Fehler, empfangen wurde nichts. Erst `IP_MULTICAST_IF` und der
+Beitritt ausdrücklich über `127.0.0.1` bringen sie ans Ziel. Für die
+Ausweitung auf das echte Netz muss man dieselbe Stelle noch einmal anfassen.
+
+**Zweite Falle:** die Adresse kam aus der Prozessnummer. Zwei Karten im
+selben Prozess (der Selbsttest!) hatten damit dieselbe Adresse -- und weil
+jede Karte ihre eigenen Rahmen wegwirft, kam nichts an. Jetzt zählt eine
+laufende Nummer mit.
+
+`NET` zeigt Zustand, eigene Adresse und die Zähler. `NET SEND <text>`
+schickt einen Rundruf, `NET WATCH` zeigt an, was ankommt. Nachgewiesen mit
+zwei Maschinen: A sendet, B zeigt Absender, Art und Text.
+
+Was noch fehlt, in dieser Reihenfolge: ARP und IP (dann antwortet PING),
+UDP und DNS, TCP, und ganz am Ende HTTP und ein Browser. HTTPS können wir
+nicht -- dafür holt später ein Proxy auf dem Pi die Seiten und reicht sie
+als einfaches HTTP weiter.
+
+---
+
 ## ESC führt nicht mehr aus dem Schreibtisch heraus
 
 Ein Druck auf **ESC** auf dem Schreibtisch warf einen in die große

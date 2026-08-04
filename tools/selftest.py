@@ -311,6 +311,37 @@ def main():
     L.eingabe("del TEST.TXT|ENTER", 0.8)
     pruefe("Datei löschen", "File deleted" in L.bild())
 
+    print("\n--- Netzwerk ---------------------------------------------------")
+    L.eingabe("net|ENTER", 0.8)
+    bild = L.bild()
+    pruefe("Netzwerkkarte meldet sich", "TB-NET" in bild and "Link" in bild)
+    pruefe("Karte nennt ihre eigene Adresse", "02:54:42" in bild, bild)
+
+    # Ein Rahmen von aussen: eine zweite Karte am selben Draht schickt einen
+    # Rundruf. Kommt er an, steht die ganze Kette -- Draht, Karte, Treiber.
+    from hardware.devices import Netzkarte
+
+    class _Speicher:
+        def __init__(self): self.b = bytearray(2048)
+        def read_block(self, a, n): return bytes(self.b[a:a + n])
+        def write_block(self, a, d): self.b[a:a + len(d)] = d
+
+    fremd = Netzkarte([None])
+    fremd.bus = _Speicher()
+    rahmen = b"\xff" * 6 + b"\x00" * 6 + b"\x77\x42" + b"Selbsttest" + b"\x00" * 30
+    fremd.bus.b[:len(rahmen)] = rahmen
+    fremd.addr, fremd.len = 0, len(rahmen)
+    fremd._befehl(1)
+    L.warte(0.8)
+    L.eingabe("net|ENTER", 0.8)
+    bild = L.bild()
+    empfangen = 0
+    for zeile in bild.splitlines():
+        if "Frames received" in zeile:
+            empfangen = int(zeile.split()[-1])
+    pruefe("Rahmen von aussen kommt an", empfangen >= 1, bild)
+    fremd.close()
+
     print("\n--- Programme von der Platte -----------------------------------")
     L.eingabe("cls|ENTER", 0.3)
     L.eingabe("START MEMTEST.TBX|ENTER", 7.0)

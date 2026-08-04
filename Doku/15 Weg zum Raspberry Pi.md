@@ -130,7 +130,12 @@ Recherchierter Stand von [Circle](https://circle-rpi.readthedocs.io/en/50.0/appe
 - **USB:** „sollte funktionieren", aber Berichte über Erkennungsprobleme
   beim Start — **besonders wenn HDMI angeschlossen ist**. Genau unsere
   Kombination.
-- **Netzwerk:** gar nicht (RP1-Treiber fehlt)
+- **Netzwerk:** ~~gar nicht~~ **geht inzwischen.** Circles README (Stand
+  04.08.2026) führt für den Pi 5 sowohl „MACB / GEM Gigabit Ethernet NIC of
+  Raspberry Pi 5" als auch „Wireless LAN access" als unterstützt. Die
+  Appendix-Seite zum Pi 5 sagt dazu nichts und verweist auf das README --
+  wer hier nachschaut, muss also das README lesen, nicht die Doku-Seite.
+  Getestet laut Circle nur mit den BCM2712-Steppings C1 und D0.
 
 ### Was das praktisch heißt
 

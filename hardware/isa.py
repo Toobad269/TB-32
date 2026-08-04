@@ -277,12 +277,34 @@ PORT_FLASH_SIZE  = 0x00B1   # lesen: Bytes im Puffer (0 = keine Datei)
 PORT_FLASH_ADDR  = 0x00B2   # Zieladresse fuer Befehl 2
 
 # ---------------------------------------------------------------------------
+# Netzwerkkarte TB-NET
+# ---------------------------------------------------------------------------
+# Die Karte kennt nur Rahmen: sechs Byte Ziel, sechs Byte Absender, zwei Byte
+# Art, dann die Nutzdaten. Was darin steht -- ARP, IP, was auch immer --,
+# entscheidet der TB-32 selbst. Genau so wenig weiss eine echte Karte auch.
+#
+# Auf dem Mac gehen die Rahmen als UDP-Multicast hinaus (Gruppe 239.32.32.32,
+# Port 32032, TTL 1: bleibt im eigenen Netz). Zwei laufende TB-32 sehen sich
+# damit gegenseitig, auch auf zwei verschiedenen Rechnern im selben WLAN.
+# Auf dem Pi wird dieselbe Schnittstelle spaeter von der echten Karte
+# bedient -- der TB-32-Code aendert sich dabei um kein Byte.
+PORT_NET_STATUS  = 0x00C0   # Bit 0 = Karte da, Bit 1 = Rahmen liegt bereit
+PORT_NET_ADDR    = 0x00C1   # Speicheradresse fuer Senden und Empfangen
+PORT_NET_LEN     = 0x00C2   # schreiben: Laenge zum Senden; lesen: Laenge des Rahmens
+PORT_NET_CMD     = 0x00C3   # 1 = senden, 2 = empfangen, 3 = Warteschlange leeren
+PORT_NET_MAC_HI  = 0x00C4   # eigene Adresse, die oberen beiden Byte
+PORT_NET_MAC_LO  = 0x00C5   # ... und die unteren vier
+PORT_NET_ZAEHLER = 0x00C6   # lesen: Rahmen empfangen (Index 0) / gesendet (1)
+PORT_NET_ZINDEX  = 0x00C7   # welcher Zaehler gelesen wird
+
+# ---------------------------------------------------------------------------
 # Interrupt-Nummern
 # ---------------------------------------------------------------------------
 
 IRQ_TIMER = 0x08     # Hardware: Timer   (wie IRQ0 beim PC)
 IRQ_KBD   = 0x09     # Hardware: Tastatur
 IRQ_MOUSE = 0x0C     # Hardware: Maus
+IRQ_NET   = 0x0D     # Hardware: Netzwerkkarte, ein Rahmen ist da
 
 INT_VIDEO = 0x10     # BIOS-Dienst: Bildschirm
 INT_DISK  = 0x13     # BIOS-Dienst: Festplatte

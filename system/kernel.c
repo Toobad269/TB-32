@@ -15,6 +15,7 @@
 #include "font8.c"
 #include "diag.c"
 #include "proc.c"
+#include "net.c"
 #include "term.c"
 #include "syscall.c"
 #include "gui.c"
@@ -121,6 +122,90 @@ void cmd_help(char* topic) {
 /* ==========================================================================
    System information
    ========================================================================== */
+
+
+/* --- NET: die Netzwerkkarte anschauen und ausprobieren -------------------
+   Drei Formen. "NET" allein zeigt den Zustand, "NET SEND <text>" schickt
+   einen Rundruf an alle im Netz, "NET WATCH" wartet auf Rahmen und zeigt
+   sie an, bis eine Taste kommt. Mehr braucht die erste Stufe nicht -- damit
+   sieht man, ob die Kette Karte, Treiber, Draht ueberhaupt steht. */
+#define NET_ART_TEXT 0x7742          /* unsere eigene Art: schlichter Text */
+
+void net_rahmen_zeigen(int len) {
+    int i; int art; int c;
+    char von[8];
+    char text[24];
+    for (i = 0; i < 6; i++) von[i] = net_getb(NET_PUFFER + 6 + i);
+    net_mac_text(von, text);
+    print("  von ");
+    print(text);
+    art = (net_getb(NET_PUFFER + 12) << 8) | net_getb(NET_PUFFER + 13);
+    print("  Art ");
+    printn(art);
+    print("  ");
+    printn(len);
+    print(" Byte  ");
+    if (art == NET_ART_TEXT) {
+        for (i = NET_KOPF; i < len && i < NET_KOPF + 60; i++) {
+            c = net_getb(NET_PUFFER + i);
+            if (c == 0) break;
+            if (c >= 32 && c < 127) putch(c);
+        }
+    }
+    nl();
+}
+
+void cmd_net(char* option, char* rest) {
+    int i; int n; int len; int taste;
+    char mac[8];
+    char text[24];
+    char alle[8];
+
+    if (net_da() == 0) {
+        printc("No network card.\n", RED);
+        return;
+    }
+
+    if (stricmp(option, "send") == 0) {
+        net_alle(alle);
+        n = net_kopf_bauen(NET_PUFFER, alle, NET_ART_TEXT);
+        for (i = 0; rest[i] != 0 && i < 200; i++) net_putb(n + i, rest[i]);
+        net_putb(n + i, 0);
+        len = NET_KOPF + i + 1;
+        if (len < 60) len = 60;              /* kuerzer darf ein Rahmen nicht */
+        if (net_senden(NET_PUFFER, len) < 0) printc("Send failed.\n", RED);
+        else { print("Sent "); printn(len); print(" bytes to everyone.\n"); }
+        return;
+    }
+
+    if (stricmp(option, "watch") == 0) {
+        print("Listening. Any key stops.\n");
+        while (1) {
+            if (sys_haskey()) { taste = sys_getkey(); break; }
+            len = net_empfangen(NET_PUFFER);
+            if (len > 0) net_rahmen_zeigen(len);
+        }
+        return;
+    }
+
+    net_mac(mac);
+    net_mac_text(mac, text);
+    printc("\nNetwork\n", BRIGHT);
+    print("  Card                       TB-NET\n");
+    print("  Link                       ");
+    printc("up\n", GREEN);
+    print("  Hardware address           ");
+    printc(text, BRIGHT);
+    nl();
+    print("  Frames received            ");
+    printnc(net_zaehler(0), BRIGHT);
+    nl();
+    print("  Frames sent                ");
+    printnc(net_zaehler(1), BRIGHT);
+    nl();
+    print("\n  NET SEND <text>   send to everyone\n");
+    print("  NET WATCH         show what arrives\n");
+}
 
 void cmd_ver() {
     printc("TOOBAD-OS Version 1.0\n", CYAN);
@@ -826,6 +911,7 @@ void shell() {
         else if (stricmp(cmd, "date") == 0)       cmd_date();
         else if (stricmp(cmd, "echo") == 0)       { print(cmdline + 5); nl(); }
         else if (stricmp(cmd, "color") == 0)      cmd_color(arg1);
+        else if (stricmp(cmd, "net") == 0)        cmd_net(arg1, cmdline + 4 + strlen(arg1) + 1);
 
         else if (stricmp(cmd, "dir") == 0)        cmd_dir(arg1);
         else if (stricmp(cmd, "type") == 0)       cmd_type(arg1);
