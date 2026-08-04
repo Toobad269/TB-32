@@ -58,6 +58,17 @@ Weg — dann geht alles außer HTTPS. Ausschalten mit `NET PROXY OFF`.
 Befehle: `NET`, `NET IP`, `NET GW`, `NET DNS`, `NET ARP`, `NET SEND`,
 `NET WATCH`, `PING`, `HOST`, `FETCH`.
 
+## Wo die Programme liegen
+
+Das Startmenü zeigt, was **da ist**: oben die eingebauten Fenster, darunter
+alles aus `\SYSTEM\PROGS` (Programme des Systems) und `\PROGS` (deine
+eigenen). Sieben auf einmal, der Rest über die Pfeile. Leg eine `.TBX` in
+einen der Ordner — beim nächsten Öffnen steht sie im Menü.
+
+Was in `\SYSTEM` liegt, ist gegen Löschen geschützt: `DEL` verweigert und
+verweist auf `SUDO`. Das fragt einmal nach deinem Passwort und gibt fünf
+Minuten Ruhe. Ein Rechner ohne Passwort ist offen — dort fragt nichts.
+
 ## Eigene Fenster für eigene Programme
 
 Ein Programm von der Platte kann ein Fenster auf dem Schreibtisch haben — es

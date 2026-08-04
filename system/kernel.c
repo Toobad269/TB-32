@@ -762,10 +762,35 @@ void cmd_more(char* name) {
     nl();
 }
 
+/* SUDO: einmal das Passwort, danach fuenf Minuten Ruhe -- wie beim echten
+   sudo. Damit lassen sich Dateien in \SYSTEM loeschen. */
+void cmd_sudo() {
+    char pw[32];
+    if (konto_offen()) {
+        print("This machine has no password -- nothing is locked.\n");
+        return;
+    }
+    print("Password: ");
+    passwort_lesen(pw, 30);
+    if (benutzer_passt(pw) == 0) {
+        printc("Wrong password.\n", RED);
+        return;
+    }
+    sudo_bis = sys_ticks() + 30000;               /* fuenf Minuten */
+    printc("Granted for five minutes.\n", GREEN);
+}
+
 void cmd_del(char* name) {
+    int r;
     if (name[0] == 0) { printc("Syntax: DEL <file>\n", RED); return; }
-    if (fs_delete(name) == 0) print("File deleted\n");
-    else printc("File not found\n", RED);
+    r = fs_delete(name);
+    if (r == 0) { print("File deleted\n"); return; }
+    if (r == 0 - 3) {
+        printc("That belongs to the system.\n", YELLOW);
+        print("Use SUDO first -- it asks for your password.\n");
+        return;
+    }
+    printc("File not found\n", RED);
 }
 
 void cmd_ren(char* a, char* b) {
@@ -1243,6 +1268,7 @@ void shell() {
         else if (stricmp(cmd, "type") == 0)       cmd_type(arg1);
         else if (stricmp(cmd, "more") == 0)       cmd_more(arg1);
         else if (stricmp(cmd, "del") == 0)        cmd_del(arg1);
+        else if (stricmp(cmd, "sudo") == 0)       cmd_sudo();
         else if (stricmp(cmd, "erase") == 0)      cmd_del(arg1);
         else if (stricmp(cmd, "ren") == 0)        cmd_ren(arg1, arg2);
         else if (stricmp(cmd, "copy") == 0)       cmd_copy(arg1, arg2);
@@ -1417,6 +1443,13 @@ void benutzer_anlegen(char* name, char* pw) {
     n = fs_find("USER.DAT");
     if (n >= 0) { ent_verstecken(n); fs_save_dir(); }
     cwd = alt;
+}
+
+/* Ein Rechner ohne Passwort ist offen -- dann fragt auch der Schutz von
+   \SYSTEM nicht nach. Wird aus fs.c gerufen, das frueher eingebunden wird
+   und USER_BUF deshalb noch nicht kennt. */
+int konto_offen() {
+    return pw_summe("") == mem_get(USER_BUF + USER_HASH);
 }
 
 int benutzer_passt(char* pw) {

@@ -350,23 +350,44 @@ def main():
     L.eingabe("del TEST.TXT|ENTER", 0.8)
     pruefe("Datei löschen", "File deleted" in L.bild())
 
-    # (MENU_ANZ in gui.c). Deshalb hier aus BAR_Y zurückgerechnet, sonst
-    # zeigt jeder neue Menüpunkt alle Klicks um eine Zeile daneben.
-    # MENU_ANZ direkt aus gui.c lesen, statt sie hier abzuschreiben. Beim
-    # letzten Wachsen des Menues sind drei Tests reihenweise umgefallen,
-    # weil die Zahl an zwei Stellen stand.
+    # Das Startmenue zeigt jetzt, was in \SYSTEM\PROGS und \PROGS liegt --
+    # sieben Eintraege auf einmal, der Rest per Pfeil. Die Zahlen kommen aus
+    # gui.c, damit ein neuer Menuepunkt nicht wieder drei Tests umwirft.
     import re as _re
-    MENU_ANZ = int(_re.search(r"define MENU_ANZ\s+(\d+)",
-                              open(os.path.join(ROOT, "system", "gui.c")).read()).group(1))
+    _gui = open(os.path.join(ROOT, "system", "gui.c")).read()
+    MENU_SICHT = int(_re.search(r"define MENU_SICHT\s+(\d+)", _gui).group(1))
     MENU_ZH, BAR_Y = 14, 378
-    MENU_TOP = BAR_Y - (MENU_ANZ * MENU_ZH + 10)
+    MENU_HOEHE = (MENU_SICHT + 2) * MENU_ZH + 16
+    MENU_TOP = BAR_Y - MENU_HOEHE
+
+    def _klick(x, y, danach=1.0):
+        L.m.mouse.move(x, y, 0); L.warte(0.2)
+        L.m.mouse.move(x, y, 1); L.warte(0.3)
+        L.m.mouse.move(x, y, 0); L.warte(danach)
 
     def menue(eintrag):
-        """Start-Knopf, dann den n-ten Eintrag im Startmenü anklicken."""
-        for x, y in ((25, 387), (60, MENU_TOP + 6 + eintrag * MENU_ZH)):
-            L.m.mouse.move(x, y, 0); L.warte(0.2)
-            L.m.mouse.move(x, y, 1); L.warte(0.3)
-            L.m.mouse.move(x, y, 0); L.warte(1.0)
+        """Start-Knopf, dann den n-ten Eintrag anklicken -- notfalls scrollen."""
+        _klick(25, 387, 0.5)
+        rollen = 0
+        if eintrag >= MENU_SICHT:
+            rollen = eintrag - MENU_SICHT + 1
+        for _ in range(rollen):                      # Pfeil unten
+            _klick(172,
+                   MENU_TOP + 6 + (MENU_SICHT - 1) * MENU_ZH, 0.3)
+        _klick(60, MENU_TOP + 6 + (eintrag - rollen) * MENU_ZH)
+
+    def menue_fest(k):
+        """0 = Power options, 1 = Exit desktop -- die stehen immer unten."""
+        _klick(25, 387, 0.5)
+        _klick(60, MENU_TOP + 8 + (MENU_SICHT + k) * MENU_ZH)
+
+    # \SYSTEM\PROGS: die Programme, die zum System gehoeren. Sie stehen im
+    # Startmenue und sind gegen Loeschen geschuetzt.
+    L.eingabe("cd SYSTEM|ENTER", 0.6)
+    L.eingabe("dir|ENTER", 0.8)
+    pruefe("SYSTEM hat einen eigenen Programmordner", "PROGS" in L.bild(),
+           L.bild())
+    L.eingabe("cd \\|ENTER", 0.6)
 
     print("\n--- Netzwerk ---------------------------------------------------")
     L.eingabe("net|ENTER", 0.8)
@@ -595,7 +616,8 @@ def main():
         typen = [wort(L.m, sym["win_type"] + i * 4) for i in range(6)]
         pruefe("Und es raeumt sein Fenster selbst ab", 18 not in typen, str(typen))
 
-        menue(MENU_ANZ - 1)                          # zurueck in die Konsole
+
+        menue_fest(1)                                # zurueck in die Konsole
         L.warte(2.0)
     finally:
         router.terminate()
@@ -688,7 +710,7 @@ def main():
     # ESC führt bewusst NICHT mehr aus dem Schreibtisch heraus (eine
     # versehentlich gedrückte Taste warf einen mitten aus der Arbeit in die
     # Textkonsole). Der Weg hinaus ist der letzte Menüpunkt "Exit desktop".
-    menue(MENU_ANZ - 1)
+    menue_fest(1)                                # Exit desktop
     L.warte(1.5)
 
     print("\n--- Grafik und Fenstersystem -----------------------------------")
@@ -703,7 +725,7 @@ def main():
         L.m.mouse.move(x, y, 0); L.warte(0.8)
     pruefe("Startmenü öffnet ein Fenster",
            sum(vga.gfx[100 * 640:300 * 640]) > 0)
-    menue(MENU_ANZ - 1)                          # Exit desktop
+    menue_fest(1)                                # Exit desktop
     L.warte(1.5)
     pruefe("Rückkehr in den Textmodus", vga.mode == 0)
 

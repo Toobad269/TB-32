@@ -2251,12 +2251,25 @@ void gui_im_fenster(char* name) {
    Oberflaechen liegen die Anwendungen jetzt in einem Menue, und die Leiste
    zeigt stattdessen, welche Fenster gerade offen sind. */
 
-#define MENU_ANZ  13
+#define MENU_FEST  11             /* eingebaute Fenster, noch im Kernel */
+#define MENU_SICHT 7              /* so viele Eintraege sind auf einmal zu sehen */
+#define MENU_MAX   40
 #define MENU_X    2
 #define MENU_W    180
 #define MENU_ZH   14
 
-char* menu_text(int i) {
+/* Das Startmenue zeigt, was da IST -- nicht eine im Code festgenagelte
+   Liste. Die eingebauten Fenster stehen oben, danach kommt, was in
+   \SYSTEM\PROGS und \PROGS liegt. Wer ein Programm hineinlegt, findet es
+   beim naechsten Oeffnen im Menue. Sieben auf einmal, der Rest per Pfeil.
+
+   Beim Selbsttest: MENU_ANZ ist keine feste Zahl mehr, deshalb liest er
+   MENU_FEST und rechnet selbst. */
+int menu_top = 0;                 /* erster sichtbarer Eintrag */
+int menu_anz = 0;                 /* wie viele es insgesamt sind */
+int menu_datei[40];               /* Verzeichniseintrag, -1 = eingebaut */
+
+char* menu_eingebaut(int i) {
     if (i == 0) return "File Manager";
     if (i == 1) return "Command Prompt";
     if (i == 2) return "Coder";
@@ -2267,22 +2280,69 @@ char* menu_text(int i) {
     if (i == 7) return "Browser";
     if (i == 8) return "Clock";
     if (i == 9) return "Settings";
-    if (i == 10) return "About TOOBAD-OS";
-    if (i == 11) return "Power options";
-    return "Exit desktop";
+    return "About TOOBAD-OS";
+}
+
+/* Die Liste zusammenstellen. Wird bei jedem Oeffnen des Menues gerufen --
+   dann stimmt sie auch, wenn gerade etwas dazugekommen ist. */
+void menu_bauen() {
+    int i; int d; int n;
+    menu_anz = MENU_FEST;
+    for (i = 0; i < MENU_FEST; i++) menu_datei[i] = 0 - 1;
+
+    d = fs_find_in("SYSTEM", 0 - 1);
+    if (d >= 0) d = fs_find_in("PROGS", d);
+    for (n = 0; n < 2; n++) {
+        if (d >= 0) {
+            for (i = 0; i < FS_MAXFILES; i++) {
+                if (menu_anz >= MENU_MAX) break;
+                if (ent_type(i) != FT_FILE || ent_parent(i) != d) continue;
+                if (ent_versteckt(i)) continue;
+                if (endet_auf(ent_name(i), ".TBX") == 0) continue;
+                menu_datei[menu_anz] = i;
+                menu_anz = menu_anz + 1;
+            }
+        }
+        d = fs_find_in("PROGS", 0 - 1);      /* zweiter Durchgang: die eigenen */
+    }
+    if (menu_top > menu_anz - MENU_SICHT) menu_top = menu_anz - MENU_SICHT;
+    if (menu_top < 0) menu_top = 0;
+}
+
+char* menu_text(int i) {
+    if (i < 0 || i >= menu_anz) return "";
+    if (menu_datei[i] < 0) return menu_eingebaut(i);
+    return ent_name(menu_datei[i]);
 }
 
 void draw_menu() {
-    int y; int i; int hoehe;
-    hoehe = MENU_ANZ * MENU_ZH + 10;
+    int y; int i; int hoehe; int n; int z;
+    /* Sieben Programme, darunter durch einen Strich getrennt die beiden
+       festen Punkte. Die bleiben immer sichtbar -- man will nicht scrollen
+       muessen, um den Rechner ausschalten zu koennen. */
+    n = menu_anz - menu_top;
+    if (n > MENU_SICHT) n = MENU_SICHT;
+    if (n < 0) n = 0;
+    hoehe = (n + 2) * MENU_ZH + 16;
     y = BAR_Y - hoehe;
     g_panel(MENU_X, y, MENU_W, hoehe, 0);
     g_fill(MENU_X + 2, y + 2, 12, hoehe - 4, C_TITLEBAR);
-    for (i = 0; i < MENU_ANZ; i++) {
-        if (i == MENU_ANZ - 1) g_fill(MENU_X + 18, y + 5 + i * MENU_ZH - 2,
-                                      MENU_W - 24, 1, C_WINDARK);
-        g_text(MENU_X + 20, y + 6 + i * MENU_ZH, menu_text(i), C_TEXT, 256);
+
+    for (z = 0; z < n; z++) {
+        i = menu_top + z;
+        g_text_max(MENU_X + 20, y + 6 + z * MENU_ZH, menu_text(i),
+                   menu_datei[i] < 0 ? C_TEXT : C_ACCENT, 256, MENU_W - 40);
     }
+    /* Pfeile, wenn es mehr gibt als hineinpasst */
+    if (menu_top > 0) g_text(MENU_X + MENU_W - 14, y + 6, "^", C_WINDARK, 256);
+    if (menu_top + MENU_SICHT < menu_anz)
+        g_text(MENU_X + MENU_W - 14, y + 6 + (n - 1) * MENU_ZH, "v",
+               C_WINDARK, 256);
+
+    y = y + n * MENU_ZH + 6;
+    g_fill(MENU_X + 18, y + 2, MENU_W - 24, 1, C_WINDARK);
+    g_text(MENU_X + 20, y + 6, "Power options", C_TEXT, 256);
+    g_text(MENU_X + 20, y + 6 + MENU_ZH, "Exit desktop", C_TEXT, 256);
 }
 
 /* Kurzname eines Fensters fuer die Leiste */
@@ -2690,6 +2750,16 @@ int endet_auf(char* name, char* endung) {
     for (i = 0; i < e; i++)
         if (toupper(name[n - e + i]) != toupper(endung[i])) return 0;
     return 1;
+}
+
+/* Ein Programm aus dem Startmenue starten: es laeuft im Hintergrund weiter,
+   waehrend der Schreibtisch stehenbleibt. Wer ein Fenster will, macht sich
+   mit fenster_neu() eines -- wer keines macht, malt auf den Schirm und der
+   Schreibtisch malt daneben weiter. Genau deshalb sollen alle Programme im
+   Menue Fensterprogramme sein. */
+void gui_prog_starten(char* name) {
+    if (mt_active == 0) mt_enable();
+    prog_run(name, 1);
 }
 
 /* Ein Programm aus der Oberflaeche heraus starten.
@@ -3457,11 +3527,47 @@ void gui_main() {
             gui_taste = btn;
             /* Erst das Startmenue, falls es offen ist */
             if (menu_offen) {
-                k = BAR_Y - (MENU_ANZ * MENU_ZH + 10);
+                int sicht;
+                sicht = menu_anz - menu_top;
+                if (sicht > MENU_SICHT) sicht = MENU_SICHT;
+                if (sicht < 0) sicht = 0;
+                k = BAR_Y - ((sicht + 2) * MENU_ZH + 16);
                 if (mx >= MENU_X && mx < MENU_X + MENU_W &&
                     my >= k && my < BAR_Y) {
                     i = (my - k - 4) / MENU_ZH;
+                    /* Pfeile rechts: bloettern, ohne das Menue zu schliessen */
+                    if (mx > MENU_X + MENU_W - 20 && i == 0 && menu_top > 0) {
+                        menu_top = menu_top - 1;
+                        draw_desktop();
+                        alt_btn = btn;
+                        continue;
+                    }
+                    if (mx > MENU_X + MENU_W - 20 && i == sicht - 1
+                        && menu_top + MENU_SICHT < menu_anz) {
+                        menu_top = menu_top + 1;
+                        draw_desktop();
+                        alt_btn = btn;
+                        continue;
+                    }
                     menu_offen = 0;
+                    if (i >= sicht) {
+                        /* die beiden festen Punkte unter dem Strich */
+                        if (i == sicht) starte(APP_POWER, "Power", 240, 190);
+                        else gui_running = 0;
+                        if (gui_running) draw_desktop();
+                        alt_btn = btn;
+                        continue;
+                    }
+                    i = menu_top + i;
+                    if (menu_datei[i] >= 0) {
+                        /* Ein Programm von der Platte. Es laeuft im
+                           Hintergrund weiter -- wer ein Fenster will, macht
+                           sich eines. */
+                        gui_prog_starten(ent_name(menu_datei[i]));
+                        if (gui_running) draw_desktop();
+                        alt_btn = btn;
+                        continue;
+                    }
                     if (i == 0) starte(APP_FILES, "File Manager", 400, 230);
                     if (i == 1) {
                         starte(APP_TERM, "Command Prompt", 580, 230);
@@ -3499,8 +3605,6 @@ void gui_main() {
                         starte(APP_SETTINGS, "Settings", 420, 200);
                     }
                     if (i == 10) starte(APP_ABOUT, "About TOOBAD-OS", 340, 150);
-                    if (i == 11) starte(APP_POWER, "Power", 240, 190);
-                    if (i == 12) gui_running = 0;
                     /* Selbst neu zeichnen: das continue unten springt am
                        "if (neu) draw_desktop()" am Schleifenende vorbei, und
                        dann bliebe das Menue stehen, bis man irgendwo anders
@@ -3516,6 +3620,13 @@ void gui_main() {
             if (my >= BAR_Y) {
                 if (treffer(mx, my, 2, BAR_Y + 2, 52, 18)) {
                     menu_offen = 1 - menu_offen;
+                    if (menu_offen) {
+                        /* Jedes Mal oben anfangen. Ein Menue, das sich
+                           merkt, wo man zuletzt gescrollt hat, sieht beim
+                           naechsten Oeffnen aus, als fehlten Eintraege. */
+                        menu_top = 0;
+                        menu_bauen();
+                    }
                     neu = 1;
                 } else {
                     /* Knopf eines offenen Fensters? -> nach vorne holen */

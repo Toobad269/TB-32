@@ -9,6 +9,41 @@ Die tiefer liegenden Fallen haben zusätzlich einen ausführlichen Eintrag in
 
 ---
 
+## Das Startmenü zeigt, was da ist -- und \SYSTEM ist geschützt
+
+**Das Menü liest die Ordner.** Es zeigt oben die eingebauten Fenster, danach
+alles, was in `\SYSTEM\PROGS` und `\PROGS` liegt. Sieben auf einmal, der
+Rest über die Pfeile rechts; *Power options* und *Exit desktop* stehen immer
+unten -- man will nicht scrollen müssen, um den Rechner ausschalten zu
+können. Wer eine `.TBX` in einen der Ordner legt, findet sie beim nächsten
+Öffnen im Menü. Programme aus den Ordnern stehen in der Betonfarbe, damit man
+sieht, was Datei ist und was noch im Kernel steckt.
+
+**`\SYSTEM\PROGS` ist neu** -- die Programme, die zum System gehören. Wie
+`System32` bei Windows: es sind ganz normale Dateien, aber sie zu löschen
+kostet das Passwort.
+
+**Der Schutz.** `fs_delete` und das endgültige Löschen fragen `darf_system()`:
+liegt der Eintrag in `\SYSTEM` (auch in einem Unterordner), dann nur mit
+Erlaubnis. `SUDO` fragt einmal nach dem Passwort und gibt fünf Minuten Ruhe
+-- genau wie das echte sudo. Ein Rechner ohne Passwort gilt als offen, dort
+fragt auch der Schutz nicht. Der Sinn ist nicht Misstrauen: ein einziges
+verlorenes `KERNEL.BIN`, und die Maschine startet nie wieder.
+
+**Zwei Kleinigkeiten, die beim Testen auffielen:**
+
+Das Menü merkte sich, wie weit man gescrollt hatte. Beim nächsten Öffnen
+stand man mitten in der Liste und die ersten Einträge schienen zu fehlen.
+Jetzt fängt es immer oben an.
+
+`MENU_ANZ` gibt es nicht mehr -- die Zahl der Einträge steht ja erst beim
+Öffnen fest. Der Selbsttest rechnet jetzt mit `MENU_SICHT` und scrollt
+selbst, wenn ein Eintrag nicht sichtbar ist.
+
+83/83.
+
+---
+
 ## Der Fenster-Server: ein Programm von der Platte bekommt ein Fenster
 
 Bis hierher galt: entweder ein Programm hat den **ganzen** Bildschirm

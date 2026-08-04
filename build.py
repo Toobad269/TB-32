@@ -166,6 +166,9 @@ def build():
     # \PROGS   Hilfsprogramme
     # \SOURCE  Quelltexte, auch der des Compilers selbst
     WERKZEUGE = {"CC.TBX", "ASM.TBX", "PY.TBX"}
+    # Programme des Systems: sie stehen im Startmenue und liegen in
+    # \SYSTEM\PROGS. Alles andere landet in \PROGS.
+    SYSTEMPROGRAMME = {"CALC.TBX", "FLAPPY.TBX", "FENSTER.TBX"}
     # Bibliotheken werden nur eingebunden, nie fuer sich uebersetzt.
     NUR_BIBLIOTHEK = ("proglib.c", "gfxlib.c")
     # Diese Quelltexte kommen mit aufs Laufwerk, aber ohne fertiges Programm --
@@ -181,6 +184,10 @@ def build():
         if not fs.formatted():
             fs.format()
         system_dir = fs.pfad_ordner("SYSTEM")
+        # \SYSTEM\PROGS -- die Programme, die zum System gehoeren. Wie
+        # System32 bei Windows: es sind Dateien, aber Loeschen kostet das
+        # Passwort. Was der Benutzer selbst hineinlegt, gehoert nach \PROGS.
+        sysprogs_dir = fs.pfad_ordner("SYSTEM/PROGS")
         progs_dir = fs.pfad_ordner("PROGS")
         source_dir = fs.pfad_ordner("SOURCE")
 
@@ -195,9 +202,14 @@ def build():
             asm = compile_source(src, progdir)
             code, _, _ = assemble_text(progstart + "\n" + asm, progdir)
             name = datei[:-2].upper()[:11] + ".TBX"
-            ziel = system_dir if name in WERKZEUGE else progs_dir
+            if name in WERKZEUGE:
+                ziel, wo = system_dir, "SYSTEM"
+            elif name in SYSTEMPROGRAMME:
+                ziel, wo = sysprogs_dir, "SYSTEM\\PROGS"
+            else:
+                ziel, wo = progs_dir, "PROGS"
             fs.put(name, code, ziel)
-            namen.append(f"{'SYSTEM' if name in WERKZEUGE else 'PROGS'}\\{name}")
+            namen.append(f"{wo}\\{name}")
         if namen:
             print("  Programme " + ", ".join(namen))
         print("  Zum Selberuebersetzen  " +

@@ -372,11 +372,45 @@ int papierkorb_ordner() {
     return idx;
 }
 
+/* --- Was zum System gehoert, ist geschuetzt -------------------------------
+   Wie System32 bei Windows oder /usr bei Unix: die Dateien liegen offen da,
+   aber sie loeschen kostet das Passwort. Der Sinn ist nicht Misstrauen --
+   ein einziges verlorenes KERNEL.BIN, und der Rechner startet nie wieder.
+
+   sudo_bis merkt sich, bis wann eine Erlaubnis gilt. Genau wie das echte
+   sudo: einmal das Passwort, dann eine Weile Ruhe. */
+int sudo_bis = 0;
+int konto_offen();                   /* steht in kernel.c */
+
+int in_system(int idx) {
+    int sys; int k; int tiefe;
+    sys = fs_find_in("SYSTEM", 0 - 1);
+    if (sys < 0) return 0;
+    k = idx;
+    tiefe = 0;
+    while (k >= 0 && tiefe < 8) {
+        if (k == sys) return 1;
+        k = ent_parent(k);
+        tiefe = tiefe + 1;
+    }
+    return 0;
+}
+
+/* 1 = darf, 0 = braucht erst das Passwort. Ein Rechner ohne Passwort ist
+   offen -- dann fragt auch hier niemand. */
+int darf_system(int idx) {
+    if (in_system(idx) == 0) return 1;
+    if (konto_offen()) return 1;
+    if (sudo_bis > sys_ticks()) return 1;
+    return 0;
+}
+
 int fs_endgueltig_loeschen(char* name) {
     int idx;
     idx = fs_find(name);
     if (idx < 0) return 0 - 1;
     if (ent_type(idx) == FT_DIR) return 0 - 2;
+    if (darf_system(idx) == 0) return 0 - 3;
     ent_setinfo(idx, 0, 0 - 1);
     memset(ent_name(idx), 0, 16);
     fs_save_dir();
@@ -388,6 +422,7 @@ int fs_delete(char* name) {
     idx = fs_find(name);
     if (idx < 0) return 0 - 1;
     if (ent_type(idx) == FT_DIR) return 0 - 2;
+    if (darf_system(idx) == 0) return 0 - 3;   /* geschuetzt */
 
     korb = papierkorb_ordner();
     /* Wer im Papierkorb loescht, meint es ernst. */
