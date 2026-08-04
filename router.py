@@ -20,8 +20,12 @@ Was er kann:
   * PING auf ihn selbst beantworten
   * UDP nach draussen weiterleiten und die Antworten zurueckbringen (NAT)
 
-Was er nicht kann: TCP (kommt in der naechsten Stufe) und PING nach draussen
-(dafuer braeuchte er rohe Sockets und damit Administratorrechte).
+  * TCP: er ist die Gegenseite fuer den TB-32 (Handschlag, Nummern,
+    Bestaetigungen) und traegt den Byte-Strom auf einer normalen Verbindung
+    ins echte Netz
+
+Was er nicht kann: PING nach draussen (dafuer braeuchte er rohe Sockets und
+damit Administratorrechte).
 """
 
 import select
@@ -40,6 +44,9 @@ ART_IP = 0x0800
 ART_ARP = 0x0806
 PROTO_ICMP = 1
 PROTO_UDP = 17
+PROTO_TCP = 6
+
+FIN, SYN, RST, PSH, ACK = 1, 2, 4, 8, 16
 
 # Wie lange eine Weiterleitung offen bleibt, wenn nichts mehr kommt
 FRIST = 60.0
@@ -76,6 +83,7 @@ class Router:
         # (Klienten-IP, Klienten-Port, Ziel-IP, Ziel-Port) -> [Socket, Zeit, MAC]
         self.wege = {}
         self.gesehen = {}                 # IP -> MAC, damit wir zurueckfinden
+        self.tcp = {}                     # (IP, Port, ZielIP, ZielPort) -> Verbindung
 
     def _draht_oeffnen(self):
         s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
@@ -99,14 +107,21 @@ class Router:
             rahmen = rahmen + b"\x00" * (60 - len(rahmen))
         self.draht.sendto(rahmen, (GRUPPE, PORT))
 
-    def ip_senden(self, ziel_mac, zielip, proto, nutz):
+    def ip_senden(self, ziel_mac, zielip, proto, nutz, quellip=None):
+        """quellip: mit wessen Adresse das Paket dasteht.
+
+        Fuer Antworten des Routers selbst (ARP, PING) ist das seine eigene.
+        Fuer alles Weitergeleitete muss dort die Adresse des ECHTEN Servers
+        stehen -- der TB-32 hat ja diesen angesprochen und wirft alles weg,
+        was von jemand anderem kommt. Genau so verhaelt sich jeder Router,
+        der Adressen umsetzt."""
         kopf = bytearray(20)
         kopf[0] = 0x45
         struct.pack_into(">H", kopf, 2, 20 + len(nutz))
         struct.pack_into(">H", kopf, 4, 0)
         kopf[8] = 64
         kopf[9] = proto
-        struct.pack_into(">I", kopf, 12, self.ip)
+        struct.pack_into(">I", kopf, 12, self.ip if quellip is None else quellip)
         struct.pack_into(">I", kopf, 16, zielip)
         struct.pack_into(">H", kopf, 10, summe16(bytes(kopf)))
         self.rahmen_senden(ziel_mac, ART_IP, bytes(kopf) + nutz)
@@ -158,10 +173,132 @@ class Router:
             print(f"  PING von {i2ip(quellip)} -> beantwortet")
             return
 
+        if proto == PROTO_TCP and len(nutz) >= 20:
+            self.tcp_paket(quellip, zielip, nutz, von_mac)
+            return
+
         if proto == PROTO_UDP and len(nutz) >= 8:
             qport, zport, laenge = struct.unpack(">HHH", nutz[:6])
             self.udp_hinaus(quellip, qport, zielip, zport,
                             nutz[8:laenge], von_mac)
+
+
+    # -- TCP ----------------------------------------------------------------
+    # Der Router ist hier die Gegenseite: er spricht mit dem TB-32 echtes TCP
+    # (Handschlag, Nummern, Bestaetigungen) und traegt den Byte-Strom auf
+    # einer normalen Verbindung ins echte Netz. Genau so macht es die
+    # Benutzer-Netzwerkfunktion von QEMU auch. Der TB-32 merkt keinen
+    # Unterschied zu einem Webserver -- und muss sein TCP wirklich koennen.
+
+    def tcp_segment(self, v, flaggen, nutz=b""):
+        kopf = bytearray(20)
+        struct.pack_into(">HH", kopf, 0, v["zport"], v["qport"])
+        struct.pack_into(">I", kopf, 4, v["seq"] & 0xFFFFFFFF)
+        struct.pack_into(">I", kopf, 8, v["ack"] & 0xFFFFFFFF)
+        kopf[12] = 5 << 4
+        kopf[13] = flaggen
+        struct.pack_into(">H", kopf, 14, 8192)
+        pseudo = struct.pack(">IIBBH", v["zielip"], v["quellip"], 0,
+                             PROTO_TCP, 20 + len(nutz))
+        struct.pack_into(">H", kopf, 16,
+                         summe16(bytes(kopf) + nutz, summe16(pseudo) ^ 0xFFFF))
+        self.ip_senden(v["mac"], v["quellip"], PROTO_TCP, bytes(kopf) + nutz,
+                       quellip=v["zielip"])
+
+    def tcp_paket(self, quellip, zielip, p, von_mac):
+        qport, zport = struct.unpack(">HH", p[:4])
+        seq, ack = struct.unpack(">II", p[4:12])
+        koplen = (p[12] >> 4) * 4
+        flaggen = p[13]
+        daten = p[koplen:]
+        schluessel = (quellip, qport, zielip, zport)
+        v = self.tcp.get(schluessel)
+
+        if flaggen & SYN and v is None:
+            s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            s.settimeout(5.0)
+            try:
+                s.connect((i2ip(zielip), zport))
+                s.setblocking(False)
+            except OSError as e:
+                print(f"  TCP  {i2ip(zielip)}:{zport} nicht erreichbar: {e}")
+                v = {"quellip": quellip, "qport": qport, "zport": zport,
+                     "zielip": zielip, "seq": 0, "ack": seq + 1,
+                     "mac": von_mac}
+                self.tcp_segment(v, RST | ACK)
+                return
+            v = {"quellip": quellip, "qport": qport, "zport": zport,
+                 "zielip": zielip, "seq": 1000, "ack": seq + 1, "sock": s,
+                 "mac": von_mac, "zeit": time.time(), "zu": False}
+            self.tcp[schluessel] = v
+            self.tcp_segment(v, SYN | ACK)
+            v["seq"] += 1                       # das SYN zaehlt ein Byte
+            print(f"  TCP  {i2ip(quellip)}:{qport} -> {i2ip(zielip)}:{zport} steht")
+            return
+
+        if v is None:
+            return
+        v["mac"] = von_mac
+        v["zeit"] = time.time()
+
+        if flaggen & RST:
+            self.tcp_zu(schluessel)
+            return
+
+        if daten and seq == v["ack"]:
+            v["ack"] += len(daten)
+            try:
+                v["sock"].sendall(daten)
+            except OSError:
+                pass
+            self.tcp_segment(v, ACK)
+        elif daten:
+            self.tcp_segment(v, ACK)            # sagen, wo wir stehen
+
+        if flaggen & FIN:
+            v["ack"] += 1
+            self.tcp_segment(v, ACK)
+            try:
+                v["sock"].shutdown(socket.SHUT_WR)
+            except OSError:
+                pass
+            v["zu"] = True
+
+    def tcp_zu(self, schluessel):
+        v = self.tcp.pop(schluessel, None)
+        if v and v.get("sock"):
+            try:
+                v["sock"].close()
+            except OSError:
+                pass
+
+    def tcp_holen(self):
+        """Was der echte Server schickt, geht als TCP-Segmente an den TB-32."""
+        offen = [v["sock"] for v in self.tcp.values() if v.get("sock")]
+        if not offen:
+            return
+        bereit, _, _ = select.select(offen, [], [], 0)
+        for s in bereit:
+            for schluessel, v in list(self.tcp.items()):
+                if v.get("sock") is not s:
+                    continue
+                try:
+                    daten = s.recv(1024)
+                except (BlockingIOError, OSError):
+                    continue
+                if not daten:                   # Server ist fertig
+                    self.tcp_segment(v, FIN | ACK)
+                    v["seq"] += 1
+                    self.tcp_zu(schluessel)
+                    print("       Server hat geschlossen")
+                    continue
+                # In Haeppchen, die durch einen Rahmen passen
+                for i in range(0, len(daten), 512):
+                    stueck = daten[i:i + 512]
+                    self.tcp_segment(v, PSH | ACK, stueck)
+                    v["seq"] += len(stueck)
+                    time.sleep(0.01)            # dem TB-32 Zeit zum Lesen
+                print(f"       {len(daten)} Byte an {i2ip(v['quellip'])}:{v['qport']}")
 
     def udp_hinaus(self, quellip, qport, zielip, zport, daten, von_mac):
         schluessel = (quellip, qport, zielip, zport)
@@ -204,7 +341,8 @@ class Router:
                 kopf = struct.pack(">HHHH", zport, qport, 8 + len(daten),
                                    pruef or 0xFFFF)
                 ziel_mac = self.gesehen.get(quellip, weg[2])
-                self.ip_senden(ziel_mac, quellip, PROTO_UDP, kopf + daten)
+                self.ip_senden(ziel_mac, quellip, PROTO_UDP, kopf + daten,
+                               quellip=zielip)
                 weg[1] = time.time()
                 print(f"       {len(daten)} Byte zurueck an {i2ip(quellip)}:{qport}")
 
@@ -231,6 +369,7 @@ class Router:
                         break
                     self.rahmen(daten)
             self.antworten_holen()
+            self.tcp_holen()
             self.aufraeumen()
 
 

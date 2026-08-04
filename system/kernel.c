@@ -277,6 +277,7 @@ void cmd_net(char* option, char* rest) {
     print("  NET SEND <text>   send to everyone  NET WATCH  show arrivals\n");
     print("  PING <addr>       is somebody there\n");
     print("  HOST <name>       what is the address of a name\n");
+    print("  FETCH <name> [/p] fetch a page over TCP\n");
 }
 
 
@@ -346,6 +347,121 @@ void cmd_host(char* name) {
     print("  is  ");
     printc(text, BRIGHT);
     nl();
+}
+
+
+/* --- FETCH: eine Seite wirklich holen -------------------------------------
+   Der Beweis, dass TCP steht. Name nachschlagen, Verbindung aufbauen, eine
+   HTTP-Anfrage schicken, die Antwort lesen. Genau das macht ein Browser
+   auch -- nur dass er sie danach noch schoen malt.
+
+   HTTP ist ein TEXTprotokoll: was hier hinausgeht, kann man lesen. Deshalb
+   ist es der richtige Anfang fuer einen eigenen Browser. */
+#define HTTP_BAU  0x00170000
+#define HTTP_ANT  0x00171000
+#define HTTP_MAX  40960
+
+int str_nach(int addr, char* s) {
+    int i;
+    i = 0;
+    while (s[i] != 0) {
+        net_putb(addr + i, s[i]);
+        i++;
+    }
+    return i;
+}
+
+void cmd_fetch(char* wirt, char* pfad) {
+    int ip; int n; int gesamt; int i; int zeilen; int c; int port;
+    char text[24];
+    char name[64];
+
+    if (net_da() == 0) { printc("No network card.\n", RED); return; }
+    if (wirt[0] == 0) { printc("Syntax: FETCH example.com [/path]\n", RED); return; }
+    if (ip_meine == 0) { printc("No address of our own. Use NET IP.\n", RED); return; }
+
+    /* "example.com:8080" -- der Doppelpunkt trennt den Port ab. Ohne ihn
+       ist es der uebliche Web-Port 80. */
+    port = 80;
+    n = 0;
+    while (wirt[n] != 0 && wirt[n] != ':' && n < 60) { name[n] = wirt[n]; n++; }
+    name[n] = 0;
+    if (wirt[n] == ':') port = atoi(wirt + n + 1);
+    if (port <= 0 || port > 65535) port = 80;
+    wirt = name;
+
+    ip = ip_lesen(wirt);
+    if (ip == 0) {
+        print("Looking up ");
+        print(wirt);
+        print(" ... ");
+        ip = dns_aufloesen(wirt);
+        if (ip == 0) { printc("unknown name\n", YELLOW); return; }
+        ip_text(ip, text);
+        printc(text, BRIGHT);
+        nl();
+    }
+
+    print("Connecting to port ");
+    printn(port);
+    print(" ... ");
+    if (tcp_verbinden(ip, port) == 0) {
+        printc("no answer -- is the router running?\n", YELLOW);
+        return;
+    }
+    printc("connected\n", GREEN);
+
+    n = str_nach(HTTP_BAU, "GET ");
+    if (pfad[0] == 0) n = n + str_nach(HTTP_BAU + n, "/");
+    else n = n + str_nach(HTTP_BAU + n, pfad);
+    n = n + str_nach(HTTP_BAU + n, " HTTP/1.0\r\nHost: ");
+    n = n + str_nach(HTTP_BAU + n, wirt);
+    n = n + str_nach(HTTP_BAU + n, "\r\nConnection: close\r\n\r\n");
+    tcp_schreiben(HTTP_BAU, n);
+
+    gesamt = 0;
+    while (gesamt < HTTP_MAX) {
+        n = tcp_lesen(HTTP_ANT + gesamt, HTTP_MAX - gesamt, 300);
+        if (n <= 0) break;
+        gesamt = gesamt + n;
+    }
+    tcp_schliessen();
+
+    print("\n");
+    printn(gesamt);
+    print(" bytes received\n\n");
+
+    /* Die ersten Zeilen zeigen -- das ist der Kopf der Antwort und der
+       Anfang der Seite. Mehr faengt der Browser spaeter ab. */
+    zeilen = 0;
+    for (i = 0; i < gesamt && zeilen < 16; i++) {
+        c = net_getb(HTTP_ANT + i);
+        if (c == 13) continue;
+        if (c == 10) { nl(); zeilen++; continue; }
+        if (c >= 32 && c < 127) putch(c);
+    }
+    nl();
+}
+
+
+/* Zeigt auf das, was nach den ersten <n> Woertern der Zeile steht.
+   Vorher wurde dafuer gerechnet: cmdline + 4 + strlen(arg1) + 1. Bei
+   "net ip" (6 Zeichen) landete das auf Stelle 7 -- EINEN hinter dem
+   abschliessenden Nullbyte, also im Nirgendwo. Mal stand da zufaellig
+   eine Null und alles ging gut, mal Datenmuell, und NET IP beschwerte
+   sich ueber eine Adresse, die niemand eingetippt hatte. */
+char* nach_woertern(char* zeile, int n) {
+    int i; int w;
+    i = 0;
+    w = 0;
+    while (w < n) {
+        while (zeile[i] == ' ') i++;
+        if (zeile[i] == 0) return zeile + i;
+        while (zeile[i] != 0 && zeile[i] != ' ') i++;
+        w++;
+    }
+    while (zeile[i] == ' ') i++;
+    return zeile + i;
 }
 
 void cmd_ver() {
@@ -1052,9 +1168,10 @@ void shell() {
         else if (stricmp(cmd, "date") == 0)       cmd_date();
         else if (stricmp(cmd, "echo") == 0)       { print(cmdline + 5); nl(); }
         else if (stricmp(cmd, "color") == 0)      cmd_color(arg1);
-        else if (stricmp(cmd, "net") == 0)        cmd_net(arg1, cmdline + 4 + strlen(arg1) + 1);
+        else if (stricmp(cmd, "net") == 0)        cmd_net(arg1, nach_woertern(cmdline, 2));
         else if (stricmp(cmd, "ping") == 0)       cmd_ping(arg1);
         else if (stricmp(cmd, "host") == 0)       cmd_host(arg1);
+        else if (stricmp(cmd, "fetch") == 0)      cmd_fetch(arg1, arg2);
 
         else if (stricmp(cmd, "dir") == 0)        cmd_dir(arg1);
         else if (stricmp(cmd, "type") == 0)       cmd_type(arg1);

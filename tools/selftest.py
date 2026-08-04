@@ -413,6 +413,32 @@ def main():
         L.eingabe("host test.example|ENTER", 6.0)
         pruefe("DNS: aus einem Namen wird eine Adresse",
                "93.184.216.34" in L.bild(), L.bild())
+
+        # TCP: eine echte Verbindung zu einem echten Server -- Handschlag,
+        # Nummern, Bestaetigungen, Abbau. Der Server steht hier auf dem Mac,
+        # damit die Pruefung ohne Internet auskommt.
+        from http.server import BaseHTTPRequestHandler, HTTPServer
+
+        class _Seite(BaseHTTPRequestHandler):
+            def do_GET(self):
+                inhalt = b"<html><body>TB-32 kann TCP</body></html>"
+                self.send_response(200)
+                self.send_header("Content-Type", "text/html")
+                self.send_header("Content-Length", str(len(inhalt)))
+                self.end_headers()
+                self.wfile.write(inhalt)
+
+            def log_message(self, *_):
+                pass
+
+        web = HTTPServer(("127.0.0.1", 0), _Seite)
+        _threading.Thread(target=web.serve_forever, daemon=True).start()
+        L.eingabe(f"fetch 127.0.0.1:{web.server_port} /|ENTER", 14.0)
+        pruefe("TCP: eine Seite wird wirklich geholt",
+               "TB-32 kann TCP" in L.bild(), L.bild())
+        pruefe("TCP: der Server antwortet mit 200",
+               "200 OK" in L.bild(), L.bild())
+        web.shutdown()
     finally:
         router.terminate()
         router.wait(timeout=5)

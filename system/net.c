@@ -341,6 +341,10 @@ int net_bearbeiten() {
         if (net_get32(kopf + 16) != ip_meine || ip_meine == 0) return 1;
         nutz = kopf + (net_getb(kopf) & 0x0F) * 4;
         nlen = net_get16(kopf + 2) - (net_getb(kopf) & 0x0F) * 4;
+        if (net_getb(kopf + 9) == PROTO_TCP && nlen >= 20) {
+            tcp_paket(kopf, nutz, nlen);
+            return 1;
+        }
         if (net_getb(kopf + 9) == PROTO_UDP && nlen >= 8) {
             /* Ein UDP-Paket: Absender und Zielport merken, Inhalt ablegen.
                Ein Platz reicht -- gefragt wird, dann wird gewartet. */
@@ -595,4 +599,205 @@ int dns_aufloesen(char* name) {
         p = p + rlen;                           /* etwas anderes: weiter */
     }
     return 0;
+}
+
+/* ===========================================================================
+   Stufe 4: TCP.
+
+   UDP wirft ein Paket los und hofft. TCP ist das Gegenteil: eine Verbindung,
+   die vorher aufgebaut wird, jedes Byte durchnummeriert, und fuer jedes
+   Stueck eine Bestaetigung. Geht etwas verloren, wird es noch einmal
+   geschickt. Deshalb steht darauf alles, was zaehlt -- auch das Web.
+
+   Der Aufbau ist ein Dreischritt ("Handschlag"):
+     wir  -> SYN          "ich moechte reden, meine Nummer faengt bei X an"
+     sie  -> SYN, ACK     "einverstanden, meine faengt bei Y an"
+     wir  -> ACK          "gut"
+
+   Danach fliesst ein Strom von Bytes in beide Richtungen. Am Ende steht FIN.
+
+   Die Nummern laufen ueber und fangen wieder bei null an. Verglichen wird
+   deshalb nie mit < oder >, sondern ueber die DIFFERENZ: (a - b) < 0 heisst
+   "a liegt vor b". Das stimmt auch ueber den Ueberlauf hinweg.
+   =========================================================================== */
+
+#define PROTO_TCP     6
+
+#define TCP_FIN       1
+#define TCP_SYN       2
+#define TCP_RST       4
+#define TCP_PSH       8
+#define TCP_ACK       16
+
+#define TCP_ZU        0
+#define TCP_WARTET    1              /* SYN ist raus */
+#define TCP_STEHT     2
+#define TCP_ENDE      3              /* Gegenseite hat FIN geschickt */
+
+#define TCP_BAU       0x00164000     /* hier wird ein Segment gebaut */
+#define TCP_RX        0x00165000     /* was angekommen ist, 16 KB */
+#define TCP_RXMAX     16384
+#define TCP_FENSTER   4096           /* so viel duerfen sie uns schicken */
+
+int tcp_zustand = TCP_ZU;
+int tcp_ip = 0;
+int tcp_port = 0;
+int tcp_lport = 0;
+int tcp_seq = 0;                     /* unsere naechste Nummer */
+int tcp_ack = 0;                     /* die naechste, die wir erwarten */
+int tcp_rx_len = 0;                  /* wie viel im Puffer liegt */
+int tcp_rx_gelesen = 0;              /* ... und wie viel davon schon geholt */
+int tcp_port_frei = 50000;
+
+int tcp_pruefsumme(int quellip, int zielip, int addr, int len) {
+    int summe; int i;
+    summe = 0;
+    summe = summe + ((quellip >> 16) & 0xFFFF) + (quellip & 0xFFFF);
+    summe = summe + ((zielip >> 16) & 0xFFFF) + (zielip & 0xFFFF);
+    summe = summe + PROTO_TCP + len;
+    i = 0;
+    while (i + 1 < len) {
+        summe = summe + net_get16(addr + i);
+        i = i + 2;
+    }
+    if (i < len) summe = summe + (net_getb(addr + i) << 8);
+    while (summe >> 16) summe = (summe & 0xFFFF) + (summe >> 16);
+    return (~summe) & 0xFFFF;
+}
+
+/* Ein Segment bauen und losschicken. */
+int tcp_segment(int flaggen, int daten, int len) {
+    int i;
+    net_put16(TCP_BAU, tcp_lport);
+    net_put16(TCP_BAU + 2, tcp_port);
+    net_put32(TCP_BAU + 4, tcp_seq);
+    net_put32(TCP_BAU + 8, tcp_ack);
+    net_putb(TCP_BAU + 12, 5 << 4);           /* Kopf ist 5 Woerter lang */
+    net_putb(TCP_BAU + 13, flaggen);
+    net_put16(TCP_BAU + 14, TCP_FENSTER);
+    net_put16(TCP_BAU + 16, 0);
+    net_put16(TCP_BAU + 18, 0);
+    for (i = 0; i < len; i++) net_putb(TCP_BAU + 20 + i, net_getb(daten + i));
+    net_put16(TCP_BAU + 16,
+              tcp_pruefsumme(ip_meine, tcp_ip, TCP_BAU, 20 + len));
+    return ip_senden(tcp_ip, PROTO_TCP, TCP_BAU, 20 + len);
+}
+
+/* Ein angekommenes Segment verarbeiten. */
+void tcp_paket(int kopf, int nutz, int nlen) {
+    int flaggen; int seq; int ack; int datenlen; int i; int koplen;
+
+    if (net_get16(nutz) != tcp_port || net_get16(nutz + 2) != tcp_lport) return;
+    if (net_get32(kopf + 12) != tcp_ip) return;
+
+    koplen = (net_getb(nutz + 12) >> 4) * 4;
+    flaggen = net_getb(nutz + 13);
+    seq = net_get32(nutz + 4);
+    ack = net_get32(nutz + 8);
+    datenlen = nlen - koplen;
+
+    if (flaggen & TCP_RST) { tcp_zustand = TCP_ZU; return; }
+
+    if (tcp_zustand == TCP_WARTET) {
+        if ((flaggen & TCP_SYN) && (flaggen & TCP_ACK)) {
+            tcp_seq = ack;                    /* unser SYN ist bestaetigt */
+            tcp_ack = seq + 1;                /* ihr SYN zaehlt ein Byte */
+            tcp_zustand = TCP_STEHT;
+            tcp_segment(TCP_ACK, 0, 0);       /* der dritte Schritt */
+        }
+        return;
+    }
+
+    if (tcp_zustand != TCP_STEHT && tcp_zustand != TCP_ENDE) return;
+
+    /* Daten nur, wenn sie genau anschliessen. Alles andere werfen wir weg
+       -- die Gegenseite schickt es dann noch einmal. Das ist erlaubt und
+       spart uns die Verwaltung von Luecken. */
+    if (datenlen > 0 && seq == tcp_ack) {
+        i = 0;
+        while (i < datenlen) {
+            if (tcp_rx_len >= TCP_RXMAX) break;
+            net_putb(TCP_RX + tcp_rx_len, net_getb(nutz + koplen + i));
+            tcp_rx_len = tcp_rx_len + 1;
+            i = i + 1;
+        }
+        tcp_ack = tcp_ack + i;
+        tcp_segment(TCP_ACK, 0, 0);           /* bestaetigen */
+    } else if (datenlen > 0) {
+        tcp_segment(TCP_ACK, 0, 0);           /* nochmal sagen, wo wir stehen */
+    }
+
+    if (flaggen & TCP_FIN) {
+        tcp_ack = tcp_ack + 1;
+        tcp_zustand = TCP_ENDE;
+        tcp_segment(TCP_ACK, 0, 0);
+    }
+}
+
+/* Eine Verbindung aufbauen. 1 = steht, 0 = nicht zustande gekommen. */
+int tcp_verbinden(int ip, int port) {
+    int frist; int versuche;
+
+    if (net_da() == 0 || ip_meine == 0) return 0;
+    tcp_ip = ip;
+    tcp_port = port;
+    tcp_lport = tcp_port_frei;
+    tcp_port_frei = tcp_port_frei + 1;
+    if (tcp_port_frei > 55000) tcp_port_frei = 50000;
+    tcp_seq = (sys_ticks() * 7919) & 0x7FFFFFFF;   /* irgendwo anfangen */
+    tcp_ack = 0;
+    tcp_rx_len = 0;
+    tcp_rx_gelesen = 0;
+    tcp_zustand = TCP_WARTET;
+
+    versuche = 0;
+    while (versuche < 3) {
+        tcp_segment(TCP_SYN, 0, 0);
+        frist = sys_ticks() + 150;
+        while (sys_ticks() < frist) {
+            net_bearbeiten();
+            if (tcp_zustand == TCP_STEHT) return 1;
+            if (tcp_zustand == TCP_ZU) return 0;   /* abgewiesen */
+        }
+        versuche = versuche + 1;
+    }
+    tcp_zustand = TCP_ZU;
+    return 0;
+}
+
+int tcp_schreiben(int daten, int len) {
+    if (tcp_zustand != TCP_STEHT) return 0 - 1;
+    if (tcp_segment(TCP_ACK | TCP_PSH, daten, len) < 0) return 0 - 1;
+    tcp_seq = tcp_seq + len;
+    return len;
+}
+
+/* Holt bis zu <max> Byte. Wartet hoechstens <frist> Hundertstelsekunden auf
+   das erste. Rueckgabe: Anzahl, 0 = nichts gekommen, -1 = zu und leer. */
+int tcp_lesen(int puffer, int max, int frist) {
+    int ziel; int n; int i;
+    ziel = sys_ticks() + frist;
+    while (1) {
+        n = tcp_rx_len - tcp_rx_gelesen;
+        if (n > 0) break;
+        if (tcp_zustand == TCP_ENDE || tcp_zustand == TCP_ZU) return 0 - 1;
+        if (sys_ticks() >= ziel) return 0;
+        net_bearbeiten();
+    }
+    if (n > max) n = max;
+    for (i = 0; i < n; i++)
+        net_putb(puffer + i, net_getb(TCP_RX + tcp_rx_gelesen + i));
+    tcp_rx_gelesen = tcp_rx_gelesen + n;
+    return n;
+}
+
+void tcp_schliessen() {
+    int frist;
+    if (tcp_zustand == TCP_STEHT || tcp_zustand == TCP_ENDE) {
+        tcp_segment(TCP_ACK | TCP_FIN, 0, 0);
+        tcp_seq = tcp_seq + 1;
+        frist = sys_ticks() + 50;
+        while (sys_ticks() < frist) net_bearbeiten();
+    }
+    tcp_zustand = TCP_ZU;
 }

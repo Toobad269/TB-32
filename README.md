@@ -39,8 +39,12 @@ an der Wand auch tut:
 python3 router.py    # in einem dritten Fenster; Strg+C beendet ihn
 ```
 
-Dann geht `HOST example.com` und nennt die Adresse. Befehle: `NET`, `NET IP`,
-`NET GW`, `NET DNS`, `NET ARP`, `NET SEND`, `NET WATCH`, `PING`, `HOST`.
+Dann geht `HOST example.com` (nennt die Adresse) und `FETCH example.com`
+(holt die Seite wirklich — DNS, TCP-Verbindung, HTTP-Anfrage, Antwort).
+
+Befehle: `NET`, `NET IP`, `NET GW`, `NET DNS`, `NET ARP`, `NET SEND`,
+`NET WATCH`, `PING`, `HOST`, `FETCH`. **HTTPS geht nicht** — dafür ist später
+ein Proxy vorgesehen, der die Verschlüsselung übernimmt.
 
 ## Tasten am Gehäuse
 

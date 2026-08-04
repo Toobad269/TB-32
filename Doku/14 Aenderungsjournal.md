@@ -9,6 +9,46 @@ Die tiefer liegenden Fallen haben zusätzlich einen ausführlichen Eintrag in
 
 ---
 
+## Netzwerk, Stufe 4: TCP -- eine echte Seite aus dem echten Netz
+
+`FETCH example.com` holt eine Seite aus dem Internet. Der TB-32 schlägt den
+Namen nach, baut eine TCP-Verbindung auf, schickt eine HTTP-Anfrage und liest
+die Antwort. 828 Byte, mit Kopfzeilen von Cloudflare und dem HTML dahinter.
+
+**Der Dreischritt** (Handschlag): wir SYN → sie SYN+ACK → wir ACK. Danach
+fließt ein Strom von Bytes, jedes durchnummeriert und bestätigt. Am Ende FIN.
+
+**Die Nummern laufen über.** Deshalb wird nie mit `<` verglichen, sondern über
+die Differenz: `(a - b) < 0` heißt „a liegt vor b" -- das stimmt auch über den
+Überlauf hinweg.
+
+**Bewusst weggelassen:** Daten, die nicht genau anschließen, werden
+weggeworfen statt in Lücken verwaltet. Die Gegenseite schickt sie dann noch
+einmal. Das ist erlaubt und spart die halbe Buchhaltung.
+
+**Der Fehler, der eine Stunde kostete:** der Router schickte seine Segmente
+mit **seiner eigenen** Adresse als Absender. Der TB-32 hatte aber
+104.20.23.154 angesprochen und warf alles weg, was von jemand anderem kam --
+zu Recht. Ein Router, der Adressen umsetzt, muss die Antwort mit der Adresse
+des **echten** Servers hinstellen. Der Handschlag kam damit nie zustande, und
+im Router stand trotzdem „steht": er hatte seine Verbindung nach draußen ja
+wirklich.
+
+**Und ein Fund, der schon länger dalag.** `NET IP` beschwerte sich manchmal
+über eine Adresse, die niemand eingetippt hatte. Der Rest der Zeile wurde
+ausgerechnet: `cmdline + 4 + strlen(arg1) + 1`. Bei `net ip` -- sechs Zeichen
+-- landet das auf Stelle 7, **einen hinter dem abschließenden Nullbyte**. Mal
+stand da zufällig eine Null und alles ging gut, mal Datenmüll. Erst als der
+TCP-Code die Speicherbelegung verschob, fiel es auf. Jetzt zählt
+`nach_woertern()` die Wörter, statt zu rechnen.
+
+`FETCH name[:port] [/pfad]`. Zwei neue Prüfungen mit einem echten Webserver
+auf dem Mac, also ohne Internet. 72/72.
+
+Als Nächstes: **der Browser** -- HTML lesen und in einem Fenster darstellen.
+
+---
+
 ## Netzwerk, Stufe 3: UDP, DNS und der Router
 
 IP bringt ein Paket zum richtigen **Rechner**. Aber dort laufen viele
