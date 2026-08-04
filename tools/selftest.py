@@ -201,6 +201,45 @@ def pruefe(name, bedingung, detail=""):
     print(f"  [{zeichen}] {name}" + (f"   {detail}" if detail and not bedingung else ""))
 
 
+_symbole = {}
+
+
+def symbole():
+    """Die Namen aus dem Kernel mit ihren Adressen -- so kann der Selbsttest
+    nachsehen, was der Browser wirklich verstanden hat, statt Buchstaben aus
+    dem Bild zu raten."""
+    if not _symbole:
+        with open(os.path.join(ROOT, "system", "kernel.sym")) as f:
+            for zeile in f:
+                teile = zeile.split()
+                if len(teile) >= 2:
+                    _symbole[teile[1]] = int(teile[0], 16)
+    return _symbole
+
+
+def wort(m, adresse):
+    return int.from_bytes(m.bus.read_block(adresse, 4), "little", signed=True)
+
+
+def seitentext(m, sym):
+    """Die dargestellten Zeilen als ein Text."""
+    n = wort(m, sym["br_anzahl"])
+    aus = []
+    for i in range(min(n, 40)):
+        roh = m.bus.read_block(0x00190000 + i * 100, 100)
+        aus.append(roh.split(b"\0")[0].decode("latin1"))
+    return "\n".join(aus)
+
+
+def linkzeile(m, sym):
+    """Die erste Zeile, die einen Verweis enthaelt."""
+    n = wort(m, sym["br_anzahl"])
+    for i in range(min(n, 40)):
+        if wort(m, sym["br_link"] + i * 4) >= 0:
+            return i
+    return 0 - 1
+
+
 def main():
     print("Baue das System neu ...")
     r = subprocess.run([sys.executable, "build.py"], cwd=ROOT,
@@ -310,6 +349,24 @@ def main():
            "Selbsttest schreibt hier." in L.bild())
     L.eingabe("del TEST.TXT|ENTER", 0.8)
     pruefe("Datei löschen", "File deleted" in L.bild())
+
+    # (MENU_ANZ in gui.c). Deshalb hier aus BAR_Y zurückgerechnet, sonst
+    # zeigt jeder neue Menüpunkt alle Klicks um eine Zeile daneben.
+    # MENU_ANZ direkt aus gui.c lesen, statt sie hier abzuschreiben. Beim
+    # letzten Wachsen des Menues sind drei Tests reihenweise umgefallen,
+    # weil die Zahl an zwei Stellen stand.
+    import re as _re
+    MENU_ANZ = int(_re.search(r"define MENU_ANZ\s+(\d+)",
+                              open(os.path.join(ROOT, "system", "gui.c")).read()).group(1))
+    MENU_ZH, BAR_Y = 14, 378
+    MENU_TOP = BAR_Y - (MENU_ANZ * MENU_ZH + 10)
+
+    def menue(eintrag):
+        """Start-Knopf, dann den n-ten Eintrag im Startmenü anklicken."""
+        for x, y in ((25, 387), (60, MENU_TOP + 6 + eintrag * MENU_ZH)):
+            L.m.mouse.move(x, y, 0); L.warte(0.2)
+            L.m.mouse.move(x, y, 1); L.warte(0.3)
+            L.m.mouse.move(x, y, 0); L.warte(1.0)
 
     print("\n--- Netzwerk ---------------------------------------------------")
     L.eingabe("net|ENTER", 0.8)
@@ -421,7 +478,14 @@ def main():
 
         class _Seite(BaseHTTPRequestHandler):
             def do_GET(self):
-                inhalt = b"<html><body>TB-32 kann TCP</body></html>"
+                if self.path.startswith("/a"):
+                    inhalt = (b"<html><head><title>Test</title></head><body>"
+                              b"<h1>Erste Seite</h1><p>Ein Absatz mit einem "
+                              b"<a href=\"/b\">Verweis</a> darin.</p></body></html>")
+                elif self.path.startswith("/b"):
+                    inhalt = b"<html><body><h1>Zweite Seite</h1></body></html>"
+                else:
+                    inhalt = b"<html><body>TB-32 kann TCP</body></html>"
                 self.send_response(200)
                 self.send_header("Content-Type", "text/html")
                 self.send_header("Content-Length", str(len(inhalt)))
@@ -438,7 +502,56 @@ def main():
                "TB-32 kann TCP" in L.bild(), L.bild())
         pruefe("TCP: der Server antwortet mit 200",
                "200 OK" in L.bild(), L.bild())
+        # --- Der Browser ---------------------------------------------------
+        # Zwei Seiten auf dem Mac: die erste verweist auf die zweite. Damit
+        # laesst sich pruefen, was einen Browser ausmacht -- HTML lesen,
+        # umbrechen, darstellen, und einem Verweis folgen.
+        L.eingabe("WIN|ENTER", 3.0)
+        menue(7)                                     # Start > Browser
+        L.warte(1.5)
+        L.eingabe("|".join(["BACKSPACE"] * 20), 0.5)   # Adresszeile leeren
+        L.eingabe(f"127.0.0.1:{web.server_port}/a|ENTER", 1.0)
+        sym = symbole()
+        # Warten, bis die Seite steht -- eine feste Wartezeit ist hier
+        # unehrlich: wie lange DNS, Verbindung und Uebertragung brauchen,
+        # haengt an der Tagesform des Wirtsrechners.
+        anzahl = 0
+        for _ in range(int(25.0 / L.dt)):
+            L.m.run_slice(L.dt)
+            anzahl = wort(L.m, sym["br_anzahl"])
+            if anzahl > 0:
+                break
+        L.warte(1.0)
+        anzahl = wort(L.m, sym["br_anzahl"])
+        pruefe("Browser stellt eine Seite dar", anzahl > 0, f"Zeilen: {anzahl}")
+        pruefe("Browser erkennt die Ueberschrift",
+               "Erste Seite" in seitentext(L.m, sym), seitentext(L.m, sym))
+        pruefe("Browser erkennt den Verweis",
+               wort(L.m, sym["br_linkanzahl"]) >= 1)
+
+        # Auf die Zeile mit dem Verweis klicken. Wo die Zeile im Bild liegt,
+        # wird nicht geraten, sondern aus dem Fenster selbst gerechnet:
+        # win_x/win_y des obersten Fensters plus der Aufbau aus app_browser.
+        zeile = linkzeile(L.m, sym)
+        oben = wort(L.m, sym["win_top"])
+        wx = wort(L.m, sym["win_x"] + oben * 4)
+        wy = wort(L.m, sym["win_y"] + oben * 4)
+        titel_h = int(_re.search(r"define TITLE_H\s+(\d+)",
+                                 open(os.path.join(ROOT, "system", "gui.c")).read()).group(1))
+        if zeile >= 0:
+            x, y = wx + 30, wy + titel_h + 36 + zeile * 10 + 4
+            L.m.mouse.move(x, y, 0); L.warte(0.3)
+            L.m.mouse.move(x, y, 1); L.warte(0.3)
+            L.m.mouse.move(x, y, 0); L.warte(0.5)
+        for _ in range(int(25.0 / L.dt)):
+            L.m.run_slice(L.dt)
+            if "Zweite Seite" in seitentext(L.m, sym):
+                break
+        pruefe("Ein Klick auf den Verweis holt die naechste Seite",
+               "Zweite Seite" in seitentext(L.m, sym), seitentext(L.m, sym))
         web.shutdown()
+        menue(MENU_ANZ - 1)                          # zurueck in die Konsole
+        L.warte(2.0)
     finally:
         router.terminate()
         router.wait(timeout=5)
@@ -513,24 +626,6 @@ def main():
     print("\n--- Terminal und Editor im Fenster -----------------------------")
     L.eingabe("WIN|ENTER", 2.5)
     # Das Menü wächst nach oben: die Höhe hängt an der Anzahl der Einträge
-    # (MENU_ANZ in gui.c). Deshalb hier aus BAR_Y zurückgerechnet, sonst
-    # zeigt jeder neue Menüpunkt alle Klicks um eine Zeile daneben.
-    # MENU_ANZ direkt aus gui.c lesen, statt sie hier abzuschreiben. Beim
-    # letzten Wachsen des Menues sind drei Tests reihenweise umgefallen,
-    # weil die Zahl an zwei Stellen stand.
-    import re as _re
-    MENU_ANZ = int(_re.search(r"define MENU_ANZ\s+(\d+)",
-                              open(os.path.join(ROOT, "system", "gui.c")).read()).group(1))
-    MENU_ZH, BAR_Y = 14, 378
-    MENU_TOP = BAR_Y - (MENU_ANZ * MENU_ZH + 10)
-
-    def menue(eintrag):
-        """Start-Knopf, dann den n-ten Eintrag im Startmenü anklicken."""
-        for x, y in ((25, 387), (60, MENU_TOP + 6 + eintrag * MENU_ZH)):
-            L.m.mouse.move(x, y, 0); L.warte(0.2)
-            L.m.mouse.move(x, y, 1); L.warte(0.3)
-            L.m.mouse.move(x, y, 0); L.warte(1.0)
-
     menue(1)                                     # Command Prompt
     L.warte(1.0)
     ram = L.m.bus.ram

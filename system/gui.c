@@ -52,6 +52,7 @@
 #define C_TITLEOFF 8
 #define C_TEXT     0
 #define C_ACCENT   9
+#define C_LINK     1     /* Verweise: blau, wie ueberall */
 #define C_GOOD     2
 #define C_WARN     4
 
@@ -70,6 +71,7 @@
 #define APP_BIOSHILFE 14
 #define APP_SETTINGS  15
 #define APP_POWER     16
+#define APP_BROWSER   17
 
 #define EDG_COLS    edg_cols
 #define EDG_ROWS    edg_rows
@@ -1790,6 +1792,152 @@ void control_click(int w, int mx, int my) {
    Anwendung: Clock und About
    ========================================================================== */
 
+
+/* ===========================================================================
+   Das Browserfenster.
+
+   Oben eine Zeile fuer die Adresse, darunter die Seite, unten eine
+   Statuszeile. Verweise stehen in der Betonfarbe und mit [Nummer] dahinter;
+   ein Klick auf eine solche Zeile folgt dem ERSTEN Verweis darin. Das ist
+   grober als bei einem richtigen Browser, aber ehrlich: welches Wort genau
+   angeklickt wurde, wuesste man nur mit einer Buchhaltung ueber jede
+   Zeichenposition.
+   =========================================================================== */
+
+int br_feld = 0;                     /* 1 = die Adresszeile nimmt Tasten an */
+char br_eingabe[160];
+
+void br_init() {
+    br_setz(br_eingabe, "example.com", 158);
+    br_setz(br_status, "Type an address and press ENTER.", 78);
+    br_setz(br_url, "", 158);
+    br_anzahl = 0;
+    br_top = 0;
+    br_feld = 1;
+}
+
+int br_sichtbar(int i) { return (win_h[i] - 74) / 10; }
+
+void app_browser(int i) {
+    int x; int y; int b; int n; int z; int j; int c; int farbe; int sicht;
+
+    x = win_x[i] + 8;
+    y = win_y[i] + TITLE_H + 8;
+    b = win_w[i] - 16;
+    br_breite = (b - 16) / 8;
+    if (br_breite > BR_ZEILEMAX - 2) br_breite = BR_ZEILEMAX - 2;
+
+    /* Adresszeile */
+    g_text(x, y + 4, "Address", C_WINDARK, 256);
+    g_fill(x + 64, y, b - 64 - 130, 16, C_WHITE);
+    g_frame(x + 64, y, b - 64 - 130, 16, br_feld ? C_ACCENT : C_WINDARK);
+    g_text_max(x + 68, y + 4, br_eingabe, C_TEXT, 256, b - 64 - 138);
+    if (br_feld)
+        g_fill(x + 68 + strlen(br_eingabe) * 8, y + 3, 7, 10, C_ACCENT);
+    g_button(x + b - 62, y - 1, 58, 18, "Go", 0);
+    g_button(x + b - 124, y - 1, 58, 18, "Back", 0);
+
+    /* Die Seite */
+    y = y + 24;
+    sicht = br_sichtbar(i);
+    g_fill(x, y, b, sicht * 10 + 4, C_WHITE);
+    g_frame(x, y, b, sicht * 10 + 4, C_WINDARK);
+    for (z = 0; z < sicht; z++) {
+        j = br_top + z;
+        if (j >= br_anzahl) break;
+        farbe = C_TEXT;
+        if (br_stil[j] == 1) farbe = C_ACCENT;
+        if (br_link[j] >= 0) farbe = C_LINK;
+        c = br_zeile_addr(j);
+        n = strlen((char*)c);
+        g_str(x + 6, y + 4 + z * 10, c, n, farbe, 256);
+        /* Verweise bekommen einen Strich darunter. Nur die Farbe reicht
+           nicht: Ueberschriften sind auch blau, und wer soll das
+           auseinanderhalten. */
+        if (br_link[j] >= 0) g_fill(x + 6, y + 4 + z * 10 + 9, n * 8, 1, C_LINK);
+    }
+
+    /* Balken rechts: wo in der Seite stehen wir? */
+    if (br_anzahl > sicht) {
+        j = (sicht * 10) * br_top / br_anzahl;
+        c = (sicht * 10) * sicht / br_anzahl;
+        if (c < 6) c = 6;
+        g_fill(x + b - 5, y + 2 + j, 3, c, C_WINDARK);
+    }
+
+    /* Statuszeile */
+    n = sicht;
+    y = y + sicht * 10 + 10;
+    g_text_max(x, y, br_status, C_WINDARK, 256, b - 90);
+    if (br_anzahl > 0) {
+        g_num2(x + b - 84, y, br_top / (n > 0 ? n : 1) + 1, C_WINDARK, 256);
+        g_text(x + b - 66, y, "of", C_WINDARK, 256);
+        g_num2(x + b - 44, y, (br_anzahl - 1) / (n > 0 ? n : 1) + 1,
+               C_WINDARK, 256);
+    }
+}
+
+/* Die Adresse aus der Eingabezeile holen. */
+void br_los() {
+    br_holen(br_eingabe);
+}
+
+int br_klick(int w, int mx, int my) {
+    int x; int y; int b; int n; int z; int j;
+
+    x = win_x[w] + 8;
+    y = win_y[w] + TITLE_H + 8;
+    b = win_w[w] - 16;
+
+    if (treffer(mx, my, x + 64, y, b - 194, 16)) { br_feld = 1; return 1; }
+    if (treffer(mx, my, x + b - 62, y - 1, 58, 18)) { br_los(); return 1; }
+    if (treffer(mx, my, x + b - 124, y - 1, 58, 18)) {
+        if (br_zurueck[0]) {
+            br_setz(br_eingabe, br_zurueck, 158);
+            br_holen(br_zurueck);
+        }
+        return 1;
+    }
+
+    y = y + 24;
+    n = br_sichtbar(w);
+    if (treffer(mx, my, x, y, b, n * 10 + 4)) {
+        br_feld = 0;
+        z = (my - y - 4) / 10;
+        j = br_top + z;
+        if (j >= 0 && j < br_anzahl && br_link[j] >= 0) {
+            br_setz(br_status, "Following the link ...", 78);
+            br_folgen(br_link[j]);
+        }
+        return 1;
+    }
+    return 0;
+}
+
+void br_taste(int k, int w) {
+    int c; int code; int n; int sicht;
+    c = keychar(k);
+    code = keycode(k);
+    sicht = br_sichtbar(w);
+
+    if (code == K_PGDN) { br_top = br_top + sicht; }
+    else if (code == K_PGUP) { br_top = br_top - sicht; }
+    else if (code == K_DOWN) { br_top = br_top + 1; }
+    else if (code == K_UP) { br_top = br_top - 1; }
+    else if (code == K_HOME) { br_top = 0; }
+    else if (code == K_ENTER) { br_feld = 0; br_los(); }
+    else if (br_feld) {
+        n = strlen(br_eingabe);
+        if (code == K_BACKSPACE) { if (n > 0) br_eingabe[n - 1] = 0; }
+        else if (c >= 32 && c < 127 && n < 150) {
+            br_eingabe[n] = c;
+            br_eingabe[n + 1] = 0;
+        }
+    }
+    if (br_top > br_anzahl - 1) br_top = br_anzahl - 1;
+    if (br_top < 0) br_top = 0;
+}
+
 void app_clock(int w) {
     int t; int d; int x; int y;
     x = win_x[w] + 16;
@@ -1871,6 +2019,7 @@ void win_vollbild(int i) {
 void draw_window_inhalt(int i) {
     if (win_type[i] == APP_FILES)   app_files(i);
     if (win_type[i] == APP_CLOCK)   app_clock(i);
+    if (win_type[i] == APP_BROWSER) app_browser(i);
     if (win_type[i] == APP_MONITOR) app_monitor(i);
     if (win_type[i] == APP_ABOUT)   app_about(i);
     if (win_type[i] == APP_CONTROL) app_control(i);
@@ -1954,7 +2103,7 @@ void gui_im_fenster(char* name) {
    Oberflaechen liegen die Anwendungen jetzt in einem Menue, und die Leiste
    zeigt stattdessen, welche Fenster gerade offen sind. */
 
-#define MENU_ANZ  12
+#define MENU_ANZ  13
 #define MENU_X    2
 #define MENU_W    180
 #define MENU_ZH   14
@@ -1967,10 +2116,11 @@ char* menu_text(int i) {
     if (i == 4) return "Control Panel";
     if (i == 5) return "Paint";
     if (i == 6) return "Word";
-    if (i == 7) return "Clock";
-    if (i == 8) return "Settings";
-    if (i == 9) return "About TOOBAD-OS";
-    if (i == 10) return "Power options";
+    if (i == 7) return "Browser";
+    if (i == 8) return "Clock";
+    if (i == 9) return "Settings";
+    if (i == 10) return "About TOOBAD-OS";
+    if (i == 11) return "Power options";
     return "Exit desktop";
 }
 
@@ -2000,6 +2150,7 @@ char* win_kurz(int typ) {
     if (typ == APP_BIOSHILFE) return "Help";
     if (typ == APP_SETTINGS)  return "Settings";
     if (typ == APP_POWER)     return "Power";
+    if (typ == APP_BROWSER)   return "Browser";
     if (typ == APP_MONITOR) return "Monitor";
     if (typ == APP_CONTROL) return "Control";
     if (typ == APP_CLOCK)   return "Clock";
@@ -3065,6 +3216,9 @@ void gui_main() {
                 if (bh_top < 0) bh_top = 0;
                 if (bh_top > 24) bh_top = 24;
                 if (neu == 0) draw_window(win_top);
+            } else if (win_top >= 0 && win_type[win_top] == APP_BROWSER) {
+                br_taste(k, win_top);
+                draw_window(win_top);
             } else if (win_top >= 0 && win_type[win_top] == APP_SETTINGS) {
                 st_taste(k);
                 draw_window(win_top);
@@ -3179,15 +3333,19 @@ void gui_main() {
                         if (win_find(APP_WORD) < 0) wd_init();
                         starte(APP_WORD, "Word", 600, 330);
                     }
-                    if (i == 7) starte(APP_CLOCK, "Clock", 200, 130);
-                    if (i == 8) {
+                    if (i == 7) {
+                        if (win_find(APP_BROWSER) < 0) br_init();
+                        starte(APP_BROWSER, "Browser", 600, 340);
+                    }
+                    if (i == 8) starte(APP_CLOCK, "Clock", 200, 130);
+                    if (i == 9) {
                         st_schritt = ST_MENUE;
                         st_meldung[0] = 0;
                         starte(APP_SETTINGS, "Settings", 420, 200);
                     }
-                    if (i == 9) starte(APP_ABOUT, "About TOOBAD-OS", 340, 150);
-                    if (i == 10) starte(APP_POWER, "Power", 240, 190);
-                    if (i == 11) gui_running = 0;
+                    if (i == 10) starte(APP_ABOUT, "About TOOBAD-OS", 340, 150);
+                    if (i == 11) starte(APP_POWER, "Power", 240, 190);
+                    if (i == 12) gui_running = 0;
                     /* Selbst neu zeichnen: das continue unten springt am
                        "if (neu) draw_desktop()" am Schleifenende vorbei, und
                        dann bliebe das Menue stehen, bis man irgendwo anders
@@ -3309,6 +3467,8 @@ void gui_main() {
                             if (dlg_klick(i, mx, my)) neu = 1;
                         } else if (win_type[i] == APP_POWER) {
                             if (power_klick(i, mx, my)) neu = 1;
+                        } else if (win_type[i] == APP_BROWSER) {
+                            if (br_klick(i, mx, my)) neu = 1;
                         } else if (win_type[i] == APP_SETTINGS) {
                             k = st_klick(i, mx, my);
                             if (k == 2) {          /* zurueckgesetzt */

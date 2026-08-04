@@ -9,6 +9,49 @@ Die tiefer liegenden Fallen haben zusätzlich einen ausführlichen Eintrag in
 
 ---
 
+## Netzwerk, Stufe 5: der Browser
+
+*Start ▸ Browser*, Adresse eintippen, ENTER. Der TB-32 schlägt den Namen
+nach, baut die Verbindung auf, holt die Seite und stellt sie dar --
+Überschriften in der Betonfarbe, Verweise blau und unterstrichen, Text an
+der Fensterbreite umgebrochen. Ein Klick auf einen Verweis holt die nächste
+Seite. `system/browser.c` versteht die Seite, `gui.c` malt sie.
+
+**Was der Umbruch können muss:** nicht mitten im Wort trennen. Ist die Zeile
+voll, wird das letzte Leerzeichen gesucht, der Rest wandert in die nächste
+Zeile. Und mehrere Leerzeichen hintereinander werden zu einem -- HTML zählt
+sie nicht, und ohne das sieht jede Seite zerrupft aus.
+
+**Drei Fehler, jeder eine eigene Lehre:**
+
+1. **Der Zwischenspeicher lag auf der ersten Zeile.** Beim Umbrechen wandert
+   der Rest der Zeile kurz woandershin -- das war `BR_ROH + BR_ROHMAX`, und
+   das ist auf das Byte genau `BR_TEXT`, also Zeile 0 der Seite. Oben im
+   Fenster stand deshalb ein Wortfetzen aus der Mitte des Textes. Adressen
+   auszurechnen ist bequem, bis zwei Rechnungen sich treffen.
+
+2. **Der Verweis war weg, bevor die Zeile fertig war.** Eine Zeile endet
+   meist erst beim nächsten Absatz -- da ist `</a>` längst vorbei und der
+   Verweis wieder zurückgesetzt. Also merkt sich `br_zeilenlink`, dass in
+   *dieser* Zeile ein Verweis steht, bis sie abgeschlossen wird.
+
+3. **Relative Verweise verloren den Port.** `/b` wurde zu `127.0.0.1/b` --
+   ohne `:8080`. Auf Port 80 wartete niemand. Der Port gehört zum Wirt.
+
+**Ehrlich zur Farbe:** Überschriften und Verweise waren beide blau und nicht
+zu unterscheiden. Verweise haben jetzt einen Strich darunter.
+
+**Was er nicht kann:** CSS, JavaScript, Bilder, Tabellen als Raster --
+und HTTPS. Damit sieht er von heutigen Seiten wenig. Der nächste Schritt ist
+deshalb der Vermittler auf dem Pi, der die Verschlüsselung übernimmt.
+
+Vier neue Prüfungen gegen zwei echte Seiten auf dem Mac: darstellen,
+Überschrift, Verweis, und einem Verweis folgen. Statt fester Wartezeiten
+wird gewartet, **bis** die Seite steht -- wie lange DNS und Übertragung
+brauchen, hängt an der Tagesform des Wirtsrechners. 76/76, zweimal stabil.
+
+---
+
 ## Netzwerk, Stufe 4: TCP -- eine echte Seite aus dem echten Netz
 
 `FETCH example.com` holt eine Seite aus dem Internet. Der TB-32 schlägt den

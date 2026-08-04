@@ -16,6 +16,7 @@
 #include "diag.c"
 #include "proc.c"
 #include "net.c"
+#include "browser.c"
 #include "term.c"
 #include "syscall.c"
 #include "gui.c"

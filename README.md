@@ -42,9 +42,13 @@ python3 router.py    # in einem dritten Fenster; Strg+C beendet ihn
 Dann geht `HOST example.com` (nennt die Adresse) und `FETCH example.com`
 (holt die Seite wirklich — DNS, TCP-Verbindung, HTTP-Anfrage, Antwort).
 
+Und im Schreibtisch gibt es einen **Browser**: *Start ▸ Browser*, Adresse
+eintippen, ENTER. Überschriften, Absätze, Aufzählungen und anklickbare
+Verweise. Kein CSS, kein JavaScript, keine Bilder — und **kein HTTPS**;
+dafür ist später ein Proxy vorgesehen, der die Verschlüsselung übernimmt.
+
 Befehle: `NET`, `NET IP`, `NET GW`, `NET DNS`, `NET ARP`, `NET SEND`,
-`NET WATCH`, `PING`, `HOST`, `FETCH`. **HTTPS geht nicht** — dafür ist später
-ein Proxy vorgesehen, der die Verschlüsselung übernimmt.
+`NET WATCH`, `PING`, `HOST`, `FETCH`.
 
 ## Tasten am Gehäuse
 
