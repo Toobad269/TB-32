@@ -925,6 +925,129 @@ void shell() {
     }
 }
 
+/* ==========================================================================
+   Einrichtung beim ersten Start, danach die Anmeldung
+
+   Beim allerersten Hochfahren gibt es noch keinen Benutzer. Dann fragt das
+   System nach Name und Passwort und legt beides in \SYSTEM\USER.DAT ab.
+   Jeder weitere Start verlangt das Passwort, bevor die Kommandozeile kommt.
+
+   WAS DAS IST UND WAS NICHT: Es haelt neugierige Leute auf. Es ist KEINE
+   Sicherheit. Die Platte ist unverschluesselt -- wer hd0.img in die Hand
+   bekommt, liest alles mit einem Hex-Editor. Das Passwort liegt nur als
+   Pruefsumme da, nicht mit einem richtigen Verfahren; der TB-32 hat keins.
+   Wer die Datei loescht, ist wieder drin -- so wie ein BIOS-Passwort weg
+   ist, wenn man die Knopfzelle zieht. Das passt zu der Zeit, die wir
+   nachbauen, und es soll niemand fuer mehr halten.
+   ========================================================================== */
+
+#define USER_BUF   0x000C0000
+#define USER_NAME  0                     /* 20 Byte Name */
+#define USER_HASH  20                    /* 4 Byte Pruefsumme des Passworts */
+#define USER_LEN   24
+
+int pw_summe(char* s) {
+    int h;
+    h = 0x1234;
+    while (*s) { h = h * 31 + *s; s++; }
+    return h;
+}
+
+/* Liest eine Zeile, zeigt aber Sterne statt der Zeichen. */
+int passwort_lesen(char* buf, int max) {
+    int n; int k; int c; int code;
+    n = 0;
+    while (1) {
+        k = getkey();
+        c = keychar(k);
+        code = keycode(k);
+        if (code == K_ENTER) { buf[n] = 0; nl(); return n; }
+        if (code == K_BACKSPACE) {
+            if (n > 0) { n--; putch(8); }
+            continue;
+        }
+        if (c >= 32 && c < 127 && n < max - 1) {
+            buf[n] = c;
+            n++;
+            putcolor('*', BRIGHT);
+        }
+    }
+}
+
+void ersteinrichtung() {
+    char name[24];
+    char pw1[32];
+    char pw2[32];
+
+    nl();
+    printc("Welcome to TOOBAD-OS
+", CYAN);
+    print("This is the first start of this machine.\n\n");
+
+    while (1) {
+        print("User name: ");
+        if (readline(name, 20) > 0) { nl(); break; }
+        nl();
+        printc("The name must not be empty.\n", RED);
+    }
+    while (1) {
+        print("Password:  ");
+        passwort_lesen(pw1, 30);
+        print("Repeat:    ");
+        passwort_lesen(pw2, 30);
+        if (strcmp(pw1, pw2) == 0) break;
+        printc("The two entries differ. Try again.\n\n", RED);
+    }
+
+    memset((char*)USER_BUF, 0, USER_LEN);
+    strncpy((char*)(USER_BUF + USER_NAME), name, 19);
+    mem_put(USER_BUF + USER_HASH, pw_summe(pw1));
+    if (fs_write("USER.DAT", USER_BUF, USER_LEN) < 0)
+        printc("\nCould not save the account.\n", RED);
+    else {
+        nl();
+        printc("Account created.\n", GREEN);
+        print("Keep it -- deleting USER.DAT is the only way back in.\n");
+    }
+    nl();
+}
+
+void anmelden() {
+    char pw[32];
+    int falsch;
+    falsch = 0;
+    nl();
+    print("User: ");
+    printc((char*)(USER_BUF + USER_NAME), BRIGHT);
+    nl();
+    while (1) {
+        print("Password: ");
+        passwort_lesen(pw, 30);
+        if (pw_summe(pw) == mem_get(USER_BUF + USER_HASH)) {
+            printc("Welcome back.\n\n", GREEN);
+            return;
+        }
+        falsch++;
+        printc("Wrong password.\n", RED);
+        /* Nach jedem Fehlversuch etwas laenger warten -- so wird stures
+           Durchprobieren muehsam, ohne jemanden auszusperren. */
+        sleep(falsch * 50);
+    }
+}
+
+void benutzer_pruefen() {
+    if (fs_read("USER.DAT", USER_BUF, USER_LEN) != USER_LEN) {
+        ersteinrichtung();               /* frische Platte: einrichten */
+        return;
+    }
+    /* Ein leeres Passwort heisst: dieser Rechner ist nicht gesperrt. So
+       kommt eine frisch gebaute Maschine ohne Nachfrage hoch -- und die
+       Testwerkzeuge auch, die niemanden zum Tippen haben. Wer eins setzt,
+       wird gefragt. */
+    if (mem_get(USER_BUF + USER_HASH) == pw_summe("")) return;
+    anmelden();
+}
+
 int main() {
     int formatiert;
 
@@ -938,6 +1061,8 @@ int main() {
     formatiert = fs_mount();
     if (formatiert) printc("OK\n", GREEN);
     else printc("new disk, initialised\n", YELLOW);
+
+    benutzer_pruefen();
 
     print("Starting command interpreter ...\n\n");
     print("Type ");

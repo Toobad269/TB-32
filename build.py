@@ -225,6 +225,17 @@ def build():
         if sysdateien:
             print(f"  System    {sysdateien} Dateien in SYSTEM\\ sichtbar gemacht")
 
+        # Ein offenes Benutzerkonto: Name "user", kein Passwort. Damit
+        # kommt die frisch gebaute Maschine ohne Nachfrage hoch. Wer die
+        # Einrichtung sehen will, nimmt eine frische Platte (reset.py) oder
+        # löscht \SYSTEM\USER.DAT -- dann fragt sie beim nächsten Start.
+        konto = bytearray(24)
+        konto[:4] = b"user"
+        h = 0x1234
+        konto[20:24] = h.to_bytes(4, "little")
+        fs.put("USER.DAT", bytes(konto))      # ins Hauptverzeichnis:
+        # dort sucht fs_read, und genau das benutzt der Kernel.
+
         # Alles aus diskfiles/ wird 1:1 auf die Platte gespiegelt
         diskdir_src = os.path.join(ROOT, "diskfiles")
         anzahl = 0
