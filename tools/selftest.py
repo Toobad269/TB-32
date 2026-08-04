@@ -23,7 +23,7 @@ os.environ["SDL_AUDIODRIVER"] = "dummy"
 
 from hardware.machine import Machine
 from hardware import devices as dev
-from tools.headless import KEYNAMES, screen_text, test_cmos
+from tools.headless import KEYNAMES, screen_text, test_cmos, test_platte
 
 GRUEN, ROT, GELB, WEG = "\033[92m", "\033[91m", "\033[93m", "\033[0m"
 
@@ -44,7 +44,7 @@ class Lauf:
     """Ein Rechner, der im Hintergrund läuft und den man tippen lassen kann."""
 
     def __init__(self, rom=None):
-        self.m = Machine(ROOT, rom=rom, cmos=test_cmos())
+        self.m = Machine(ROOT, rom=rom, disk=test_platte(), cmos=test_cmos())
         self.m.power_on()
         self.dt = 1 / 60
         # Alles, was seit dem Einschalten je auf dem Schirm stand. Der POST
@@ -183,7 +183,7 @@ def flash_test():
         # --- Dual BIOS: ein zerstörter Chip wird automatisch ersetzt ------
         with open(chip, "wb") as f:
             f.write(b"\x00" * 64)               # Chip vernichtet
-        R = Machine(ROOT, rom=chip, cmos=test_cmos())
+        R = Machine(ROOT, rom=chip, disk=test_platte(), cmos=test_cmos())
         R.power_on()
         pruefe("Zerstörter Chip: das Board greift zur Sicherung",
                R.rom_gerettet)
@@ -412,7 +412,11 @@ def main():
     menue(2)                                     # Editor
     L.warte(1.0)
     pruefe("Editorfenster öffnet sich", sum(L.m.vga.gfx[200 * 640:210 * 640]) > 0)
-    L.eingabe("ESC", 1.5)
+    # ESC führt bewusst NICHT mehr aus dem Schreibtisch heraus (eine
+    # versehentlich gedrückte Taste warf einen mitten aus der Arbeit in die
+    # Textkonsole). Der Weg hinaus ist der letzte Menüpunkt "Exit desktop".
+    menue(MENU_ANZ - 1)
+    L.warte(1.5)
 
     print("\n--- Grafik und Fenstersystem -----------------------------------")
     L.eingabe("WIN|ENTER", 2.5)
@@ -426,7 +430,8 @@ def main():
         L.m.mouse.move(x, y, 0); L.warte(0.8)
     pruefe("Startmenü öffnet ein Fenster",
            sum(vga.gfx[100 * 640:300 * 640]) > 0)
-    L.eingabe("ESC", 1.8)
+    menue(MENU_ANZ - 1)                          # Exit desktop
+    L.warte(1.5)
     pruefe("Rückkehr in den Textmodus", vga.mode == 0)
 
     print("\n--- Ausschalten ------------------------------------------------")

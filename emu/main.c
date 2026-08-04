@@ -41,7 +41,12 @@ int main(int argc, char **argv) {
     double echt;
     Machine *m;
 
-    m = m_new("firmware/bios.bin", "disk/hd0.img",
+    /* Fuenfter Parameter: eine andere Platte. Der Vergleich mit dem
+       Python-Emulator laeuft auf einer Arbeitskopie (test_platte), damit
+       kein Test die Platte des Nutzers anfasst -- beide Seiten muessen
+       dieselbe sehen, sonst vergleicht man zwei verschiedene Rechner. */
+    m = m_new("firmware/bios.bin",
+                          argc > 4 && argv[4][0] ? argv[4] : "disk/hd0.img",
                           argc > 3 ? argv[3] : "disk/cmos.bin");
     if (!m) {
         fprintf(stderr, "Maschine liess sich nicht bauen. "

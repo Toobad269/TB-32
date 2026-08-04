@@ -3044,11 +3044,9 @@ void gui_main() {
                 }
                 term_push_key(k);                /* geht an die Kommandozeile */
             } else if (win_top >= 0 && win_type[win_top] == APP_EDITOR) {
-                if (keycode(k) == K_ESC && edg_namemode == 0) break;
                 edg_taste(k);
                 draw_window(win_top);
             } else if (win_top >= 0 && win_type[win_top] == APP_PAINT) {
-                if (keycode(k) == K_ESC && pt_namemode == 0) break;
                 pt_taste(k);
                 draw_window(win_top);
             } else if (win_top >= 0 && win_type[win_top] == APP_BIOSHILFE) {
@@ -3073,12 +3071,17 @@ void gui_main() {
                 dlg_taste(k);
                 neu = 1;
             } else if (win_top >= 0 && win_type[win_top] == APP_WORD) {
-                if (keycode(k) == K_ESC && wd_namemode == 0) break;
                 wd_taste(k);
                 draw_window(win_top);
-            } else if (keycode(k) == K_ESC) {
-                break;
             }
+            /* ESC fuehrt NICHT mehr aus dem Schreibtisch heraus. Das stammt
+               aus der Zeit, als die Textkonsole das Zuhause war und die
+               Oberflaeche das Programm, das man wieder verlaesst. Heute ist
+               es andersherum: der Rechner startet in den Schreibtisch. Eine
+               versehentlich gedrueckte Taste warf einen mitten aus der
+               Arbeit in die grosse Kommandozeile -- im Coder, in Paint und
+               in Word sogar mit ungesichertem Text. Hinaus geht es ueber
+               Start > Exit desktop. */
         }
 
         /* Laeuft gerade eine Uebersetzung? Balken auffrischen und schauen,

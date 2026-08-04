@@ -498,6 +498,12 @@ Klick holt es nach vorn. Rechts außen die **Uhr**.
 | 10 | Power options | Restart, Shut down, Sign out |
 | 11 | Exit desktop | zurück zur Kommandozeile |
 
+**ESC verlässt den Schreibtisch NICHT.** Bis 2.5.2 tat es das -- ein Erbe aus
+der Zeit, als die Textkonsole das Zuhause war. Seit der Rechner in den
+Schreibtisch startet, ist das eine Falle: eine versehentlich gedrückte Taste
+warf einen mitten aus Coder, Paint oder Word in die Konsole, mit
+ungesichertem Text. Der Weg hinaus ist ausschließlich *Exit desktop*.
+
 **Benutzerkonto.** Genau eines, in `\USER.DAT` (24 Byte, versteckt): Name ab
 Byte 0, Prüfsumme des Passworts ab Byte 20. Die Datei liegt **immer im
 Hauptverzeichnis** -- `benutzer_anlegen()` und `benutzer_vorhanden()` setzen

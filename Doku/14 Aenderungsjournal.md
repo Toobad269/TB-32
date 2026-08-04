@@ -9,6 +9,30 @@ Die tiefer liegenden Fallen haben zusätzlich einen ausführlichen Eintrag in
 
 ---
 
+## ESC führt nicht mehr aus dem Schreibtisch heraus
+
+Ein Druck auf **ESC** auf dem Schreibtisch warf einen in die große
+Textkonsole -- im Coder, in Paint und in Word sogar mitten aus der Arbeit
+heraus, mit ungesichertem Text.
+
+**Warum das drinstand:** früher war die Textkonsole das Zuhause und die
+Oberfläche das Programm, das man mit ESC wieder verlässt. Seit der Rechner
+in den Schreibtisch startet, ist es andersherum -- und die alte Taste ist
+zur Falle geworden. Hinaus geht es über *Start ▸ Exit desktop*.
+
+**Der Selbsttest hing daran.** Drei Prüfungen verließen den Schreibtisch mit
+ESC; sie klicken jetzt den letzten Menüpunkt. Die Nummer wird aus
+`MENU_ANZ` in `gui.c` gelesen, nicht abgeschrieben.
+
+**Und die Tests fassen die Platte des Nutzers nicht mehr an.** Sie arbeiten
+auf einer Arbeitskopie (`test_platte()` in `tools/headless.py`), auf der ein
+offenes Konto liegt. Vorher lief jeder Test auf der echten Platte und
+`build.py` überschrieb dabei das Konto -- Colins Passwort war nach jedem Bau
+weg. Der C-Emulator nimmt dafür einen fünften Parameter: den Pfad der Platte,
+damit beide Seiten beim Vergleich dieselbe sehen.
+
+---
+
 ## Konto lag im falschen Ordner -- und der erste Start gehört dem Benutzer
 
 **Der Fund.** Auf der Platte lag eine `USER.DAT` **in `\SYSTEM`**. Das darf

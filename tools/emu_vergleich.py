@@ -27,7 +27,7 @@ sys.path.insert(0, ROOT)
 os.environ["SDL_VIDEODRIVER"] = "dummy"
 os.environ["SDL_AUDIODRIVER"] = "dummy"
 
-from tools.headless import test_cmos
+from tools.headless import test_cmos, test_platte
 
 GRUEN, ROT, WEG = "\033[92m", "\033[91m", "\033[0m"
 
@@ -61,7 +61,7 @@ def bauen():
     return r.returncode == 0, r.stdout + r.stderr
 
 
-def spur_c(schritte, ziel):
+def spur_c(schritte, ziel, platte):
     quelle = os.path.join(tempfile.gettempdir(), "spur_c.c")
     binaer = os.path.join(tempfile.gettempdir(), "spur_c")
     with open(quelle, "w") as f:
@@ -74,14 +74,14 @@ def spur_c(schritte, ziel):
     if r.returncode != 0:
         print(r.stderr)
         return False
-    subprocess.run([binaer, str(schritte), ziel, test_cmos()], cwd=ROOT)
+    subprocess.run([binaer, str(schritte), ziel, test_cmos(), platte], cwd=ROOT)
     return True
 
 
-def spur_py(schritte, ziel):
+def spur_py(schritte, ziel, platte):
     from hardware.machine import Machine
     from hardware.isa import IRQ_TIMER
-    m = Machine(ROOT, cmos=test_cmos())
+    m = Machine(ROOT, disk=platte, cmos=test_cmos())
     m.power_on()
     m.timer.hz = 0
     with open(ziel, "w") as f:
@@ -109,9 +109,10 @@ def main():
     b_pfad = os.path.join(tmp, "spur_py.txt")
 
     print(f"\n--- Schritt fuer Schritt ({schritte} Befehle) ---------------")
-    if not spur_c(schritte, a_pfad):
+    platte = test_platte()          # beide Seiten sehen dieselbe Platte
+    if not spur_c(schritte, a_pfad, platte):
         return 1
-    spur_py(schritte, b_pfad)
+    spur_py(schritte, b_pfad, platte)
 
     a = open(a_pfad).read().splitlines()
     b = open(b_pfad).read().splitlines()
@@ -129,14 +130,16 @@ def main():
               f"Programmzaehler und Flags jedes Mal gleich")
 
     print("\n--- Der ganze Bootvorgang -----------------------------------")
-    r = subprocess.run([os.path.join(ROOT, "emu", "tb32"), "4.0", "", test_cmos()],
+    platte = test_platte()
+    r = subprocess.run([os.path.join(ROOT, "emu", "tb32"), "4.0", "",
+                        test_cmos(), platte],
                        cwd=ROOT, capture_output=True, text=True)
     c_schirm = [z.rstrip() for z in r.stdout.splitlines()]
     tempo_c = r.stderr.strip().splitlines()[-1] if r.stderr.strip() else ""
 
     from hardware.machine import Machine
     from tools.headless import screen_text
-    m = Machine(ROOT, cmos=test_cmos())
+    m = Machine(ROOT, disk=platte, cmos=test_cmos())
     m.power_on()
     t0 = time.perf_counter()
     for _ in range(240):
