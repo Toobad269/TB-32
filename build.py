@@ -233,7 +233,14 @@ def build():
         konto[:4] = b"user"
         h = 0x1234
         konto[20:24] = h.to_bytes(4, "little")
-        fs.put("USER.DAT", bytes(konto))      # ins Hauptverzeichnis:
+        idx = fs.put("USER.DAT", bytes(konto))   # ins Hauptverzeichnis:
+        # ... und verstecken (Bit 8 im Info-Wort), damit es nicht in DIR
+        # und im Dateifenster steht. Siehe ent_versteckt in system/fs.c.
+        e = fs._ent(idx) + 24
+        fs._put32(e, fs._u32(e) | 256)
+        fs.markiere(513, 8)
+        fs.save()
+        # 
         # dort sucht fs_read, und genau das benutzt der Kernel.
 
         # Alles aus diskfiles/ wird 1:1 auf die Platte gespiegelt

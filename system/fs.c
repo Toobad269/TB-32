@@ -63,6 +63,13 @@ int  ent_time(int i)             { return mem_get(ent_addr(i) + 28); }
 void ent_setstart(int i, int v)  { mem_put(ent_addr(i) + 16, v); }
 void ent_setsize(int i, int v)   { mem_put(ent_addr(i) + 20, v); }
 void ent_setused(int i, int v)   { mem_put(ent_addr(i) + 24, v); }
+/* Versteckt: Bit 8 im Info-Wort. Die Art steht im untersten Byte, der
+   Elternordner ab Bit 16 -- dazwischen war Platz. So sieht man USER.DAT
+   nicht mehr in jeder Liste, ohne dass sich am Aufbau etwas aendert. */
+int  ent_versteckt(int i)  { return (mem_get(ent_addr(i) + 24) >> 8) & 1; }
+void ent_verstecken(int i) { mem_put(ent_addr(i) + 24,
+                                     mem_get(ent_addr(i) + 24) | 256); }
+
 void ent_setinfo(int i, int typ, int parent) {
     mem_put(ent_addr(i) + 24, (typ & 255) | (((parent + 1) & 65535) << 16));
 }

@@ -258,6 +258,7 @@ void cmd_dir(char* option) {
     spalte = 0;
     for (i = 0; i < FS_MAXFILES; i++) {
         if (ent_type(i) == 0) continue;
+        if (ent_versteckt(i)) continue;      /* Systemdateien nicht zeigen */
         if (ent_parent(i) != cwd) continue;
         if (ent_type(i) == FT_DIR) {
             if (breit) {
@@ -987,10 +988,13 @@ int passwort_lesen(char* buf, int max) {
 }
 
 void benutzer_anlegen(char* name, char* pw) {
+    int n;
     memset((char*)USER_BUF, 0, USER_LEN);
     strncpy((char*)(USER_BUF + USER_NAME), name, 19);
     mem_put(USER_BUF + USER_HASH, pw_summe(pw));
     fs_write("USER.DAT", USER_BUF, USER_LEN);
+    n = fs_find("USER.DAT");
+    if (n >= 0) { ent_verstecken(n); fs_save_dir(); }
 }
 
 int benutzer_passt(char* pw) {

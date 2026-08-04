@@ -425,6 +425,7 @@ void fliste_bauen() {
     for (durchgang = 0; durchgang < 2; durchgang++) {
         for (i = 0; i < FS_MAXFILES; i++) {
             if (ent_type(i) == 0) continue;
+            if (ent_versteckt(i)) continue;   /* Systemdateien nicht zeigen */
             if (ent_parent(i) != cwd) continue;
             if (durchgang == 0 && ent_type(i) != FT_DIR) continue;
             if (durchgang == 1 && ent_type(i) == FT_DIR) continue;
@@ -2635,14 +2636,14 @@ void gl_malen(int neu_anlegen) {
         gl_kasten(174, "User name", gl_name, 0, gl_feld == 0);
         gl_kasten(196, "Password",  gl_pw,   1, gl_feld == 1);
         gl_kasten(218, "Repeat",    gl_pw2,  1, gl_feld == 2);
-        g_text(160, 244, "TAB switches fields, ENTER confirms", C_WINDARK, 256);
         if (gl_fehler) g_text(160, 244, "The two entries differ.", C_WARN, 256);
+        else g_text(160, 244, "TAB switches fields, ENTER confirms", C_WINDARK, 256);
     } else {
         g_text(160, 150, "User", C_WINDARK, 256);
         g_text(200, 150, gl_name, C_ACCENT, 256);
         gl_kasten(176, "Password", gl_pw, 1, 1);
-        g_text(160, 206, "ENTER to sign in", C_WINDARK, 256);
         if (gl_fehler) g_text(160, 206, "Wrong password.", C_WARN, 256);
+        else g_text(160, 206, "ENTER to sign in", C_WINDARK, 256);
     }
     gl_power_malen();
     sys_out(P_GFX_TAUSCH, 2);
@@ -2805,13 +2806,18 @@ void app_settings(int i) {
 
 /* Konto und eigene Dateien loeschen -- die Systemordner bleiben stehen. */
 void st_zuruecksetzen() {
-    int n; int idx;
-    fs_chdir("\\");
-    n = 0;
-    while (n < file_anzahl()) {
-        idx = file_index(n);
-        if (ent_type(idx) == FT_DIR) { n++; continue; }
-        fs_endgueltig_loeschen(ent_name(idx));
+    int i; int sys;
+    /* Alles weg ausser dem Ordner SYSTEM und seinem Inhalt. Dort liegt der
+       Kernel, den der Bootsektor als Datei holt -- ohne ihn startet der
+       Rechner nicht mehr, und niemand kaeme ohne den Mac wieder heran.
+       Alles andere ist entweder deins oder kommt mit build.py zurueck. */
+    sys = fs_find_in("SYSTEM", 0 - 1);
+    for (i = 0; i < FS_MAXFILES; i++) {
+        if (ent_type(i) == 0) continue;
+        if (i == sys) continue;                /* der Ordner selbst */
+        if (ent_parent(i) == sys) continue;    /* und was darin liegt */
+        ent_setinfo(i, 0, 0 - 1);
+        memset(ent_name(i), 0, 16);
     }
     fs_save_dir();
 }
@@ -2904,7 +2910,8 @@ void app_power(int i) {
     g_button(x, y + 26, 180, 20, "Restart", 0);
     g_button(x, y + 52, 180, 20, "Shut down", 0);
     g_button(x, y + 78, 180, 20, "Sign out", 0);
-    g_text(x, y + 106, "Sign out returns to the login screen.", C_WINDARK, 256);
+    g_text_max(x, y + 106, "Back to the login screen.", C_WINDARK, 256,
+               win_w[i] - 32);
 }
 
 /* 0 = nichts, 1 = neu gezeichnet, 2 = der Aufrufer soll den Schreibtisch
@@ -2933,7 +2940,11 @@ void gui_main() {
     win_top = 0 - 1;
     gui_running = 1;
     drag = 0 - 1;
-    alt_btn = 0;
+    /* Den aktuellen Stand uebernehmen, nicht 0 annehmen. Wer sich gerade
+       mit einem Klick angemeldet hat, haelt die Taste beim ersten Bild des
+       Schreibtischs womoeglich noch -- und das galt dann als frischer
+       Klick: der SYSTEM-Ordner hing sofort am Mauszeiger. */
+    alt_btn = sys_in(0x62) & 1;
     letzte_sek = 0 - 1;
     file_sel = 0;
 
