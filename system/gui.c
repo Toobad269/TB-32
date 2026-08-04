@@ -2555,6 +2555,45 @@ void gl_kasten(int y, char* beschriftung, char* inhalt, int sterne, int aktiv) {
     if (aktiv) g_fill(x + 100 + n * 8, y, 7, 8, C_ACCENT);
 }
 
+/* Der Ein-/Ausschalter unten rechts. Gezeichnet, nicht getippt: ein Ring
+   mit einem Strich oben, wie auf jedem Geraet seit dreissig Jahren. */
+#define PW_X   (G_W - 40)
+#define PW_Y   (G_H - 36)
+#define PW_B   28
+#define PW_H   26
+
+int gl_menue = 0;                    /* Klappmenue offen? */
+
+void gl_power_symbol(int x, int y, int col) {
+    g_fill(x + 3, y + 2, 2, 5, col);          /* der Strich oben */
+    g_fill(x, y + 3, 2, 4, col);              /* linker Bogen */
+    g_fill(x + 6, y + 3, 2, 4, col);          /* rechter Bogen */
+    g_fill(x + 1, y + 7, 6, 2, col);          /* unten herum */
+}
+
+void gl_power_malen() {
+    int mx; int my;
+    g_panel(PW_X, PW_Y, PW_B, PW_H, gl_menue);
+    gl_power_symbol(PW_X + 10, PW_Y + 8, C_TEXT);
+    if (gl_menue == 0) return;
+    mx = PW_X + PW_B - 150;
+    my = PW_Y - 44;
+    g_fill(mx, my, 150, 40, C_WIN);
+    g_frame(mx, my, 150, 40, C_WINDARK);
+    g_text(mx + 10, my + 6, "Restart", C_TEXT, 256);
+    g_text(mx + 10, my + 24, "Shut down", C_TEXT, 256);
+}
+
+/* -1 = nichts getroffen, 0 = Knopf, 1 = Neustart, 2 = Ausschalten */
+int gl_power_klick(int mx, int my) {
+    if (treffer(mx, my, PW_X, PW_Y, PW_B, PW_H)) return 0;
+    if (gl_menue) {
+        if (treffer(mx, my, PW_X + PW_B - 150, PW_Y - 44, 150, 18)) return 1;
+        if (treffer(mx, my, PW_X + PW_B - 150, PW_Y - 26, 150, 18)) return 2;
+    }
+    return 0 - 1;
+}
+
 void gl_malen(int neu_anlegen) {
     g_fill(0, 0, G_W, G_H, C_DESK);
     g_fill(140, 120, 360, neu_anlegen ? 150 : 120, C_WIN);
@@ -2576,12 +2615,14 @@ void gl_malen(int neu_anlegen) {
         g_text(160, 206, "ENTER to sign in", C_WINDARK, 256);
         if (gl_fehler) g_text(160, 206, "Wrong password.", C_WARN, 256);
     }
+    gl_power_malen();
     sys_out(P_GFX_TAUSCH, 2);
 }
 
 /* Rueckgabe: 1 = angemeldet. Laeuft, bis es stimmt. */
 int gui_anmelden(int neu_anlegen) {
     int k; int c; int code; int n;
+    int mx; int my; int btn; int alt_btn;
     char* ziel;
 
     memset(gl_pw, 0, 32);
@@ -2589,9 +2630,29 @@ int gui_anmelden(int neu_anlegen) {
     gl_feld = neu_anlegen ? 0 : 1;
     gl_fehler = 0;
 
+    alt_btn = 0;
     while (1) {
         gl_malen(neu_anlegen);
-        k = getkey();
+
+        /* Maus: der Schalter unten rechts. Sie wird hier selbst abgefragt,
+           weil der Schreibtisch noch gar nicht laeuft. */
+        mx = sys_in(0x60);
+        my = sys_in(0x61);
+        btn = sys_in(0x62);
+        sys_out(P_MCUR_X, mx);
+        sys_out(P_MCUR_Y, my);
+        sys_out(P_MCUR_ON, 1);
+        if ((btn & 1) && alt_btn == 0) {
+            n = gl_power_klick(mx, my);
+            if (n == 0) gl_menue = 1 - gl_menue;
+            else if (n == 1) sys_out(P_POWER, 2);
+            else if (n == 2) sys_out(P_POWER, 1);
+            else gl_menue = 0;
+        }
+        alt_btn = btn & 1;
+
+        if (sys_haskey() == 0) { sleep(1); continue; }
+        k = sys_getkey();
         c = keychar(k);
         code = keycode(k);
 
