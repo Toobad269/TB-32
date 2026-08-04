@@ -170,6 +170,7 @@ def build():
     # \SYSTEM\PROGS. Alles andere landet in \PROGS.
     SYSTEMPROGRAMME = {"PROMPT.TBX", "MONITOR.TBX", "CONTROL.TBX",
                        "SETTINGS.TBX", "FILES.TBX"}
+
     # Bibliotheken werden nur eingebunden, nie fuer sich uebersetzt.
     NUR_BIBLIOTHEK = ("proglib.c", "gfxlib.c")
     # Diese Quelltexte kommen mit aufs Laufwerk, aber ohne fertiges Programm --

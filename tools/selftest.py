@@ -376,6 +376,30 @@ def main():
                    MENU_TOP + 6 + (MENU_SICHT - 1) * MENU_ZH, 0.3)
         _klick(60, MENU_TOP + 6 + (eintrag - rollen) * MENU_ZH)
 
+    def menue_prog(name):
+        """Ein Programm aus dem Startmenue starten.
+
+        Das Menue baut seine Liste aus \\SYSTEM\\PROGS und \\PROGS -- die
+        Nummer eines Eintrags steht also erst zur Laufzeit fest. Hier wird
+        dieselbe Reihenfolge nachgerechnet, statt eine Zahl zu raten."""
+        from tools.tbfs import TBFS
+        fs = TBFS(L.m.disk_path)
+        sysdir = fs.find("SYSTEM", -1)
+        liste = []
+        for ordner in (fs.find("PROGS", sysdir), fs.find("PROGS", -1)):
+            if ordner < 0:
+                continue
+            for i in range(128):
+                if fs.typ(i) != 1 or fs.parent(i) != ordner:
+                    continue
+                if (fs._u32(fs._ent(i) + 24) >> 8) & 1:
+                    continue
+                if not fs.name(i).upper().endswith(".TBX"):
+                    continue
+                liste.append(fs.name(i).upper())
+        MENU_FEST = int(_re.search(r"define MENU_FEST\s+(\d+)", _gui).group(1))
+        menue(MENU_FEST + liste.index(name.upper()))
+
     def menue_fest(k):
         """0 = Power options, 1 = Exit desktop -- die stehen immer unten."""
         _klick(25, 387, 0.5)
@@ -550,7 +574,7 @@ def main():
         # laesst sich pruefen, was einen Browser ausmacht -- HTML lesen,
         # umbrechen, darstellen, und einem Verweis folgen.
         L.eingabe("WIN|ENTER", 3.0)
-        menue(4)                                     # Start > Browser
+        menue(1)                                     # Start > Browser
         L.warte(1.5)
         L.eingabe("|".join(["BACKSPACE"] * 20), 0.5)   # Adresszeile leeren
         L.eingabe(f"127.0.0.1:{web.server_port}/a|ENTER", 1.0)
@@ -598,43 +622,42 @@ def main():
         # Ein Programm von der Platte bekommt ein eigenes Fenster auf dem
         # Schreibtisch. Geprueft wird die ganze Kette: Fenster anlegen, in den
         # eigenen Puffer malen, Ereignisse bekommen, sich selbst schliessen.
-        menue(1)                                     # Command Prompt
-        L.warte(1.5)
-        L.eingabe("start fenster.tbx /b|ENTER", 8.0)
+        def fremde():
+            return [wort(L.m, sym["win_type"] + i * 4) for i in range(6)].count(18)
+
+        menue_prog("PROMPT.TBX")                     # die Kommandozeile
+        L.warte(2.5)
+        pruefe("Die Kommandozeile ist ein eigenes Programm", fremde() >= 1)
+        vorher = fremde()
+
+        L.eingabe("start fenster.tbx /b|ENTER", 1.0)
+        for _ in range(int(30.0 / L.dt)):
+            L.m.run_slice(L.dt)
+            if fremde() > vorher:
+                break
+        pruefe("Programm bekommt ein eigenes Fenster", fremde() > vorher)
         typen = [wort(L.m, sym["win_type"] + i * 4) for i in range(6)]
-        pruefe("Programm bekommt ein eigenes Fenster", 18 in typen, str(typen))
-        nr = typen.index(18) if 18 in typen else 0 - 1
-        gemalt = 0
-        if nr >= 0:
-            puffer = 0x00800000 + nr * 0x00040000
-            gemalt = sum(L.m.bus.read_block(puffer, 4000))
+        nr = wort(L.m, sym["win_top"])
+        gemalt = sum(L.m.bus.read_block(0x00800000 + nr * 0x00040000, 4000))
         pruefe("Es malt in seinen eigenen Puffer", gemalt > 0, f"Summe {gemalt}")
         pruefe("Der Bildschirm bleibt dabei heil",
                sum(L.m.vga.gfx[:64000]) > 0)
-        # ESC geht an das oberste Fenster -- das Programm beendet sich damit
-        L.eingabe("ESC", 4.0)
-        typen = [wort(L.m, sym["win_type"] + i * 4) for i in range(6)]
-        pruefe("Und es raeumt sein Fenster selbst ab", 18 not in typen, str(typen))
+        L.eingabe("ESC", 5.0)                        # das Programm beendet sich
+        pruefe("Und es raeumt sein Fenster selbst ab", fremde() == vorher,
+               str([wort(L.m, sym["win_type"] + i * 4) for i in range(6)]))
 
         # Und ein richtiges Programm: der Taschenrechner, frueher Vollbild.
-        # Erst die Kommandozeile wieder nach vorn -- nach dem Schliessen des
-        # Beispielfensters liegt sonst ein anderes Fenster obenauf, und die
-        # Eingabe landete im Browser.
-        menue(1)
+        menue_prog("PROMPT.TBX")                     # Eingabe wieder nach vorn
         L.warte(1.5)
         L.eingabe("start calc.tbx /b|ENTER", 1.0)
-        # Warten, bis das Fenster steht: der Rechner malt beim ersten Bild
-        # zwanzig Knoepfe, und wie lange das dauert, haengt am Takt.
         for _ in range(int(30.0 / L.dt)):
             L.m.run_slice(L.dt)
-            if 18 in [wort(L.m, sym["win_type"] + i * 4) for i in range(6)]:
+            if fremde() > vorher:
                 break
-        typen = [wort(L.m, sym["win_type"] + i * 4) for i in range(6)]
-        pruefe("Der Taschenrechner laeuft im Fenster", 18 in typen, str(typen))
+        pruefe("Der Taschenrechner laeuft im Fenster", fremde() > vorher)
         pruefe("Der Schreibtisch bleibt dabei stehen",
                sum(L.m.vga.gfx[:64000]) > 0)
-        L.eingabe("ESC", 4.0)
-
+        L.eingabe("ESC", 5.0)
 
         menue_fest(1)                                # zurueck in die Konsole
         L.warte(2.0)
@@ -710,10 +733,11 @@ def main():
     pruefe("Prozess lässt sich beenden", "terminated" in L.bild())
 
     print("\n--- Terminal und Editor im Fenster -----------------------------")
-    L.eingabe("WIN|ENTER", 2.5)
-    # Das Menü wächst nach oben: die Höhe hängt an der Anzahl der Einträge
-    menue(1)                                     # Command Prompt
-    L.warte(1.0)
+    # Die Kommandozeile ist jetzt ein Programm: die Schale bleibt im Kernel,
+    # das Fenster kommt von der Platte.
+    L.eingabe("WIN|ENTER", 3.0)
+    menue_prog("PROMPT.TBX")
+    L.warte(2.0)
     ram = L.m.bus.ram
     term = "".join(chr(ram[0x00120000 + i * 2]) for i in range(70 * 3))
     pruefe("Kommandozeile läuft als Fenster", "command prompt" in term.lower())

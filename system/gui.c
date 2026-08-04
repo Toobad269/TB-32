@@ -907,54 +907,6 @@ void app_bioshilfe(int i) {
    dort hinein, wir malen es -- beide laufen als eigene Prozesse.
    ========================================================================== */
 
-void app_term(int w) {
-    int x; int y; int zx; int zy; int c; int a; int adr; int mx; int my;
-    int zeilenadr;
-
-    x = win_x[w] + 4;
-    y = win_y[w] + TITLE_H + 4;
-
-    g_fill(x, y, win_w[w] - 8, win_h[w] - TITLE_H - 8, C_BLACK);
-
-    /* Der Bildspeicher der Shell ist 70x22 gross und aendert sich nicht.
-       Ist das Fenster kleiner, malen wir nur so viel, wie hineinpasst --
-       sonst schriebe der Text ueber den Fensterrand hinaus. */
-    mx = (win_w[w] - 8) / 8;
-    my = (win_h[w] - TITLE_H - 8) / 9;
-    if (mx > TERM_W) mx = TERM_W;
-    if (my > TERM_H) my = TERM_H;
-
-    for (zy = 0; zy < my; zy++) {
-        zeilenadr = term_sicht(zy, term_view);
-        if (zeilenadr < 0) continue;
-        for (zx = 0; zx < mx; zx++) {
-            adr = zeilenadr + zx * 2;
-            c = byte_get(adr);
-            if (c == 32 || c == 0) continue;
-            a = byte_get(adr + 1) & 15;
-            if (a == 7) a = C_WHITE;
-            else if (a == 8) a = C_WINDARK;
-            /* Blockzeichen kennt der 8x8-Zeichensatz nicht -- die malen wir
-               als Rechtecke, damit Fortschrittsbalken sichtbar werden. */
-            if (c == 219) { g_fill(x + zx * 8, y + zy * 9, 8, 8, a); continue; }
-            if (c == 176) { g_fill(x + zx * 8 + 2, y + zy * 9 + 2, 4, 4, a); continue; }
-            g_char(x + zx * 8, y + zy * 9, c, a, 256);
-        }
-    }
-
-    /* Schreibmarke -- nur wenn man live zusieht */
-    if (term_view) {
-        g_fill(x, y + (my - 1) * 9, mx * 8, 9, C_TITLEBAR);
-        g_text(x + 4, y + (my - 1) * 9, "-- scrolled back, press a key --",
-               C_WHITE, 256);
-    } else if (term_lauf) {
-        if (term_x < mx && term_y < my)
-            g_fill(x + term_x * 8, y + term_y * 9 + 7, 7, 2, 10);
-    } else {
-        g_text(x + 8, y + 8, "The command prompt has closed.", C_WINDARK, 256);
-    }
-    term_dirty = 0;
-}
 
 /* ==========================================================================
    Anwendung: Uebersetzungsfenster
@@ -970,184 +922,15 @@ void app_term(int w) {
    Anwendung: System Monitor
    ========================================================================== */
 
-void app_monitor(int w) {
-    int x; int y; int i; int zeile; int breite; int belegt; int gesamt;
-    int temp; int farbe;
-    x = win_x[w] + 6;
-    y = win_y[w] + TITLE_H + 6;
-
-    g_text(x, y, "Process", C_ACCENT, 256);
-    g_text(x + 120, y, "PID", C_ACCENT, 256);
-    g_text(x + 160, y, "Status", C_ACCENT, 256);
-    g_text(x + 232, y, "CPU ms", C_ACCENT, 256);
-    g_fill(x, y + 10, win_w[w] - 12, 1, C_WINDARK);
-
-    zeile = 0;
-    for (i = 0; i < MAXPROC; i++) {
-        if (p_state[i] == PS_FREI) continue;
-        g_text(x, y + 16 + zeile * 10, proc_name(i), C_TEXT, 256);
-        g_num(x + 120, y + 16 + zeile * 10, i, C_TEXT, 256);
-        if (p_state[i] == PS_LAEUFT)
-            g_text(x + 160, y + 16 + zeile * 10, "Running", C_GOOD, 256);
-        if (p_state[i] == PS_BEREIT)
-            g_text(x + 160, y + 16 + zeile * 10, "Ready", C_TEXT, 256);
-        if (p_state[i] == PS_SCHLAEFT)
-            g_text(x + 160, y + 16 + zeile * 10, "Sleeping", C_WINDARK, 256);
-        g_num(x + 232, y + 16 + zeile * 10, p_ticks[i] * 10, C_TEXT, 256);
-        zeile++;
-    }
-    if (zeile == 0) g_text(x, y + 16, "Multitasking is disabled.", C_WINDARK, 256);
-
-    y = y + 16 + zeile * 10 + 8;
-    g_text(x, y, "Disk usage", C_ACCENT, 256);
-    gesamt = (sys_disksize() - FS_DATA) / 64;
-    belegt = fs_used_sectors() / 64;
-    breite = win_w[w] - 24;
-    g_fill(x, y + 12, breite, 12, C_WHITE);
-    g_frame(x, y + 12, breite, 12, C_BLACK);
-    if (gesamt > 0)
-        g_fill(x + 1, y + 13, (belegt * (breite - 2)) / gesamt, 10, C_ACCENT);
-    g_num(x, y + 30, fs_used_sectors() / 2, C_TEXT, 256);
-    g_text(x + 40, y + 30, "KB used of", C_TEXT, 256);
-    g_num(x + 128, y + 30, (sys_disksize() - FS_DATA) / 2, C_TEXT, 256);
-    g_text(x + 190, y + 30, "KB", C_TEXT, 256);
-
-    g_text(x, y + 44, "Context switches:", C_TEXT, 256);
-    g_num(x + 144, y + 44, p_switches, C_ACCENT, 256);
-    g_text(x, y + 54, "System up time:", C_TEXT, 256);
-    g_num(x + 144, y + 54, sys_ticks() / 100, C_ACCENT, 256);
-    g_text(x + 190, y + 54, "s", C_TEXT, 256);
-
-    /* Temperatur, Lüfter und Drosselung */
-    y = y + 70;
-    temp = sys_in(P_TEMP);
-    g_text(x, y, "Temperature", C_ACCENT, 256);
-    g_num(x + 100, y, temp / 10, C_TEXT, 256);
-    g_text(x + 128, y, "C", C_TEXT, 256);
-    farbe = C_GOOD;
-    if (temp > 700) farbe = 6;
-    if (temp > 850) farbe = C_WARN;
-    g_fill(x + 150, y, breite - 150, 8, C_WHITE);
-    g_frame(x + 150, y, breite - 150, 8, C_BLACK);
-    g_fill(x + 151, y + 1, (temp / 10) * (breite - 152) / 110, 6, farbe);
-
-    g_text(x, y + 12, "Fan", C_ACCENT, 256);
-    g_num(x + 100, y + 12, sys_in(P_FAN), C_TEXT, 256);
-    g_text(x + 128, y + 12, "%", C_TEXT, 256);
-    g_fill(x + 150, y + 12, breite - 150, 8, C_WHITE);
-    g_frame(x + 150, y + 12, breite - 150, 8, C_BLACK);
-    g_fill(x + 151, y + 13, sys_in(P_FAN) * (breite - 152) / 100, 6, C_ACCENT);
-
-    if (sys_in(P_THROTTLE)) {
-        g_text(x, y + 24, "THROTTLING", C_WARN, 256);
-        g_num(x + 100, y + 24, sys_in(P_THROTTLE), C_WARN, 256);
-        g_text(x + 128, y + 24, "% - CPU slowed down to cool", C_WARN, 256);
-    }
-}
 
 /* ==========================================================================
    Anwendung: Control Panel
    ========================================================================== */
 
-char* speed_name(int i) {
-    if (i == 0) return "0.4 MHz";
-    if (i == 1) return "1 MHz";
-    if (i == 2) return "2 MHz";
-    if (i == 3) return "4 MHz";
-    return "8 MHz";
-}
 
 int ctrl_gesichert = 0;              /* wann zuletzt ins CMOS geschrieben */
 
-void app_control(int w) {
-    int x; int y; int attr; int i; int k;
-    x = win_x[w] + 8;
-    y = win_y[w] + TITLE_H + 8;
 
-    g_text(x, y, "Hardware settings (stored in CMOS)", C_ACCENT, 256);
-
-    for (i = 0; i < 5; i++) {
-        attr = C_TEXT;
-        if (i == ctrl_sel) {
-            g_fill(x - 4, y + 16 + i * 14, win_w[w] - 12, 12, C_TITLEBAR);
-            attr = C_WHITE;
-        }
-        if (i == 0) {
-            g_text(x, y + 18, "CPU clock speed", attr, 256);
-            g_text(x + 176, y + 18, speed_name(cmos_get(0x13)), attr, 256);
-        }
-        if (i == 1) {
-            g_text(x, y + 32, "POST beep", attr, 256);
-            if (cmos_get(0x12)) g_text(x + 176, y + 32, "Enabled", attr, 256);
-            else                g_text(x + 176, y + 32, "Disabled", attr, 256);
-        }
-        if (i == 2) {
-            g_text(x, y + 46, "Quick boot", attr, 256);
-            if (cmos_get(0x11)) g_text(x + 176, y + 46, "Enabled", attr, 256);
-            else                g_text(x + 176, y + 46, "Disabled", attr, 256);
-        }
-        if (i == 3) {
-            g_text(x, y + 60, "POST messages", attr, 256);
-            if (cmos_get(0x15)) g_text(x + 176, y + 60, "Verbose", attr, 256);
-            else                g_text(x + 176, y + 60, "Minimal", attr, 256);
-        }
-        if (i == 4) {
-            g_text(x, y + 74, "Fan control", attr, 256);
-            k = sys_in(P_FANMODE);
-            if (k == 0)      g_text(x + 176, y + 74, "Automatic", attr, 256);
-            else if (k == 1) g_text(x + 176, y + 74, "Quiet", attr, 256);
-            else if (k == 2) g_text(x + 176, y + 74, "Full speed", attr, 256);
-            else             g_text(x + 176, y + 74, "Manual", attr, 256);
-        }
-    }
-
-    g_text(x, y + 92, "Click a row to change the value.", C_WINDARK, 256);
-    g_button(x, y + 104, 96, 16, "Save to CMOS", 0);
-    /* Ohne Rueckmeldung weiss niemand, ob der Klick angekommen ist -- die
-       Werte sehen vorher und nachher gleich aus. Die Meldung verschwindet
-       von selbst, weil das Fenster sich jede Sekunde auffrischt. */
-    if (ctrl_gesichert > 0) {
-        if (sys_ticks() - ctrl_gesichert < 300)
-            g_text(x + 104, y + 108, "Saved", C_GOOD, 256);
-        else
-            ctrl_gesichert = 0;
-    }
-    g_text(x + 110, y + 108, "Temperature:", C_WINDARK, 256);
-    g_num(x + 210, y + 108, sys_in(P_TEMP) / 10, C_ACCENT, 256);
-    g_text(x + 234, y + 108, "C", C_WINDARK, 256);
-}
-
-void control_click(int w, int mx, int my) {
-    int y; int zeile; int v;
-    y = win_y[w] + TITLE_H + 8;
-
-    /* Auch die Breite pruefen. Vorher stand hier nur die Zeile, und ein
-       Klick irgendwo daneben -- etwa auf die Temperaturanzeige rechts --
-       schrieb das CMOS. */
-    if (my >= y + 104 && my < y + 120) {
-        if (mx >= win_x[w] + 8 && mx < win_x[w] + 8 + 96) {
-            cmos_set(0x3F, 1);
-            ctrl_gesichert = sys_ticks();
-        }
-        return;
-    }
-    zeile = (my - (y + 16)) / 14;
-    if (zeile < 0 || zeile > 4) return;
-    ctrl_sel = zeile;
-    if (zeile == 0) {
-        v = cmos_get(0x13) + 1;
-        if (v > 4) v = 0;
-        cmos_set(0x13, v);
-    }
-    if (zeile == 1) cmos_set(0x12, 1 - cmos_get(0x12));
-    if (zeile == 2) cmos_set(0x11, 1 - cmos_get(0x11));
-    if (zeile == 3) cmos_set(0x15, 1 - cmos_get(0x15));
-    if (zeile == 4) {                            /* Lüftermodus umschalten */
-        v = sys_in(P_FANMODE) + 1;
-        if (v > 2) v = 0;
-        sys_out(P_FANMODE, v);
-    }
-}
 
 /* ==========================================================================
    Anwendung: Clock und About
@@ -1498,13 +1281,9 @@ void draw_window_inhalt(int i) {
     if (win_type[i] == APP_FILES)   app_files(i);
     if (win_type[i] == APP_CLOCK)   app_clock(i);
     if (win_type[i] == APP_BROWSER) app_browser(i);
-    if (win_type[i] == APP_MONITOR) app_monitor(i);
     if (win_type[i] == APP_ABOUT)   app_about(i);
-    if (win_type[i] == APP_CONTROL) app_control(i);
-    if (win_type[i] == APP_TERM)    app_term(i);
     if (win_type[i] == APP_BIOSFRAGE) app_biosfrage(i);
     if (win_type[i] == APP_BIOSHILFE) app_bioshilfe(i);
-    if (win_type[i] == APP_SETTINGS)  app_settings(i);
     if (win_type[i] == APP_POWER)     app_power(i);
     if (win_type[i] == APP_FREMD)     app_fremd(i);
 }
@@ -1577,7 +1356,7 @@ void gui_im_fenster(char* name) {
    Oberflaechen liegen die Anwendungen jetzt in einem Menue, und die Leiste
    zeigt stattdessen, welche Fenster gerade offen sind. */
 
-#define MENU_FEST   8             /* eingebaute Fenster, noch im Kernel */
+#define MENU_FEST   4             /* eingebaute Fenster, noch im Kernel */
 #define MENU_SICHT 7              /* so viele Eintraege sind auf einmal zu sehen */
 #define MENU_MAX   40
 #define MENU_X    2
@@ -1597,12 +1376,8 @@ int menu_datei[40];               /* Verzeichniseintrag, -1 = eingebaut */
 
 char* menu_eingebaut(int i) {
     if (i == 0) return "File Manager";
-    if (i == 1) return "Command Prompt";
-    if (i == 2) return "System Monitor";
-    if (i == 3) return "Control Panel";
-    if (i == 4) return "Browser";
-    if (i == 5) return "Clock";
-    if (i == 6) return "Settings";
+    if (i == 1) return "Browser";
+    if (i == 2) return "Clock";
     return "About TOOBAD-OS";
 }
 
@@ -1657,10 +1432,15 @@ void draw_menu() {
                    menu_datei[i] < 0 ? C_TEXT : C_ACCENT, 256, MENU_W - 40);
     }
     /* Pfeile, wenn es mehr gibt als hineinpasst */
-    if (menu_top > 0) g_text(MENU_X + MENU_W - 14, y + 6, "^", C_WINDARK, 256);
-    if (menu_top + MENU_SICHT < menu_anz)
-        g_text(MENU_X + MENU_W - 14, y + 6 + (n - 1) * MENU_ZH, "v",
-               C_WINDARK, 256);
+    if (menu_top > 0) {
+        g_fill(MENU_X + MENU_W - 34, y + 4, 30, 12, C_WIN);
+        g_text(MENU_X + MENU_W - 22, y + 6, "^", C_ACCENT, 256);
+    }
+    if (menu_top + MENU_SICHT < menu_anz) {
+        g_fill(MENU_X + MENU_W - 34, y + 4 + (n - 1) * MENU_ZH, 30, 12, C_WIN);
+        g_text(MENU_X + MENU_W - 22, y + 6 + (n - 1) * MENU_ZH, "v",
+               C_ACCENT, 256);
+    }
 
     y = y + n * MENU_ZH + 6;
     g_fill(MENU_X + 18, y + 2, MENU_W - 24, 1, C_WINDARK);
@@ -1671,15 +1451,11 @@ void draw_menu() {
 /* Kurzname eines Fensters fuer die Leiste */
 char* win_kurz(int typ) {
     if (typ == APP_FILES)   return "Files";
-    if (typ == APP_TERM)    return "Prompt";
     if (typ == APP_BIOSFRAGE) return "Firmware";
     if (typ == APP_BIOSHILFE) return "Help";
-    if (typ == APP_SETTINGS)  return "Settings";
     if (typ == APP_POWER)     return "Power";
     if (typ == APP_BROWSER)   return "Browser";
     if (typ == APP_FREMD)     return "Program";
-    if (typ == APP_MONITOR) return "Monitor";
-    if (typ == APP_CONTROL) return "Control";
     if (typ == APP_CLOCK)   return "Clock";
     if (typ == APP_ABOUT)   return "About";
     return "Window";
@@ -2445,66 +2221,7 @@ char st_neu[32];
 char st_neu2[32];
 char st_meldung[48];
 
-void st_feldkasten(int x, int y, char* beschriftung, char* inhalt, int aktiv) {
-    int i; int n;
-    g_text(x, y, beschriftung, C_TEXT, 256);
-    g_fill(x + 130, y - 3, 150, 14, C_WHITE);
-    g_frame(x + 130, y - 3, 150, 14, aktiv ? C_ACCENT : C_WINDARK);
-    n = strlen(inhalt);
-    for (i = 0; i < n && i < 18; i++)
-        g_char(x + 134 + i * 8, y, '*', C_TEXT, 256);
-    if (aktiv) g_fill(x + 134 + n * 8, y, 7, 8, C_ACCENT);
-}
 
-void app_settings(int i) {
-    int x; int y; int b;
-    x = win_x[i] + 12;
-    y = win_y[i] + TITLE_H + 12;
-    b = win_w[i];
-
-    if (st_schritt == ST_MENUE) {
-        g_text(x, y, "Settings", C_ACCENT, 256);
-        g_button(x, y + 26, 200, 20, "Change password", 0);
-        g_button(x, y + 54, 200, 20, "Reset this machine", 0);
-        g_text(x, y + 86, "User:", C_WINDARK, 256);
-        g_text(x + 48, y + 86, benutzer_name(), C_TEXT, 256);
-        if (st_meldung[0]) g_text(x, y + 104, st_meldung, C_GOOD, 256);
-        return;
-    }
-    if (st_schritt == ST_ALT) {
-        g_text(x, y, "Change password", C_ACCENT, 256);
-        g_text(x, y + 22, "Enter your current password.", C_TEXT, 256);
-        st_feldkasten(x, y + 48, "Current password", st_alt, 1);
-        if (st_fehler) g_text(x, y + 72, "Wrong password.", C_WARN, 256);
-        g_button(x + b - 190, y + 96, 80, 20, "OK", 0);
-        g_button(x + b - 100, y + 96, 80, 20, "Cancel", 0);
-        return;
-    }
-    if (st_schritt == ST_NEU) {
-        g_text(x, y, "Change password", C_ACCENT, 256);
-        st_feldkasten(x, y + 32, "New password", st_neu, st_feld == 0);
-        st_feldkasten(x, y + 58, "Repeat", st_neu2, st_feld == 1);
-        if (st_fehler) g_text(x, y + 80, "The two entries differ.", C_WARN, 256);
-        else g_text(x, y + 80, "Click a field or press TAB.", C_WINDARK, 256);
-        g_button(x + b - 190, y + 100, 80, 20, "Save", 0);
-        g_button(x + b - 100, y + 100, 80, 20, "Cancel", 0);
-        return;
-    }
-    if (st_schritt == ST_RESET) {
-        g_text(x, y, "Reset this machine", C_WARN, 256);
-        g_text(x, y + 26, "This deletes your account and every file you", C_TEXT, 256);
-        g_text(x, y + 40, "created. The system itself stays, so the machine", C_TEXT, 256);
-        g_text(x, y + 54, "still starts -- it will ask you to set it up again.", C_TEXT, 256);
-        if (st_fehler)
-            g_text_max(x, y + 76, "The SYSTEM folder is gone -- not resetting.",
-                       C_WARN, 256, b - 32);
-        else g_text(x, y + 76, "Are you sure?", C_WARN, 256);
-        g_button(x + b - 190, y + 100, 80, 20, "Reset", 0);
-        g_button(x + b - 100, y + 100, 80, 20, "Cancel", 0);
-        return;
-    }
-    g_text(x, y, "Done. The machine restarts now.", C_GOOD, 256);
-}
 
 /* Konto und eigene Dateien loeschen -- die Systemordner bleiben stehen. */
 int st_zuruecksetzen() {
@@ -2540,85 +2257,7 @@ int st_zuruecksetzen() {
     return 1;
 }
 
-int st_klick(int i, int mx, int my) {
-    int x; int y; int b;
-    x = win_x[i] + 12;
-    y = win_y[i] + TITLE_H + 12;
-    b = win_w[i];
 
-    if (st_schritt == ST_MENUE) {
-        if (treffer(mx, my, x, y + 26, 200, 20)) {
-            st_schritt = ST_ALT;
-            memset(st_alt, 0, 32); st_fehler = 0; st_meldung[0] = 0;
-            return 1;
-        }
-        if (treffer(mx, my, x, y + 54, 200, 20)) {
-            st_schritt = ST_RESET; st_fehler = 0; return 1;
-        }
-        return 0;
-    }
-    if (st_schritt == ST_ALT) {
-        if (treffer(mx, my, x + b - 190, y + 96, 80, 20)) {
-            if (benutzer_passt(st_alt)) {
-                st_schritt = ST_NEU;
-                memset(st_neu, 0, 32); memset(st_neu2, 0, 32);
-                st_feld = 0; st_fehler = 0;
-            } else {
-                st_fehler = 1;
-                memset(st_alt, 0, 32);
-            }
-            return 1;
-        }
-        if (treffer(mx, my, x + b - 100, y + 96, 80, 20)) { st_schritt = ST_MENUE; return 1; }
-        return 0;
-    }
-    if (st_schritt == ST_NEU) {
-        /* Die Felder anklickbar machen. TAB allein reicht nicht -- wer mit
-           der Maus arbeitet, klickt in das Feld, das er meint. Der Kasten ist
-           nur 14 Punkte hoch; getroffen wird die ganze Zeile samt Beschriftung,
-           sonst klickt man daneben, ohne zu merken warum. */
-        if (treffer(mx, my, x, y + 24, 280, 24)) { st_feld = 0; return 1; }
-        if (treffer(mx, my, x, y + 50, 280, 24)) { st_feld = 1; return 1; }
-        if (treffer(mx, my, x + b - 190, y + 100, 80, 20)) {
-            if (strcmp(st_neu, st_neu2) == 0) {
-                benutzer_anlegen(benutzer_name(), st_neu);
-                strcpy(st_meldung, "Password changed.");
-                st_schritt = ST_MENUE;
-            } else {
-                st_fehler = 1;
-                memset(st_neu, 0, 32); memset(st_neu2, 0, 32);
-                st_feld = 0;
-            }
-            return 1;
-        }
-        if (treffer(mx, my, x + b - 100, y + 100, 80, 20)) { st_schritt = ST_MENUE; return 1; }
-        return 0;
-    }
-    if (st_schritt == ST_RESET) {
-        if (treffer(mx, my, x + b - 190, y + 100, 80, 20)) {
-            if (st_zuruecksetzen() == 0) { st_fehler = 1; return 1; }
-            st_schritt = ST_FERTIG;
-            return 2;                    /* der Aufrufer startet neu */
-        }
-        if (treffer(mx, my, x + b - 100, y + 100, 80, 20)) { st_schritt = ST_MENUE; return 1; }
-    }
-    return 0;
-}
-
-void st_taste(int k) {
-    int c; int code; int n;
-    char* ziel;
-    c = keychar(k);
-    code = keycode(k);
-    if (st_schritt == ST_ALT) ziel = st_alt;
-    else if (st_schritt == ST_NEU) ziel = st_feld == 0 ? st_neu : st_neu2;
-    else return;
-    n = strlen(ziel);
-    if (code == K_TAB && st_schritt == ST_NEU) { st_feld = 1 - st_feld; return; }
-    if (code == K_BACKSPACE) { if (n > 0) ziel[n - 1] = 0; return; }
-    if (code == K_ESC) { st_schritt = ST_MENUE; return; }
-    if (c >= 32 && c < 127 && n < 20) { ziel[n] = c; ziel[n + 1] = 0; }
-}
 
 /* --- Power options -------------------------------------------------------
    Dasselbe wie der Schalter im Anmeldeschirm, nur aus dem laufenden System
@@ -2755,10 +2394,7 @@ void gui_main() {
             } else if (win_top >= 0 && win_type[win_top] == APP_BROWSER) {
                 br_taste(k, win_top);
                 draw_window(win_top);
-            } else if (win_top >= 0 && win_type[win_top] == APP_SETTINGS) {
-                st_taste(k);
-                draw_window(win_top);
-            }
+                        }
             /* ESC fuehrt NICHT mehr aus dem Schreibtisch heraus. Das stammt
                aus der Zeit, als die Textkonsole das Zuhause war und die
                Oberflaeche das Programm, das man wieder verlaesst. Heute ist
@@ -2781,13 +2417,6 @@ void gui_main() {
             neu = 1;
         }
 
-        /* Hat die Kommandozeile etwas geschrieben? Dann neu malen. */
-        if (term_dirty) {
-            i = win_find(APP_TERM);
-            if (i >= 0) draw_window(i);
-            term_dirty = 0;
-        }
-
         if (btn && alt_btn == 0) {
             gui_taste = btn;
             /* Erst das Startmenue, falls es offen ist */
@@ -2801,13 +2430,13 @@ void gui_main() {
                     my >= k && my < BAR_Y) {
                     i = (my - k - 4) / MENU_ZH;
                     /* Pfeile rechts: bloettern, ohne das Menue zu schliessen */
-                    if (mx > MENU_X + MENU_W - 20 && i == 0 && menu_top > 0) {
+                    if (mx > MENU_X + MENU_W - 40 && i == 0 && menu_top > 0) {
                         menu_top = menu_top - 1;
                         draw_desktop();
                         alt_btn = btn;
                         continue;
                     }
-                    if (mx > MENU_X + MENU_W - 20 && i == sicht - 1
+                    if (mx > MENU_X + MENU_W - 40 && i == sicht - 1
                         && menu_top + MENU_SICHT < menu_anz) {
                         menu_top = menu_top + 1;
                         draw_desktop();
@@ -2835,26 +2464,11 @@ void gui_main() {
                     }
                     if (i == 0) starte(APP_FILES, "File Manager", 400, 230);
                     if (i == 1) {
-                        starte(APP_TERM, "Command Prompt", 580, 230);
-                        if (term_lauf == 0) {
-                            if (mt_active == 0) mt_enable();
-                            term_pid = proc_start("cmd", (int)term_main);
-                            if (term_pid >= 0) term_lauf = 1;
-                        }
-                    }
-                    if (i == 2) starte(APP_MONITOR, "System Monitor", 320, 230);
-                    if (i == 3) starte(APP_CONTROL, "Control Panel", 320, 190);
-                    if (i == 4) {
                         if (win_find(APP_BROWSER) < 0) br_init();
                         starte(APP_BROWSER, "Browser", 600, 340);
                     }
-                    if (i == 5) starte(APP_CLOCK, "Clock", 200, 130);
-                    if (i == 6) {
-                        st_schritt = ST_MENUE;
-                        st_meldung[0] = 0;
-                        starte(APP_SETTINGS, "Settings", 420, 200);
-                    }
-                    if (i == 7) starte(APP_ABOUT, "About TOOBAD-OS", 340, 150);
+                    if (i == 2) starte(APP_CLOCK, "Clock", 200, 130);
+                    if (i == 3) starte(APP_ABOUT, "About TOOBAD-OS", 340, 150);
                     /* Selbst neu zeichnen: das continue unten springt am
                        "if (neu) draw_desktop()" am Schleifenende vorbei, und
                        dann bliebe das Menue stehen, bis man irgendwo anders
@@ -2980,22 +2594,12 @@ void gui_main() {
                                     zieh_von = i;
                                 }
                             }
-                        } else if (win_type[i] == APP_CONTROL) {
-                            control_click(i, mx, my);
-                            neu = 1;
-                            if (power_klick(i, mx, my)) neu = 1;
-                        } else if (win_type[i] == APP_FREMD) {
+                                                } else if (win_type[i] == APP_FREMD) {
                             fw_melden(i, FE_KLICK,
                                       mx - win_x[i] - 1,
                                       my - win_y[i] - TITLE_H);
                         } else if (win_type[i] == APP_BROWSER) {
                             if (br_klick(i, mx, my)) neu = 1;
-                        } else if (win_type[i] == APP_SETTINGS) {
-                            k = st_klick(i, mx, my);
-                            if (k == 2) {          /* zurueckgesetzt */
-                                sys_out(P_POWER, 2);
-                            }
-                            if (k) neu = 1;
                         } else if (win_type[i] == APP_BIOSFRAGE) {
                             if (treffer(mx, my, win_x[i] + win_w[i] - 180,
                                         win_y[i] + TITLE_H + 92, 84, 18)) {
@@ -3059,6 +2663,18 @@ void gui_main() {
         k = sys_in(P_MOUSE_WHEEL);
         if (k) {
             if (k > 1000) k = k - 65536;         /* negativ zurueckrechnen */
+            /* Ist das Startmenue offen, blaettert das Rad darin. Die
+               Pfeilchen am Rand sind acht Punkte breit -- daneben zu
+               klicken war leichter als sie zu treffen, und dann startete
+               man aus Versehen ein Programm. */
+            if (menu_offen) {
+                menu_top = menu_top - k;
+                if (menu_top > menu_anz - MENU_SICHT)
+                    menu_top = menu_anz - MENU_SICHT;
+                if (menu_top < 0) menu_top = 0;
+                draw_desktop();
+                continue;
+            }
             i = win_find(APP_TERM);
             if (i >= 0 && i == win_top) {
                 term_view = term_view + k * 3;

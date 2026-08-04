@@ -9,6 +9,52 @@ Die tiefer liegenden Fallen haben zusätzlich einen ausführlichen Eintrag in
 
 ---
 
+## Die Systemprogramme sind ausgezogen -- und der Selbsttest hinkt hinterher
+
+**In `\SYSTEM\PROGS` liegen jetzt vier Programme:** `MONITOR.TBX`,
+`CONTROL.TBX`, `SETTINGS.TBX` und `PROMPT.TBX`. Alle vier laufen und sind im
+Fenster geprüft.
+
+**Die Kommandozeile ist an der richtigen Naht geteilt.** Die **Schale** --
+der Befehlsinterpreter mit DIR, COPY, CD -- bleibt im Kernel; sie ist Teil
+des Betriebssystems. Das **Fenster** ist ein Programm: es malt den
+Bildspeicher der Schale und reicht Tasten hinein. Genau so ist es bei den
+Großen auch, Shell und Terminal sind zwei verschiedene Dinge.
+
+**Ein Fehler dabei, der genau dieses Muster zeigt:** das Fenster blieb leer.
+Der Kernel las weiter `term_dirty` („hat die Schale etwas geschrieben?") und
+setzte es zurück -- er stahl dem Programm das Signal. Es gab ja kein
+Kernel-Terminalfenster mehr, das damit etwas anfangen konnte. Nach dem
+Entfernen zeigt das Fenster alles.
+
+**Control Panel brauchte keinen einzigen neuen Systemaufruf** -- alles, was
+es einstellt, steht in der Knopfzelle oder in einem Port, und beides erreicht
+ein Programm unmittelbar.
+
+**Das Startmenü scrollt jetzt mit dem Mausrad.** Die Pfeilchen am Rand waren
+acht Punkte breit -- daneben zu klicken war leichter als sie zu treffen, und
+dann startete man aus Versehen ein Programm. Sie sind außerdem größer und
+farbig.
+
+**Der Dateimanager bleibt im Kernel**, und zwar mit Grund: er zieht Dateien
+auf den Schreibtisch und in andere Fenster. Das ist keine Anwendung, das ist
+der Schreibtisch selbst -- wie der Explorer bei Windows die Shell *ist*.
+
+### Offen: der Selbsttest
+
+Die Prüfungen setzen an vielen Stellen voraus, dass die Kommandozeile ein
+Fenster **im Kernel** ist -- sie tippen hinein, um Programme zu starten.
+Das gibt es nicht mehr. 18 von 86 Prüfungen fallen deshalb um, angefangen
+beim Schließen eines Programmfensters; danach bleibt die Maschine im
+Schreibtisch und alle Konsolenprüfungen laufen ins Leere.
+
+Das ist **kein Fehler der Programme** -- die sind einzeln geprüft --, sondern
+eine Prüfmechanik, die dem Umbau hinterherhinkt. Sie gehört neu geordnet:
+erst alle Konsolenprüfungen, dann der Schreibtisch, und Programme werden über
+`menue_prog(name)` gestartet statt über eine geratene Menünummer.
+
+---
+
 ## Der Coder ist ausgezogen -- der größte Brocken
 
 780 Zeilen in `gui.c`, dazu die Farbgebung aus `coder.c` und der Textkern aus

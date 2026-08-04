@@ -78,6 +78,44 @@ void bios_hilfe()                 { sc(58, 0, 0, 0, 0); }
 void bios_bauen(int modus, char* quelle) { sc(59, modus, (int)quelle, 0, 0); }
 /* Etwas in der Kommandozeile starten (dort landet auch seine Ausgabe). */
 void im_fenster_starten(char* n)  { sc(60, (int)n, 0, 0, 0); }
+/* --- Netz: eine Steckdose fuer Programme ------------------------------- */
+int  netz_aufloesen(char* name)   { return sc(61, (int)name, 0, 0, 0); }
+int  netz_verbinden(int ip, int port) { return sc(62, ip, port, 0, 0); }
+int  netz_schreiben(int adr, int n)   { return sc(63, adr, n, 0, 0); }
+int  netz_lesen(int adr, int max, int frist) { return sc(64, adr, max, frist, 0); }
+void netz_schliessen()            { sc(65, 0, 0, 0, 0); }
+int  netz_ip_lesen(char* s)       { return sc(66, (int)s, 0, 0, 0); }
+void netz_ip_text(int ip, char* aus) { sc(67, ip, (int)aus, 0, 0); }
+int  netz_eigene_ip()             { return sc(68, 0, 0, 0, 0); }
+int  netz_proxy()                 { return sc(69, 0, 0, 0, 0); }
+int  netz_proxy_port()            { return sc(69, 1, 0, 0, 0); }
+/* --- Auskunft ueber das System (nur lesen) ----------------------------- */
+#define MAXPROC 8
+int  proz_zustand(int i)          { return sc(70, i, 0, 0, 0); }
+char* proz_name(int i)            { return (char*)sc(71, i, 0, 0, 0); }
+int  proz_ticks(int i)            { return sc(72, i, 0, 0, 0); }
+int  proz_wechsel()               { return sc(73, 0, 0, 0, 0); }
+int  platte_belegt()              { return sc(74, 0, 0, 0, 0); }
+int  platte_groesse()             { return sc(75, 0, 0, 0, 0); }
+/* --- Konto ------------------------------------------------------------- */
+int  passwort_pruefen(char* pw)   { return sc(76, (int)pw, 0, 0, 0); }
+char* benutzer_name()             { return (char*)sc(77, 0, 0, 0, 0); }
+int  passwort_setzen(char* pw)    { return sc(78, (int)pw, 0, 0, 0); }
+int  pc_zuruecksetzen()           { return sc(79, 0, 0, 0, 0); }
+int  konto_offen()                { return sc(80, 0, 0, 0, 0); }
+/* --- Dateien ----------------------------------------------------------- */
+int  datei_loeschen(char* n)      { return sc(81, (int)n, 0, 0, 0); }
+int  datei_umbenennen(char* a, char* b) { return sc(82, (int)a, (int)b, 0, 0); }
+int  ordner_anlegen(char* n)      { return sc(83, (int)n, 0, 0, 0); }
+/* --- Die Kommandozeile: die Schale laeuft im Kernel, wir zeigen sie nur -- */
+#define TERM_PUFFER 0x00120000
+int  schale_start()               { return sc(84, 0, 0, 0, 0); }
+void schale_taste(int k)          { sc(85, k, 0, 0, 0); }
+int  schale_neu()                 { return sc(86, 0, 0, 0, 0); }
+void schale_ende()                { sc(87, 0, 0, 0, 0); }
+int  schale_x()                   { return sc(88, 0, 0, 0, 0); }
+int  schale_y()                   { return sc(88, 1, 0, 0, 0); }
+int  schale_zeile(int i, int view) { return sc(89, i, view, 0, 0); }
 void clip_setzen(int n)           { sc(46, n, 0, 0, 0); }
 
 int keychar(int k) { return k & 255; }

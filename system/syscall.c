@@ -20,6 +20,7 @@
 #define P_BLT_CHR  0x4A
 #define P_BLT_BG   0x4C
 
+int pw_geprueft = 0;             /* Passwort in diesem Lauf genannt? */
 int build_progress = 0;              /* 0..100, vom laufenden Programm gemeldet */
 char build_status[44];
 char cap_zahl[16];                   /* Zwischenablage fuer mitgeschriebene Zahlen */
@@ -209,6 +210,73 @@ int syscall(int fn, int a1, int a2, int a3, int a4) {
        fuer "Run": das Ergebnis soll seine Ausgaben irgendwo hinschreiben
        koennen, und dafuer ist das Terminalfenster da. */
     if (fn == 60) { gui_im_fenster((char*)a1); return 0; }
+    /* --- Das Netz fuer Programme -----------------------------------------
+       Der Browser ist ausgezogen und braucht trotzdem DNS und TCP. Die
+       Protokolle bleiben im Kernel -- ein Programm bekommt eine
+       Steckdose, keine zweite Fassung des Stapels. */
+    if (fn == 61) return dns_aufloesen((char*)a1);
+    if (fn == 62) return tcp_verbinden(a1, a2);
+    if (fn == 63) return tcp_schreiben(a1, a2);
+    if (fn == 64) return tcp_lesen(a1, a2, a3);
+    if (fn == 65) { tcp_schliessen(); return 0; }
+    if (fn == 66) return ip_lesen((char*)a1);
+    if (fn == 67) { ip_text(a1, (char*)a2); return 0; }
+    if (fn == 68) return net_da() ? ip_meine : 0;
+    if (fn == 69) return a1 == 0 ? br_proxy : br_proxy_port;
+    /* --- Auskunft ueber das System ---------------------------------------
+       Damit der System Monitor als eigenes Programm laufen kann. Er liest
+       nur -- veraendern kann er nichts. */
+    if (fn == 70) return a1 < MAXPROC ? p_state[a1] : 0;
+    if (fn == 71) return a1 < MAXPROC ? (int)proc_name(a1) : 0;
+    if (fn == 72) return a1 < MAXPROC ? p_ticks[a1] : 0;
+    if (fn == 73) return p_switches;
+    if (fn == 74) return fs_used_sectors();
+    if (fn == 75) return sys_disksize();
+    /* --- Konto und Zuruecksetzen -----------------------------------------
+       Fuer das Settings-Programm. Das Passwort pruefen darf jeder; aendern
+       und zuruecksetzen erst, wenn er es in diesem Lauf einmal richtig
+       genannt hat. Das ist keine echte Sperre -- auf dem TB-32 gibt es
+       keinen Speicherschutz -- aber es verhindert das Versehen. */
+    if (fn == 76) {
+        if (benutzer_passt((char*)a1)) { pw_geprueft = 1; return 1; }
+        return 0;
+    }
+    if (fn == 77) return (int)benutzer_name();
+    if (fn == 78) {
+        if (pw_geprueft == 0) return 0 - 1;
+        benutzer_anlegen(benutzer_name(), (char*)a1);
+        return 0;
+    }
+    if (fn == 79) {
+        if (pw_geprueft == 0) return 0 - 1;
+        return st_zuruecksetzen();
+    }
+    if (fn == 80) return konto_offen();
+    /* --- Dateien: loeschen, umbenennen, Ordner anlegen ------------------- */
+    if (fn == 81) return fs_delete((char*)a1);
+    if (fn == 82) return fs_rename((char*)a1, (char*)a2);
+    if (fn == 83) return fs_mkdir((char*)a1);
+    /* --- Die Kommandozeile: die Schale bleibt im Kernel, das FENSTER wird
+       ein Programm. Es malt den Puffer und reicht Tasten hinein. */
+    if (fn == 84) {
+        if (term_lauf == 0) {
+            if (mt_active == 0) mt_enable();
+            term_pid = proc_start("cmd", (int)term_main);
+            if (term_pid >= 0) { term_lauf = 1; term_aktiv = 1; }
+        }
+        return term_lauf;
+    }
+    if (fn == 85) { term_push_key(a1); return 0; }
+    if (fn == 86) { int d; d = term_dirty; term_dirty = 0; return d; }
+    /* Wo steht die Schreibmarke der Schale, und welche Zeile ist wo? */
+    if (fn == 88) return a1 == 0 ? term_x : term_y;
+    if (fn == 89) return term_sicht(a1, a2);
+    if (fn == 87) {
+        if (term_pid >= 0) p_state[term_pid] = PS_FREI;
+        term_lauf = 0;
+        term_aktiv = 0;
+        return 0;
+    }
     return 0 - 1;
 }
 
