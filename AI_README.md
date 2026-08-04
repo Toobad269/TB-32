@@ -464,3 +464,208 @@ Ausführlich mit Symptom, Ursache und Fundstelle: `Doku/07 Fallstricke`.
 an `Doku/05 Konventionen` (Oberfläche englisch, Kommentare deutsch), und
 trage jede Änderung ins `14 Aenderungsjournal` ein — mit der *Ursache*, nicht
 nur dem Symptom.
+
+---
+
+# 11. Die Oberfläche, Fenster für Fenster
+
+Dieser Abschnitt beschreibt jedes Fenster so genau, dass du einem Nutzer
+sagen kannst, wo er klicken muss, ohne selbst hinzusehen.
+
+Grundmaße: Bildschirm **640 × 400**, Zeichen **8 × 8** im Grafikmodus.
+Aufgabenleiste ab **y = 378**. Titelleiste jedes Fensters **14 Punkte** hoch.
+
+## 11.1 Der Schreibtisch
+
+**Aufgabenleiste unten.** Ganz links der Knopf **Start** (x 2, Breite 52).
+Rechts daneben je ein Knopf pro offenem Fenster (Breite 64, ab x 90) — ein
+Klick holt es nach vorn. Rechts außen die **Uhr**.
+
+**Startmenü** (Klick auf *Start*, Einträge 14 Punkte hoch, ab y 262):
+
+| # | Eintrag | öffnet |
+|---|---|---|
+| 0 | File Manager | Dateiverwaltung |
+| 1 | Command Prompt | Kommandozeile im Fenster |
+| 2 | Coder | Editor |
+| 3 | System Monitor | Prozesse und Messwerte |
+| 4 | Control Panel | Einstellungen |
+| 5 | Paint | Malprogramm |
+| 6 | Word | Textverarbeitung |
+| 7 | Clock | Uhr |
+| 8 | About TOOBAD-OS | Systeminfo |
+| 9 | Exit desktop | zurück zur Kommandozeile |
+
+**Symbole auf dem Schreibtisch.** Dateien aus `\DESKTOP` liegen als Symbole
+da und lassen sich mit der Maus verschieben; die Positionen merkt sich
+`ICONS.DAT`. Doppelklick startet oder öffnet.
+
+**Fensterrahmen.** In der Titelleiste rechts: **Vollbild** (x = Breite−30,
+12 × 11) und **Schließen** (x = Breite−16). Unten rechts ein 12 × 12 großer
+Anfasser zum Vergrößern. Ziehen an der Titelleiste verschiebt.
+
+**Reihenfolge:** gemalt wird nach Fensternummer, `win_top` zuletzt — wer die
+höhere Nummer hat, liegt vorn. Die Klicksuche läuft **rückwärts**, damit sie
+zur Malreihenfolge passt.
+
+## 11.2 File Manager
+
+Spalten **Name / Size / Type**. Ein Klick wählt, Doppelklick öffnet: Ordner
+wechselt hinein, `.TBX` startet, Textdateien gehen in den Coder, `.TBI` nach
+Paint, `.TBW` nach Word. Der Knopf **Up** rechts oben geht eine Ebene hoch.
+Dateien lassen sich per Maus auf den Schreibtisch ziehen.
+Blättern mit `Bild↑` / `Bild↓`, löschen mit `Entf` (in den Papierkorb).
+
+## 11.3 Command Prompt
+
+Die Kommandozeile in einem Fenster, **70 × 22** Zeichen. Alles aus Abschnitt
+3 funktioniert hier. Eigene Historie mit `Bild↑` / `Bild↓`. Ausgaben von
+Programmen, die man aus dem Coder startet, landen ebenfalls hier.
+
+## 11.4 Coder
+
+**Kopfzeile:** `File: NAME  in PFAD  Ln n  Col n  Bytes n`. Steht rechts eine
+Meldung (`saved`, `built`, `errors`, `building ...`, `not found`), weicht die
+Byte-Zahl — beide teilen sich den Platz. Ganz rechts das **`?`** (20 × 14),
+das die BIOS-Anleitung öffnet.
+
+**Knopfleiste** — sie richtet sich nach der Art des Quelltextes, erkannt an
+der Kennung `TBBI` im Kopf. Die Knöpfe rücken zusammen, wenn einer fehlt:
+
+| Art | Knöpfe (von links) |
+|---|---|
+| C / Assembler | `< Back` `New` `Save` `Name` `Build` `Run` `Find` + Suchfeld |
+| Python | dasselbe **ohne** `Build` |
+| BIOS | `< Back` `New` `Save` `Name` `Find` + Suchfeld + `Test` `Flash` |
+
+Breiten: Back 50, New 38, Save 44, Name 46, Build 50, Run 40, Find 40,
+Suchfeld 100, Test 52, Flash 56 — je 4 Punkte Abstand.
+
+| Knopf | was er tut |
+|---|---|
+| `< Back` | zurück zur Startseite mit Dateiliste und Vorlagen |
+| `New` | fragt **zuerst** nach dem Speicherort. Abbrechen legt nichts an |
+| `Save` | speichert ohne Nachfrage, sobald der Platz feststeht |
+| `Name` | Dateinamen im Kopf bearbeiten |
+| `Build` | übersetzt: `.ASM` mit `ASM.TBX`, sonst mit `CC.TBX`. Fortschrittsfenster, bei Fehlern wird es zum Meldungsfenster (520 × 240) und `ENTER` springt in die erste Fehlerzeile |
+| `Run` | speichert, übersetzt bei Bedarf, startet — Ausgabe im Terminalfenster |
+| `Find` | Suchfeld; `ENTER` springt zum nächsten Treffer, `not found` erscheint rechts |
+| `Test` | baut ein BIOS, prüft es, fragt einmal — und startet den Rechner **einmal** damit |
+| `Flash` | dasselbe dauerhaft; danach fragt die **Firmware** in Rot ein zweites Mal |
+
+**Startseite** (nach `< Back` oder beim ersten Öffnen): links die Vorlagen
+**C program .C**, **Assembler .ASM**, **Python script .PY**, **BIOS .ASM** —
+rechts die Dateiliste des aktuellen Ordners mit `Up`-Knopf.
+
+**Im Text:** Syntaxfarben je nach Sprache, Auswahl mit der Maus, Rollen mit
+`Bild↑`/`Bild↓`, `Pos1`/`Ende`, `Strg`+`A/C/X/V`.
+
+## 11.5 Paint
+
+**Werkzeuge** (zwei Spalten, je 24 × 20 Punkte):
+
+| | | | |
+|---|---|---|---|
+| `Pen` Stift | `Era` Radierer | `Lin` Linie | `Box` Rechteck |
+| `Bx*` gefüllt | `Cir` Kreis | `Fil` Füllen | `Get` Pipette |
+
+Darunter **Size** mit 1, 2, 4 Punkten Strichstärke, dann die **Farbpalette**,
+dann die Knöpfe **New**, **Undo**, **Save**, **Open** (je 47 × 14, untereinander).
+
+`New` fragt zuerst nach dem Speicherort. `Undo` macht einen Schritt
+rückgängig. Format `.TBI`: Breite und Höhe als Wort, dann ein Byte je Punkt.
+Beim Ziehen von Linie, Rechteck und Kreis erscheint eine Vorschau, die
+**auf die Leinwand begrenzt** ist.
+
+## 11.6 Word
+
+**Knopfleiste oben:** `B` fett, `U` unterstrichen, `A` Schriftfarbe,
+`A+`/`A*` Größe, `1.` nummerierte Liste, `*` Aufzählung, `<`/`>` Einzug,
+`><` Umbruch, dann `New`, `Save`, `Open`.
+
+**Rechtsklick** öffnet ein Menü mit 14 Einträgen (166 Punkte breit, Zeilen
+14 hoch):
+
+| | |
+|---|---|
+| Black, Red, Green, Blue, Orange, Grey | Textfarbe der Auswahl |
+| Copy `^C`, Cut `^X`, Paste `^V` | Zwischenablage |
+| Select all, Deselect | Auswahl |
+| Insert picture | Paint-Bild einfügen (Dateidialog, nur `.TBI`) |
+| Delete picture | angeklicktes Bild samt Absatz löschen |
+| Save as text | als reine Textdatei ausgeben |
+
+**Tasten:** Pfeile, `Pos1`/`Ende`, `Bild↑`/`Bild↓`, `Entf`, `Rücktaste`,
+`ENTER`. Ein Bild ist ein ganzer Absatz — angeklickt löschen `Entf` oder
+`Rücktaste` es vollständig. Seitenumbruch alle **620 Punkte** Höhe, die
+Seitenzahl steht am Rand. Format `.TBW`.
+
+## 11.7 System Monitor
+
+Zeigt die Prozesstabelle (Nummer, Zustand, Name), Speicherbelegung, den
+eingestellten Takt, die gemessene Temperatur, die Lüfterdrehzahl und die
+Drosselung. Frischt sich einmal je Sekunde auf — **ohne selbst zu malen**,
+er fordert ein normales Neuzeichnen an, damit er nicht über andere Fenster
+schreibt.
+
+## 11.8 Control Panel
+
+Fünf Zeilen, ein Klick auf eine Zeile ändert den Wert (er läuft im Kreis):
+
+| Zeile | Werte |
+|---|---|
+| CPU Clock Speed | 0.4 / 1 / 2 / 4 / 8 MHz |
+| POST Beep | an / aus |
+| Quick Boot | an / aus — **überspringt die Pausen im Selbsttest** |
+| POST Messages | kurz / ausführlich |
+| Fan Control | automatisch / leise / volle Drehzahl |
+
+Darunter der Knopf **Save to CMOS** (96 × 16) — erst er macht die
+Einstellungen dauerhaft. Rechts daneben die aktuelle Temperatur.
+
+## 11.9 Clock, About
+
+**Clock:** Uhrzeit, Datum und Betriebszeit. **About:** Systemname, Version,
+CPU, Speicher, Grafikkarte.
+
+## 11.10 Dateidialog
+
+Ein Fenster für alle Programme (`system/dialog.c`), 380 × 250.
+
+Oben links **Save as** / **Open** / **Picture**, daneben der aktuelle Pfad,
+rechts der Knopf **Up**. Darunter die Liste (Ordner mit `DIR`, Dateien mit
+Größe), gefiltert nach Endung — Paint sieht nur `.TBI`, Word nur `.TBW`,
+*Insert picture* nur Bilder. **Ordner werden immer gezeigt**, sonst käme man
+nicht hin.
+
+Unten das Feld **Name:** und rechts **OK** (44 × 18) und **Cancel** (56 × 18).
+
+**Tasten:** `↑`/`↓` wählen, `ENTER` bestätigt, `ESC` bricht ab,
+`Rücktaste` löscht im Namensfeld. Ein Klick auf einen Ordner geht hinein,
+ein Klick auf eine Datei ist beim Öffnen schon die Antwort.
+
+## 11.11 Die Firmware-Fenster im Coder
+
+**Rückfrage** (420 × 150): Name, Größe und Prüfsumme des Abbildes, darunter
+drei Zeilen Erklärung — beim Testen „läuft einmal, der Chip bleibt", beim
+Flashen „die Firmware fragt gleich noch einmal in Rot". Knöpfe
+**Test once** / **Continue** und **Cancel**.
+
+**Hilfe** (`?`, 460 × 300): 33 Zeilen über den Kopf, die Interruptvektoren,
+alle Bildschirmfunktionen, die Steuerzeichen und das Laden des Bootsektors.
+`Bild↑`/`Bild↓` blättert, `ESC` schließt.
+
+## 11.12 BIOS-Setup
+
+`DEL` oder `F2`. Fünf Reiter, mit `←`/`→` gewechselt:
+
+| Reiter | Inhalt |
+|---|---|
+| **Main** | Uhrzeit, Datum, Quick Boot, POST-Piepser, POST-Meldungen, Standardwerte laden |
+| **Hardware** | CPU-Takt, Startgerät, Speicher, Platte, Grafikkarte |
+| **Cooling** | Lüftermodus, Drosselgrenze, Temperatur, Lüfter, Drosselung, Höchstwert |
+| **Security** | Secure Boot, Prüfsumme, *Trust Current Boot Image* |
+| **Firmware** | Größe und Prüfsumme des Chips, *Flash BIOS from File*, *Restore Backup BIOS* |
+
+**Tasten:** `↑`/`↓` Zeile, `←`/`→` Reiter, `ENTER` oder `+`/`−` ändern,
+`F5` Standardwerte, `F10` sichern und raus, `ESC` verwerfen und raus.

@@ -676,17 +676,17 @@ void wd_bild_malen(int px, int py, int zeile, int a) {
 #define WDM_ZH   14
 
 char* wdm_text(int i) {
-    if (i == 0) return "Schwarz";
-    if (i == 1) return "Rot";
-    if (i == 2) return "Gruen";
-    if (i == 3) return "Blau";
+    if (i == 0) return "Black";
+    if (i == 1) return "Red";
+    if (i == 2) return "Green";
+    if (i == 3) return "Blue";
     if (i == 4) return "Orange";
-    if (i == 5) return "Grau";
-    if (i == 6) return "Kopieren      ^C";
-    if (i == 7) return "Ausschneiden  ^X";
-    if (i == 8) return "Einfuegen     ^V";
-    if (i == 9) return "Alles markieren";
-    if (i == 10) return "Markierung weg";
+    if (i == 5) return "Grey";
+    if (i == 6) return "Copy           ^C";
+    if (i == 7) return "Cut            ^X";
+    if (i == 8) return "Paste          ^V";
+    if (i == 9) return "Select all";
+    if (i == 10) return "Deselect";
     if (i == 11) return "Insert picture";
     if (i == 12) return "Delete picture";
     return "Save as text";
