@@ -10,6 +10,10 @@ system/boot.bin
 emu/tb32
 emu/*.o
 *.TBX
+# Eigene BIOS-Abbilder aus "Custom BIOS/" -- dasselbe Prinzip: die Quelle
+# gehoert ins Verzeichnis, das gebrannte Abbild entsteht mit bauen.py neu.
+Custom BIOS/*/*.bin
+Custom BIOS/*/*.sym
 
 # --- Die virtuelle Festplatte ----------------------------------------------
 # 8 MB, und sie aendert sich bei jedem Speichern im laufenden System.
