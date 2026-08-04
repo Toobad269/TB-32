@@ -964,8 +964,10 @@ void app_editor(int w) {
     /* Ganz links der Weg zurueck zur Dateiauswahl -- wie der Up-Knopf in der
        Dateiverwaltung. Ohne ihn kommt man aus einer offenen Datei nicht mehr
        heraus, ausser ueber "New". */
-    g_button(x + win_w[w] - 36, y - 14, 20, 14, "?", 0);
     n = edg_art();
+    /* Das ? erklaert, wie man ein BIOS schreibt -- bei einem C-Programm
+       waere es nur im Weg. */
+    if (n == ART_BIOS) g_button(x + win_w[w] - 36, y - 14, 20, 14, "?", 0);
     for (i = 0; i < CB_GESAMT; i++) {
         if (cb_sichtbar(n, i) == 0 || i == CB_SUCHE) continue;
         g_button(x + cb_pos(n, i), y, cb_w(i), 16, cb_text(i),
@@ -1393,6 +1395,17 @@ int edg_klick(int w, int mx, int my) {
     y = win_y[w] + TITLE_H + 4 + EDG_ROWS * 9 + 8;
 
     if (my >= y - 4 && my < y + 10) {            /* Zeile mit dem Dateinamen */
+        /* Das ? liegt in DIESER Zeile, ganz rechts. Es muss vor dem
+           `return 0` geprueft werden -- sonst verschluckt die Statuszeile
+           den Klick, und der Knopf tat nie etwas. */
+        /* Genau dieselbe Zahl wie beim Zeichnen: dort steht der Knopf bei
+           `y - 14` der Knopfleiste, und das ist genau diese Statuszeile. */
+        if (edg_art() == ART_BIOS
+            && treffer(mx, my, x + win_w[w] - 36, y, 20, 14)) {
+            bh_top = 0;
+            starte(APP_BIOSHILFE, "Writing a BIOS", 460, 300);
+            return 1;
+        }
         if (mx >= x + 40 && mx < x + 200) { edg_namemode = 1; return 1; }
         return 0;
     }
@@ -1438,11 +1451,6 @@ int edg_klick(int w, int mx, int my) {
         if (cb_sichtbar(n, CB_BUILD)
             && treffer(mx, my, x + cb_pos(n, CB_BUILD), y, cb_w(CB_BUILD), 16))
             { edg_uebersetzen(); return 1; }
-        if (treffer(mx, my, x + win_w[w] - 36, y - 14, 20, 14)) {
-            bh_top = 0;
-            starte(APP_BIOSHILFE, "Writing a BIOS", 460, 300);
-            return 1;
-        }
         if (cb_sichtbar(n, CB_TEST)
             && treffer(mx, my, x + cb_pos(n, CB_TEST), y, cb_w(CB_TEST), 16))
             { bios_bauen(BIOS_TEST); return 1; }
