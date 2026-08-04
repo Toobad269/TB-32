@@ -9,6 +9,38 @@ Die tiefer liegenden Fallen haben zusätzlich einen ausführlichen Eintrag in
 
 ---
 
+## Vier Fehler aus dem Betrieb
+
+**Programme aus dem Dateifenster gaben einen schwarzen Bildschirm.** Der
+Doppelklick war schon umgestellt -- der **Open/Run-Knopf** hatte aber einen
+eigenen Weg, der noch `gui_ausfuehren` rief: Oberfläche tritt ab, Programm
+bekommt den ganzen Schirm. Seit alle Programme Fensterprogramme sind, sah
+man davon nur noch Schwarz. Zwei Wege zum selben Ziel sind einer zu viel;
+jetzt ruft der Knopf dieselbe Funktion wie der Doppelklick.
+
+**Fremde Fenster öffnen mittig.** Der Stapelversatz von `starte()` ist für
+die eingebauten Fenster gedacht; ein Programm weiß nicht, wo es landet, und
+Flappy lag halb aus dem Bild. Jetzt rechnet `fw_neu` die Mitte aus.
+
+**Vollbild verbog das Bild.** Beim Vergrößern änderte sich die Fensterbreite
+-- das Programm malte aber weiter mit der alten, und weil die Breite zugleich
+der Zeilenabstand im Puffer ist, lief das Bild schief. Jetzt bekommt ein
+fremdes Fenster beim Vollbild und nach dem Ziehen an der Ecke ein
+`FE_MALEN`, holt sich die neue Größe und malt richtig.
+
+**Zurücksetzen ging nicht mehr.** Settings ist ein Programm und bittet den
+Kernel darum; der verlangte, dass vorher einmal das Passwort genannt wurde.
+Auf einer Maschine **ohne** Passwort gibt es aber nichts zu nennen -- also
+kam man nie daran. Ein offener Rechner darf jetzt ohne.
+
+**Und noch einer, den man nur sieht, wenn man hinschaut:** ein neues Fenster
+war nicht da, obwohl es in der Liste stand. `fw_neu` malte den Schreibtisch
+aus dem Prozess des **Programms** neu -- und die Oberfläche malte gleich
+darauf ihr eigenes Bild darüber. Jetzt setzt `fw_neu` nur eine Marke, und
+der Schreibtisch zeichnet sich in seiner eigenen Schleife neu.
+
+---
+
 ## Die Systemprogramme sind ausgezogen -- und der Selbsttest hinkt hinterher
 
 **In `\SYSTEM\PROGS` liegen jetzt vier Programme:** `MONITOR.TBX`,

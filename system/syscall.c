@@ -243,12 +243,16 @@ int syscall(int fn, int a1, int a2, int a3, int a4) {
     }
     if (fn == 77) return (int)benutzer_name();
     if (fn == 78) {
-        if (pw_geprueft == 0) return 0 - 1;
+        if (pw_geprueft == 0 && konto_offen() == 0) return 0 - 1;
         benutzer_anlegen(benutzer_name(), (char*)a1);
         return 0;
     }
     if (fn == 79) {
-        if (pw_geprueft == 0) return 0 - 1;
+        /* Ein Rechner ohne Passwort ist offen -- dann darf auch das
+           Zuruecksetzen ohne Passwort gehen. Sonst kaeme man auf einer
+           frisch gebauten Maschine nie daran, weil es nichts zu pruefen
+           gibt. Genau das war kaputt. */
+        if (pw_geprueft == 0 && konto_offen() == 0) return 0 - 1;
         return st_zuruecksetzen();
     }
     if (fn == 80) return konto_offen();

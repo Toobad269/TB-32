@@ -106,6 +106,11 @@ int fw_ring[144];                 /* MAXWIN * FW_RING * 3 */
 int fw_lese[6];
 int fw_schreib[6];
 int fw_frisch[6];                 /* Programm hat neu gemalt */
+/* Ein Fenster ist entstanden oder verschwunden. Den ganzen Schreibtisch neu
+   zu malen ist Sache des Schreibtischs selbst -- macht es das Programm aus
+   seinem eigenen Prozess heraus, malt die Oberflaeche gleich darauf wieder
+   ihr eigenes Bild darueber, und das neue Fenster war nie zu sehen. */
+int fw_wunsch = 0;
 
 #define EDG_COLS    edg_cols
 #define EDG_ROWS    edg_rows
@@ -1215,11 +1220,19 @@ int fw_neu(char* titel, int breite, int hoehe, int pid) {
     if (hoehe > 340) hoehe = 340;
     i = starte(APP_FREMD, titel, breite, hoehe);
     if (i < 0) return 0 - 1;
+    /* Mittig auf den Schreibtisch. Der Stapelversatz von starte() ist fuer
+       die eingebauten Fenster gedacht -- ein Programm weiss nicht, wo es
+       landet, und lag bisher unten rechts halb aus dem Bild. */
+    win_x[i] = (G_W - breite) / 2;
+    win_y[i] = (BAR_Y - hoehe) / 2;
+    if (win_x[i] < 2) win_x[i] = 2;
+    if (win_y[i] < 2) win_y[i] = 2;
     fw_pid[i] = pid;
     fw_lese[i] = 0;
     fw_schreib[i] = 0;
     fw_frisch[i] = 0;
     memset((char*)fw_addr(i), C_WINBG, breite * hoehe);
+    fw_wunsch = 1;               /* der Schreibtisch malt sich gleich neu */
     fw_melden(i, FE_MALEN, 0, 0);
     return i;
 }
@@ -1273,7 +1286,7 @@ int fw_zu(int i) {
     win_voll[i] = 0;
     fw_pid[i] = 0 - 1;
     fw_frisch[i] = 0;
-    draw_desktop();
+    fw_wunsch = 1;
     return 0;
 }
 
@@ -1928,10 +1941,10 @@ void eintrag_oeffnen(int idx) {
     }
     if (endet_auf(ent_name(idx), ".TBX")
         || endet_auf(ent_name(idx), ".PY")) {
-        /* Vom Schreibtisch gestartete Programme bekommen den ganzen
-           Bildschirm. Im Fenster laeuft nur, was man in der Kommandozeile
-           selbst eintippt -- dort ist das Fenster ja die Shell. */
-        gui_ausfuehren(ent_name(idx));
+        /* Programme laufen im Hintergrund weiter und machen sich selbst ein
+           Fenster. Frueher bekamen sie den ganzen Bildschirm -- seit sie
+           Fensterprogramme sind, sah man davon nur noch Schwarz. */
+        gui_prog_starten(ent_name(idx));
     } else {
         /* Alles andere in den Coder -- der ist jetzt ein eigenes Programm
            und bekommt den Dateinamen als Argument mit. */
@@ -1981,16 +1994,12 @@ int files_click(int w, int mx, int my) {
             if (file_sel > 0) file_sel--;
             return 1;
         }
-        /* Open/Run auf ganzem Bildschirm: fuer grafische Programme, die die
-           volle Flaeche brauchen -- die Oberflaeche tritt dafuer kurz ab. */
+        /* Open/Run: dasselbe wie ein Doppelklick. Frueher trat die
+           Oberflaeche dafuer ab und das Programm bekam den ganzen
+           Bildschirm -- seit alle Programme Fensterprogramme sind, sah man
+           davon nur noch Schwarz. */
         if (treffer(mx, my, bx + fb_x(3), by, fb_breite(3), 16)) {
-            if (ent_type(idx) == FT_DIR) {
-                fs_chdir(ent_name(idx));
-                file_sel = 0;
-                file_top = 0;
-            } else {
-                gui_ausfuehren(ent_name(idx));
-            }
+            eintrag_oeffnen(idx);
             return 1;
         }
         return 1;
@@ -2366,6 +2375,10 @@ void gui_main() {
         neu = 0;
 
         net_bearbeiten();            /* die Post nebenbei, auch hier */
+        if (fw_wunsch) {             /* ein Programm hat ein Fenster geoeffnet */
+            fw_wunsch = 0;
+            draw_desktop();
+        }
         if (sys_haskey()) {
             k = sys_getkey();
             if (win_top >= 0 && win_type[win_top] == APP_TERM && term_lauf) {
@@ -2554,6 +2567,11 @@ void gui_main() {
                         } else if (treffer(mx, my, win_x[i] + win_w[i] - 30,
                                            win_y[i] + 3, 12, 11)) {
                             win_vollbild(i);
+                            /* Ein fremdes Fenster muss von der neuen Groesse
+                               erfahren -- sonst malt das Programm weiter mit
+                               der alten Breite, und das Bild steht schief. */
+                            if (win_type[i] == APP_FREMD)
+                                fw_melden(i, FE_MALEN, 0, 0);
                             neu = 1;
                         } else if (treffer(mx, my, win_x[i] + win_w[i] - 16,
                                     win_y[i] + 3, 12, 11)) {
@@ -2698,6 +2716,8 @@ void gui_main() {
 
         if (groesse_zieht >= 0) {
             if (btn == 0) {
+                if (win_type[groesse_zieht] == APP_FREMD)
+                    fw_melden(groesse_zieht, FE_MALEN, 0, 0);
                 groesse_zieht = 0 - 1;
             } else {
                 i = mx - win_x[groesse_zieht] + 6;
