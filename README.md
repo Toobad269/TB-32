@@ -14,8 +14,22 @@ python3 build.py     # BIOS, Kernel, Programme und Laufwerk bauen
 python3 pc.py        # den Rechner einschalten
 ```
 
-Beim Start läuft die Bedenkzeit, dann `DEL` fürs Setup. `ü` schaltet den
-Rechner wieder ein, wenn er aus ist.
+## Tasten am Gehäuse
+
+Diese Tasten gehören dem Fenster, nicht dem virtuellen Rechner — sie
+funktionieren deshalb überall, auch im BIOS, wo noch gar kein
+Betriebssystem läuft.
+
+| Taste | Wirkung |
+|---|---|
+| `ü` | **Einschaltknopf**, wenn der Rechner aus ist. Danach fünf Sekunden Bedenkzeit mit Startbild |
+| `DEL` (auf dem Mac `fn`+`⌫`) oder `F2` | ins BIOS-Setup — schon während der Bedenkzeit drückbar |
+| **`Strg`+`K`** / `Cmd`+`K` | **alles kopieren, ohne Rückmeldung.** Im Textmodus der ganze Bildschirm (auch im BIOS und im Setup), im Grafikmodus der *vollständige* Text des Coders — nicht nur der sichtbare Ausschnitt |
+| `Strg`+`V` / `Cmd`+`V` | Text vom Wirtsrechner einfügen |
+| `Cmd`+`C` | die Auswahl aus TOOBAD-OS zurück zum Wirtsrechner |
+| `Strg`+`R` | Reset — der Knopf am Gehäuse |
+| `F11` / `F12` | Vollbild / Einblendung mit Takt, Temperatur und Bildrate |
+| `Strg`+`Q` | beenden |
 
 ## Was hier drin steckt
 
