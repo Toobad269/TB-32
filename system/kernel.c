@@ -218,6 +218,48 @@ void cmd_net(char* option, char* rest) {
         return;
     }
 
+    if (stricmp(option, "proxy") == 0) {
+        /* "0.0.0.0" waere naheliegend zum Abschalten, taugt aber nicht:
+           ip_lesen gibt dafuer 0 zurueck -- dasselbe wie fuer "kaputt".
+           Deshalb ein Wort, das eindeutig ist. */
+        if (stricmp(rest, "off") == 0) {
+            br_proxy = 0;
+            print("  Proxy                      ");
+            printc("off\n", YELLOW);
+            return;
+        }
+        if (rest[0] != 0) {
+            /* "127.0.0.1:8080" -- der Doppelpunkt trennt den Port ab. */
+            i = 0;
+            while (rest[i] != 0 && rest[i] != ':') i++;
+            n = ip_lesen(rest);
+            if (n == 0 && rest[i] == ':') {
+                rest[i] = 0;
+                n = ip_lesen(rest);
+                rest[i] = ':';
+            }
+            if (n == 0) {
+                printc("Syntax: NET PROXY 127.0.0.1:8080\n", RED);
+                return;
+            }
+            br_proxy = n;
+            if (rest[i] == ':') br_proxy_port = atoi(rest + i + 1);
+            if (br_proxy_port <= 0) br_proxy_port = 8080;
+        }
+        if (br_proxy == 0) {
+            print("  Proxy                      ");
+            printc("off -- HTTPS not available\n", YELLOW);
+            return;
+        }
+        ip_text(br_proxy, text);
+        print("  Proxy                      ");
+        printc(text, BRIGHT);
+        print(":");
+        printn(br_proxy_port);
+        nl();
+        return;
+    }
+
     if (stricmp(option, "arp") == 0) {
         printc("\n  Address table\n", BRIGHT);
         n = 0;
@@ -275,7 +317,8 @@ void cmd_net(char* option, char* rest) {
     nl();
     print("\n  NET IP <addr>     our address       NET ARP    who is known\n");
     print("  NET GW <addr>     way out           NET DNS <addr>  name server\n");
-    print("  NET SEND <text>   send to everyone  NET WATCH  show arrivals\n");
+    print("  NET PROXY <a:p>   the way to HTTPS  NET SEND <text>  to everyone\n");
+    print("  NET WATCH         show arrivals\n");
     print("  PING <addr>       is somebody there\n");
     print("  HOST <name>       what is the address of a name\n");
     print("  FETCH <name> [/p] fetch a page over TCP\n");
@@ -391,28 +434,47 @@ void cmd_fetch(char* wirt, char* pfad) {
     if (port <= 0 || port > 65535) port = 80;
     wirt = name;
 
-    ip = ip_lesen(wirt);
-    if (ip == 0) {
-        print("Looking up ");
-        print(wirt);
-        print(" ... ");
-        ip = dns_aufloesen(wirt);
-        if (ip == 0) { printc("unknown name\n", YELLOW); return; }
-        ip_text(ip, text);
-        printc(text, BRIGHT);
-        nl();
-    }
+    /* Steht ein Vermittler bereit, geht die Verbindung zu IHM -- und in der
+       Anfrage steht dann die volle Adresse. Dasselbe tut der Browser. */
+    if (br_proxy != 0) {
+        print("Through the proxy ... ");
+        if (tcp_verbinden(br_proxy, br_proxy_port) == 0) {
+            printc("the proxy does not answer\n", YELLOW);
+            return;
+        }
+        printc("connected\n", GREEN);
+    } else {
+        ip = ip_lesen(wirt);
+        if (ip == 0) {
+            print("Looking up ");
+            print(wirt);
+            print(" ... ");
+            ip = dns_aufloesen(wirt);
+            if (ip == 0) { printc("unknown name\n", YELLOW); return; }
+            ip_text(ip, text);
+            printc(text, BRIGHT);
+            nl();
+        }
 
-    print("Connecting to port ");
-    printn(port);
-    print(" ... ");
-    if (tcp_verbinden(ip, port) == 0) {
-        printc("no answer -- is the router running?\n", YELLOW);
-        return;
+        print("Connecting to port ");
+        printn(port);
+        print(" ... ");
+        if (tcp_verbinden(ip, port) == 0) {
+            printc("no answer -- is the router running?\n", YELLOW);
+            return;
+        }
+        printc("connected\n", GREEN);
     }
-    printc("connected\n", GREEN);
 
     n = str_nach(HTTP_BAU, "GET ");
+    if (br_proxy != 0) {
+        n = n + str_nach(HTTP_BAU + n, "http://");
+        n = n + str_nach(HTTP_BAU + n, wirt);
+        if (port != 80) {
+            n = n + str_nach(HTTP_BAU + n, ":");
+            n = n + zahl_nach(HTTP_BAU + n, port);
+        }
+    }
     if (pfad[0] == 0) n = n + str_nach(HTTP_BAU + n, "/");
     else n = n + str_nach(HTTP_BAU + n, pfad);
     n = n + str_nach(HTTP_BAU + n, " HTTP/1.0\r\nHost: ");

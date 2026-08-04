@@ -9,6 +9,37 @@ Die tiefer liegenden Fallen haben zusätzlich einen ausführlichen Eintrag in
 
 ---
 
+## Netzwerk fertig: der Vermittler bringt HTTPS
+
+`https://example.com` steht im Browserfenster. Der TB-32 spricht dabei
+**weiterhin nur HTTP** -- die Verschlüsselung macht `proxy.py`.
+
+**Warum das der ehrliche Weg ist.** HTTPS heißt: TLS, Zertifikate, ein
+halbes Dutzend kryptografische Verfahren. Im TB-32 wäre das Jahre Arbeit für
+etwas, das man am Ende nicht sieht. Ein Vermittler ist keine Krücke, sondern
+die Lösung, die es im Netz seit jeher gibt -- in Firmen und Schulen steht
+genau so einer. Der TB-32 gibt ab, was er nicht kann, statt so zu tun als ob.
+
+**Wie der Browser ihn benutzt:** ist ein Vermittler eingetragen, geht die
+Verbindung zu IHM statt zum Server, und in der Anfrage steht die **volle**
+Adresse (`GET https://example.com/ HTTP/1.0`) statt nur des Pfads. Genau so
+macht es jeder Browser mit Proxy. `FETCH` nimmt denselben Weg.
+
+**Eine Kleinigkeit mit Folgen:** zum Abschalten war `NET PROXY 0.0.0.0`
+gedacht. Das geht nicht -- `ip_lesen` gibt dafür 0 zurück, und 0 heißt auch
+„unbrauchbare Eingabe". Der Vermittler blieb also an, und im Selbsttest
+liefen danach vier Prüfungen ins Leere, weil sie über einen längst beendeten
+Vermittler gingen. Jetzt heißt es `NET PROXY OFF`.
+
+Zwei neue Prüfungen, unverschlüsselt gegen einen Server auf dem Mac -- dass
+der Vermittler auch TLS kann, ist Sache von Python und braucht keinen Beweis
+im TB-32. **78/78.**
+
+Damit ist das Netz fertig: Karte, ARP, IP, ICMP, UDP, DNS, TCP, HTTP,
+Browser, Vermittler. Als Nächstes der Weg zum Pi.
+
+---
+
 ## Netzwerk, Stufe 5: der Browser
 
 *Start ▸ Browser*, Adresse eintippen, ENTER. Der TB-32 schlägt den Namen

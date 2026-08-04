@@ -44,8 +44,17 @@ Dann geht `HOST example.com` (nennt die Adresse) und `FETCH example.com`
 
 Und im Schreibtisch gibt es einen **Browser**: *Start ▸ Browser*, Adresse
 eintippen, ENTER. Überschriften, Absätze, Aufzählungen und anklickbare
-Verweise. Kein CSS, kein JavaScript, keine Bilder — und **kein HTTPS**;
-dafür ist später ein Proxy vorgesehen, der die Verschlüsselung übernimmt.
+Verweise. Kein CSS, kein JavaScript, keine Bilder.
+
+Für **HTTPS** kommt der Vermittler dazu — der TB-32 spricht weiter nur HTTP,
+die Verschlüsselung macht ein Programm daneben (auf dem Pi am besten dort):
+
+```bash
+python3 proxy.py     # in einem weiteren Fenster
+```
+
+Im TB-32 dann `NET PROXY 127.0.0.1:8080` — danach geht auch
+`https://example.com`. Ausschalten mit `NET PROXY OFF`.
 
 Befehle: `NET`, `NET IP`, `NET GW`, `NET DNS`, `NET ARP`, `NET SEND`,
 `NET WATCH`, `PING`, `HOST`, `FETCH`.

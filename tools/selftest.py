@@ -502,6 +502,28 @@ def main():
                "TB-32 kann TCP" in L.bild(), L.bild())
         pruefe("TCP: der Server antwortet mit 200",
                "200 OK" in L.bild(), L.bild())
+        # --- Der Vermittler --------------------------------------------------
+        # Er ist der Weg zu HTTPS: der TB-32 sagt ihm in schlichtem HTTP, was
+        # er holen soll. Geprueft wird hier die Kette (unverschluesselt, damit
+        # die Pruefung ohne Internet auskommt) -- dass er auch TLS kann, ist
+        # Sache von Python und braucht keinen Beweis im TB-32.
+        with _socket.socket() as _s:
+            _s.bind(("127.0.0.1", 0))
+            proxy_port = _s.getsockname()[1]
+        vermittler = _sub.Popen([sys.executable, "-u",
+                                 os.path.join(ROOT, "proxy.py"), str(proxy_port)],
+                                cwd=ROOT, stdout=_sub.DEVNULL, stderr=_sub.DEVNULL)
+        L.warte(1.5)
+        L.eingabe(f"net proxy 127.0.0.1:{proxy_port}|ENTER", 1.0)
+        pruefe("Vermittler ist eingetragen", "8080" in L.bild()
+               or str(proxy_port) in L.bild(), L.bild())
+        L.eingabe(f"fetch 127.0.0.1:{web.server_port} /a|ENTER", 14.0)
+        pruefe("Der Vermittler holt die Seite",
+               "Erste Seite" in L.bild(), L.bild())
+        L.eingabe("net proxy off|ENTER", 1.0)
+        vermittler.terminate()
+        vermittler.wait(timeout=5)
+
         # --- Der Browser ---------------------------------------------------
         # Zwei Seiten auf dem Mac: die erste verweist auf die zweite. Damit
         # laesst sich pruefen, was einen Browser ausmacht -- HTML lesen,
