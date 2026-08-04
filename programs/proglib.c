@@ -60,6 +60,24 @@ int  fontaddr()                   { return sc(30, 0, 0, 0, 0); }
 #define CLIP_BUF  0x00130000
 #define CLIP_MAX  8192
 int  clip_holen()                 { return sc(45, 0, 0, 0, 0); }
+/* Ein Programm starten (im Hintergrund) und nachsehen, ob es noch laeuft. */
+int  prog_starten(char* name, char* args) { return sc(47, (int)name, (int)args, 0, 0); }
+int  prog_laeuft(int pid)         { return sc(48, pid, 0, 0, 0) != 0; }
+int  build_fortschritt()          { return sc(49, 0, 0, 0, 0); }
+char* build_text()                { return (char*)sc(50, 0, 0, 0, 0); }
+void mitschrift_an()              { sc(51, 0, 0, 0, 0); }
+void mitschrift_aus()             { sc(52, 0, 0, 0, 0); }
+int  mitschrift_zeilen()          { return sc(53, 0, 0, 0, 0); }
+int  mitschrift_zeile(int n)      { return sc(54, n, 0, 0, 0); }
+/* Dateien im aktuellen Ordner: Name (16 Byte), Art, Groesse. */
+int  ordner_eintrag(int n, int aus) { return sc(55, n, aus, 0, 0); }
+int  ordner_wechseln(char* name)  { return sc(56, (int)name, 0, 0, 0); }
+void ordner_pfad(char* aus)       { sc(57, (int)aus, 0, 0, 0); }
+/* BIOS: Anleitung zeigen, bauen und testen/brennen -- das bleibt im Kernel. */
+void bios_hilfe()                 { sc(58, 0, 0, 0, 0); }
+void bios_bauen(int modus, char* quelle) { sc(59, modus, (int)quelle, 0, 0); }
+/* Etwas in der Kommandozeile starten (dort landet auch seine Ausgabe). */
+void im_fenster_starten(char* n)  { sc(60, (int)n, 0, 0, 0); }
 void clip_setzen(int n)           { sc(46, n, 0, 0, 0); }
 
 int keychar(int k) { return k & 255; }

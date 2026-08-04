@@ -190,6 +190,22 @@ void gx_text(int x, int y, char* s, int farbe) {
 
 int gx_breite(char* s) { return strlen(s) * 8; }
 
+/* Text, der garantiert in seinen Platz passt. Was nicht hineingeht, endet
+   mit zwei Punkten -- sonst malt man ueber den Fensterrand hinaus. */
+char gxt_puffer[104];
+
+void gx_text_max(int x, int y, char* s, int farbe, int bg, int maxpx) {
+    int n; int i;
+    n = maxpx / 8;
+    if (n < 1) return;
+    if (n > 102) n = 102;
+    i = 0;
+    while (s[i] && i < n) { gxt_puffer[i] = s[i]; i++; }
+    if (s[i] && i > 2) { gxt_puffer[i - 1] = '.'; gxt_puffer[i - 2] = '.'; }
+    gxt_puffer[i] = 0;
+    gx_text(x, y, gxt_puffer, farbe);
+}
+
 /* Eine Zahl malen. Ohne die muesste jedes Programm sich selbst eine
    Umwandlung schreiben -- und das haben schon drei getan. */
 void gx_zahl(int x, int y, int n, int farbe) {

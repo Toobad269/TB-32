@@ -157,6 +157,58 @@ int syscall(int fn, int a1, int a2, int a3, int a4) {
        wie viel drinsteht. */
     if (fn == 45) return clip_len;
     if (fn == 46) { clip_len = a1; return 0; }
+    /* --- Ein Programm startet ein Programm -------------------------------
+       Der Coder braucht das: er ruft den Compiler. Frueher stand er im
+       Kernel und konnte prog_run einfach aufrufen; als eigenstaendiges
+       Programm braucht er einen Weg dorthin. */
+    if (fn == 47) { prog_setargs((char*)a2); return prog_run((char*)a1, 1); }
+    if (fn == 48) return a1 >= 0 && a1 < MAXPROC ? p_state[a1] : 0;
+    if (fn == 49) return build_progress;
+    if (fn == 50) return (int)build_status;
+    /* Die mitgeschriebenen Meldungen des Compilers. */
+    if (fn == 51) { cap_start(); return 0; }
+    if (fn == 52) { cap_aktiv = 0; return 0; }
+    if (fn == 53) return cap_voll;
+    if (fn == 54) return cap_adr(a1);
+    /* Der n-te sichtbare Eintrag im aktuellen Ordner -- Name, Art, Groesse.
+       Rueckgabe: wie viele es insgesamt sind. Damit kann ein Programm einen
+       Dateibrowser bauen, ohne die Innereien des Dateisystems zu kennen.
+       Ordner zuerst, dann Dateien -- dieselbe Reihenfolge wie im
+       Dateifenster. */
+    if (fn == 55) {
+        int i; int k; int n; int d; char* nm;
+        n = 0;
+        for (d = 0; d < 2; d++) {
+            for (i = 0; i < FS_MAXFILES; i++) {
+                if (ent_type(i) == 0 || ent_versteckt(i)) continue;
+                if (ent_parent(i) != cwd) continue;
+                if (d == 0 && ent_type(i) != FT_DIR) continue;
+                if (d == 1 && ent_type(i) == FT_DIR) continue;
+                if (n == a1 && a2) {
+                    nm = ent_name(i);
+                    for (k = 0; k < 16; k++) byte_put(a2 + k, nm[k]);
+                    mem_put(a2 + 16, ent_type(i));
+                    mem_put(a2 + 20, ent_size(i));
+                }
+                n++;
+            }
+        }
+        return n;
+    }
+    /* Ordner wechseln und den Pfad erfragen -- dasselbe, was CD tut. */
+    if (fn == 56) return fs_chdir((char*)a1);
+    if (fn == 57) { fs_path((char*)a1); return 0; }
+    /* Die BIOS-Sachen bleiben im Kernel. Das Brennen eines BIOS ist die
+       einzige Stelle, an der man den Rechner unbrauchbar machen kann --
+       die Sicherungen dafuer (Pruefsumme, rote Rueckfrage, Einmal-Test)
+       gehoeren dorthin, wo sie niemand umgehen kann. Der Coder bittet
+       darum, statt es selbst zu tun. */
+    if (fn == 58) { bh_top = 0; starte(APP_BIOSHILFE, "Writing a BIOS", 460, 300); return 0; }
+    if (fn == 59) { bios_bauen(a1, (char*)a2); return 0; }
+    /* Ein Programm in der Kommandozeile starten -- der Coder benutzt das
+       fuer "Run": das Ergebnis soll seine Ausgaben irgendwo hinschreiben
+       koennen, und dafuer ist das Terminalfenster da. */
+    if (fn == 60) { gui_im_fenster((char*)a1); return 0; }
     return 0 - 1;
 }
 

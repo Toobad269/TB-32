@@ -20,8 +20,6 @@
 #include "term.c"
 #include "syscall.c"
 #include "gui.c"
-#include "coder.c"
-#include "dialog.c"
 
 #define CMDMAX 128
 

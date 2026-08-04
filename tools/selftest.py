@@ -550,7 +550,7 @@ def main():
         # laesst sich pruefen, was einen Browser ausmacht -- HTML lesen,
         # umbrechen, darstellen, und einem Verweis folgen.
         L.eingabe("WIN|ENTER", 3.0)
-        menue(5)                                     # Start > Browser
+        menue(4)                                     # Start > Browser
         L.warte(1.5)
         L.eingabe("|".join(["BACKSPACE"] * 20), 0.5)   # Adresszeile leeren
         L.eingabe(f"127.0.0.1:{web.server_port}/a|ENTER", 1.0)
@@ -723,9 +723,13 @@ def main():
     term = "".join(chr(ram[0x00120000 + i * 2]) for i in range(70 * 8))
     pruefe("Befehle im Terminalfenster", "TOOBAD-OS Version" in term)
 
-    menue(2)                                     # Editor
-    L.warte(1.0)
-    pruefe("Editorfenster öffnet sich", sum(L.m.vga.gfx[200 * 640:210 * 640]) > 0)
+    L.eingabe("start coder.tbx /b|ENTER", 1.0)
+    for _ in range(int(25.0 / L.dt)):
+        L.m.run_slice(L.dt)
+        if 18 in [wort(L.m, symbole()["win_type"] + i * 4) for i in range(6)]:
+            break
+    pruefe("Der Coder laeuft als eigenes Programm",
+           18 in [wort(L.m, symbole()["win_type"] + i * 4) for i in range(6)])
     # ESC führt bewusst NICHT mehr aus dem Schreibtisch heraus (eine
     # versehentlich gedrückte Taste warf einen mitten aus der Arbeit in die
     # Textkonsole). Der Weg hinaus ist der letzte Menüpunkt "Exit desktop".

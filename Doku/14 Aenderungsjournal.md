@@ -9,6 +9,53 @@ Die tiefer liegenden Fallen haben zusätzlich einen ausführlichen Eintrag in
 
 ---
 
+## Der Coder ist ausgezogen -- der größte Brocken
+
+780 Zeilen in `gui.c`, dazu die Farbgebung aus `coder.c` und der Textkern aus
+`edit.c`: der Coder war der dickste Teil des Kernels. Jetzt liegt er als
+`\PROGS\CODER.TBX` auf der Platte.
+
+**Fünf neue Systemaufrufe** waren nötig, weil ein Programm Dinge braucht, die
+vorher „einfach da" waren:
+
+| Nr. | wofür |
+|---|---|
+| 47/48 | ein Programm startet ein Programm und fragt, ob es noch läuft — der Coder ruft damit den Compiler |
+| 51–54 | die mitgeschriebenen Meldungen des Compilers |
+| 55–57 | den aktuellen Ordner auflisten, wechseln, den Pfad erfragen — damit kann jedes Programm einen Dateibrowser bauen |
+| 58/59 | die BIOS-Anleitung zeigen und ein BIOS bauen |
+| 60 | etwas in der Kommandozeile starten (dort landet die Ausgabe) |
+
+**Was ausdrücklich im Kernel bleibt: das Brennen eines BIOS.** Das ist die
+einzige Stelle, an der man den Rechner unbrauchbar machen kann. Die
+Sicherungen dagegen -- Prüfsumme, rote Rückfrage, Einmal-Test -- gehören
+dorthin, wo kein Programm sie umgehen kann. Der Coder *bittet* darum, statt
+es selbst zu tun.
+
+**Zwei Fehler, die dasselbe Muster hatten.** Beim Herausschneiden aus `gui.c`
+habe ich zweimal zu viel erwischt: einmal die Variablen der Dateiverwaltung
+(sie standen direkt hinter `edg_masse`), einmal die des BIOS-Bauens. Beide
+Male meldete der Compiler eine „unbekannte Variable" an ganz anderer Stelle.
+Die Lehre: beim Ausschneiden bis zur **schließenden Klammer** der Funktion
+gehen, nicht bis zum Anfang der nächsten -- dazwischen steht oft anderes.
+
+**Und einer, den man sofort sieht:** der Hintergrund. Im Kernel malte der
+Schreibtisch den Fensterrahmen samt Füllung, bevor die Anwendung dran war.
+Im eigenen Puffer muss das Programm selbst wischen -- sonst stand die alte
+Ansicht darunter durch.
+
+Der Dateidialog (`system/dialog.c`) ist ersatzlos entfallen: seine drei
+Kunden -- Paint, Word, Coder -- sind alle ausgezogen und fragen jetzt in
+ihrem eigenen Fenster nach dem Namen. Ein Doppelklick im Dateifenster
+startet den Coder mit dem Dateinamen als Argument.
+
+**Der Kernel ist um rund 2400 Zeilen leichter.** 85/85.
+
+**Stand:** Im Kernel sind noch Dateimanager, Kommandozeile, System Monitor,
+Control Panel, Settings, Browser -- und Clock und About, die dort bleiben.
+
+---
+
 ## Word ist ausgezogen
 
 `system/word.c` gibt es nicht mehr -- Word liegt als `\PROGS\WORD.TBX` auf

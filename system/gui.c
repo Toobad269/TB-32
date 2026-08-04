@@ -172,14 +172,6 @@ int  edg_folgen = 1;
 
 #define EDG_GUTTER 40                /* Spalte fuer die Zeilennummern */
 
-void edg_masse(int w) {
-    edg_cols = (win_w[w] - 14 - EDG_GUTTER) / 8;
-    /* Titelleiste, Statuszeile, Knopfleiste -- und unten Rand, damit die
-       Knoepfe nicht am Fensterrand kleben. */
-    edg_rows = (win_h[w] - TITLE_H - 54) / 9;
-    if (edg_cols < 10) edg_cols = 10;
-    if (edg_rows < 3) edg_rows = 3;
-}
 int  file_sel = 0;              /* markierte Zeile in der Dateiverwaltung */
 int  file_top = 0;              /* erste sichtbare Zeile (Blaettern) */
 int  file_rows = 11;            /* wie viele Zeilen ins Fenster passen */
@@ -578,19 +570,6 @@ void app_files(int w) {
    in edit.c und wird hier einfach mitbenutzt -- gezeichnet wird nur anders.
    ========================================================================== */
 
-void edg_oeffnen(char* name) {
-    int n;
-    memset(edg_name, 0, 20);
-    strncpy(edg_name, name, 18);
-    syn_sprache(edg_name);
-    n = fs_read(name, ED_BUF, ED_MAX);
-    if (n < 0) n = 0;                            /* neue Datei */
-    ed_len = n;
-    ed_pos = 0;
-    edg_top = 0;
-    edg_meldung = 0;
-    edg_namemode = 0;
-}
 
 /* ==========================================================================
    Startbildschirm des Editors
@@ -635,27 +614,6 @@ void edg_oeffnen(char* name) {
 int edg_bios_wert = 0;
 int edg_bios_len = 0 - 1;   /* -1 = noch nie gesucht */
 
-int edg_ist_bios() {
-    char* t;
-    int i; int n;
-    /* Nur nachsehen, wenn sich am KOPF etwas geaendert haben kann. Beim
-       Tippen weiter unten bleibt die Kennung, was sie war -- vorher wurde
-       bei jedem Anschlag neu gesucht, weil sich ed_len aendert. Das waren
-       25 Prozent der Rechenzeit des Coders. */
-    if (ed_len == edg_bios_len) return edg_bios_wert;
-    if (edg_bios_len >= 0 && ed_pos > 400) { edg_bios_len = ed_len; return edg_bios_wert; }
-    edg_bios_len = ed_len;
-    edg_bios_wert = 0;
-    t = ed_text();
-    n = ed_len;
-    if (n > 400) n = 400;
-    for (i = 0; i < n - 3; i++)
-        if (t[i] == 'T' && t[i+1] == 'B' && t[i+2] == 'B' && t[i+3] == 'I') {
-            edg_bios_wert = 1;
-            return 1;
-        }
-    return 0;
-}
 
 /* Welche Knoepfe gehoeren zu welcher Art Quelltext?
 
@@ -671,369 +629,32 @@ int edg_ist_bios() {
 #define ART_PY    1
 #define ART_BIOS  2
 
-int cb_w(int i) {
-    if (i == CB_BACK)  return 50;
-    if (i == CB_NEW)   return 38;
-    if (i == CB_SAVE)  return 44;
-    if (i == CB_NAME)  return 46;
-    if (i == CB_BUILD) return 50;
-    if (i == CB_RUN)   return 40;
-    if (i == CB_FIND)  return 40;
-    if (i == CB_SUCHE) return 100;
-    if (i == CB_TEST)  return 52;
-    return 56;
-}
 
-char* cb_text(int i) {
-    if (i == CB_BACK)  return "< Back";
-    if (i == CB_NEW)   return "New";
-    if (i == CB_SAVE)  return "Save";
-    if (i == CB_NAME)  return "Name";
-    if (i == CB_BUILD) return "Build";
-    if (i == CB_RUN)   return "Run";
-    if (i == CB_FIND)  return "Find";
-    if (i == CB_TEST)  return "Test";
-    return "Flash";
-}
 
-int edg_art() {
-    if (edg_ist_bios()) return ART_BIOS;
-    if (endet_auf(edg_name, ".PY")) return ART_PY;
-    return ART_PROG;
-}
 
-int cb_sichtbar(int art, int i) {
-    if (i == CB_BUILD) return art == ART_PROG;
-    if (i == CB_RUN)   return art != ART_BIOS;
-    if (i == CB_TEST)  return art == ART_BIOS;
-    if (i == CB_FLASH) return art == ART_BIOS;
-    return 1;
-}
 
 /* Die Knoepfe ruecken zusammen, wenn einer fehlt -- sonst klafft mitten in
    der Leiste ein Loch. Zeichnen und Klicken fragen dieselbe Funktion, damit
-   die beiden nicht auseinanderlaufen koennen. */
-int cb_pos(int art, int ziel) {
-    int i; int x;
-    x = 0;
-    for (i = 0; i < CB_GESAMT; i++) {
-        if (cb_sichtbar(art, i) == 0) continue;
-        if (i == ziel) return x;
-        x = x + cb_w(i) + 4;
-    }
-    return 0 - 1;
-}
 
 /* Der Coder ist zum Programmieren da. Notizen und Texte schreibt man in
    Word -- deshalb gibt es hier nur noch die drei Sprachen. */
 #define EDG_NEU_ANZ 4
 
-char* edg_neu_name(int i) {
-    if (i == 1) return "NEW.ASM";
-    if (i == 2) return "NEW.PY";
-    if (i == 3) return "MYBIOS.ASM";
-    return "NEW.C";
-}
 
-char* edg_neu_text(int i) {
-    if (i == 1) return "Assembler        .ASM";
-    if (i == 2) return "Python script    .PY";
-    if (i == 3) return "BIOS             .ASM";
-    return "C program        .C";
-}
 
-/* Eine kleine Vorlage, damit man nicht vor einer leeren Seite sitzt. */
-char* edg_vorlage(int i) {
-    if (i == 0) return "int main() {\n    print(\"Hello from TOOBAD-OS\\n\");\n    getkey();\n    return 0;\n}\n";
-    if (i == 1) return "; TB-32 assembler\nstart:\n    li r1, text\n    movi r0, 1\n    int 0x10\n    hlt\ntext:\n    .db \"Hello\", 0\n";
-    if (i == 2) return "print(\"Hello from TOOBAD-OS\")\n";
-    /* Die BIOS-Vorlage startet sofort -- sie laedt den Bootsektor und
-       springt hinein. Alles Weitere baut man drumherum. Was ein BIOS
-       liefern muss, sagt der ?-Knopf. */
-    if (i == 3) return ".include \"const.inc\"\n.org ROM_BASE\n\nentry:\n    jmp startup                   ; 0x00\n    .db \"TBBI\"                    ; 0x04 signature\n    .dw 0                         ; 0x08 length\n    .dw 0                         ; 0x0C checksum\n    .db \"MY BIOS\", 0              ; 0x10 name on the splash screen\n    .space 24\n\nstartup:                          ; 0x30\n    li sp, BIOS_STACK\n    cli\n    li r10, BDA_BASE              ; clear the BIOS data area\n    li r11, 256\n    movi r12, 0\n.clear:\n    stw [r10], r12\n    addi r10, r10, 4\n    subi r11, r11, 1\n    cmpi r11, 0\n    jnz .clear\n    movi r10, ATTR_NORMAL\n    stwa BDA_ATTR, r10\n\n    movi r10, 100                 ; 100 timer ticks per second\n    out P_TIMER_HZ, r10\n    sti\n\n    movi r1, 0                    ; read the boot sector\n    movi r2, 1\n    li r3, BOOT_ADDR\n    out P_DISK_LBA, r1\n    out P_DISK_COUNT, r2\n    out P_DISK_ADDR, r3\n    movi r10, 1\n    out P_DISK_CMD, r10\n    in r0, P_DISK_STATUS\n    cmpi r0, 0\n    jnz .stop\n\n    li r10, BOOT_ADDR             ; ... and jump into it\n    jmpr r10\n.stop:\n    hlt\n    jmp .stop\n";
-    return "int main() {\n    print(\"Hello from TOOBAD-OS\\n\");\n    getkey();\n    return 0;\n}\n";
-}
 
 int edg_neu_wahl = 0;            /* welche Vorlage gerade angelegt wird */
 
-void edg_neu(int i) {
-    char* v; char* t;
-    memset(edg_name, 0, 20);
-    strncpy(edg_name, edg_neu_name(i), 18);
-    syn_sprache(edg_name);
-    v = edg_vorlage(i);
-    t = ed_text();
-    ed_len = 0;
-    while (*v) { t[ed_len] = *v; ed_len++; v++; }
-    ed_pos = ed_len;
-    edg_top = 0;
-    edg_meldung = 0;
-    edg_namemode = 0;
-    ed_sel_von = 0 - 1;
-    ed_sel_bis = 0 - 1;
-    edg_screen = 1;
-}
 
 /* "New" fragt erst nach dem Platz. Das Schreibfenster geht ueberhaupt nur
    auf, wenn einer gewaehlt wurde -- bricht man ab, bleibt die Startseite
-   stehen und es entsteht keine halbe Datei. */
-void edg_neu_starten(int i) {
-    edg_neu_wahl = i;
-    edg_ort = 0;
-    memset(edg_name, 0, 20);
-    strncpy(edg_name, edg_neu_name(i), 18);
-    dlg_oeffne(APP_EDITOR, DLG_SPEICHERN, "", edg_name);
-    dlg_neu = 1;
-}
 
-void edg_neu_anlegen() {
-    edg_neu(edg_neu_wahl);
-}
 
-void edg_start_masse(int w) {
-    es_x = win_x[w] + 4;
-    es_y = win_y[w] + TITLE_H + 4;
-    es_w = win_w[w] - 8;
-    es_h = win_h[w] - TITLE_H - 8;
-    es_lw = 210;
-    if (es_lw > es_w / 2) es_lw = es_w / 2;
-    es_py = es_y + 30;
-    es_fy = es_y + es_h - 34;
-    es_rx = es_x + es_lw + 16;
-    es_rw = es_x + es_w - 8 - es_rx;
-    if (es_rw < 40) es_rw = 40;
-    es_rows = (es_fy - 22 - (es_py + 16)) / 12;
-    if (es_rows < 1) es_rows = 1;
-    if (es_rows > 26) es_rows = 26;
-}
 
-void edg_startscreen(int w) {
-    int i; int idx; int y; int farbe;
 
-    edg_start_masse(w);
-    g_fill(es_x, es_y, es_w, es_h, C_WIN);
-    g_text(es_x + 8, es_y + 8, "What do you want to do?", C_TEXT, 256);
 
-    /* --- links: etwas Neues --- */
-    g_text(es_x + 8, es_py, "Create new file", C_ACCENT, 256);
-    for (i = 0; i < EDG_NEU_ANZ; i++)
-        g_button(es_x + 8, es_py + 16 + i * 32, es_lw - 16, 26, edg_neu_text(i), 0);
 
-    /* --- rechts: etwas Vorhandenes --- */
-    g_text(es_rx, es_py, "Open file or folder", C_ACCENT, 256);
-    /* Der Weg einen Ordner hoeher gehoert direkt an die Liste, wie in der
-       Dateiverwaltung -- unten in der Ecke findet ihn niemand. */
-    g_button(es_rx + es_rw - 48, es_py - 4, 48, 16, "Up", 0);
-    g_fill(es_rx, es_py + 16, es_rw, es_rows * 12 + 4, C_WHITE);
-    g_frame(es_rx, es_py + 16, es_rw, es_rows * 12 + 4, C_BLACK);
-    for (i = 0; i < es_rows; i++) {
-        idx = file_index(edg_liste_top + i);
-        if (idx < 0) break;
-        y = es_py + 20 + i * 12;
-        farbe = C_TEXT;
-        if (ent_type(idx) == FT_DIR) farbe = C_ACCENT;
-        g_text(es_rx + 4, y, ent_name(idx), farbe, 256);
-        if (ent_type(idx) == FT_DIR) g_text(es_rx + es_rw - 36, y, "DIR", C_ACCENT, 256);
-    }
 
-    /* --- unten: wo das Ganze liegt --- */
-    fs_path(gui_pfad);
-    g_text(es_x + 8, es_fy, "Folder:", C_TEXT, 256);
-    g_text(es_x + 70, es_fy, gui_pfad, C_ACCENT, 256);
-    g_text(es_x + 8, es_fy + 14,
-           "New files are saved here. Click a folder to change it.", C_WINDARK, 256);
-}
-
-int edg_start_klick(int w, int mx, int my) {
-    int i; int idx;
-    edg_start_masse(w);
-    for (i = 0; i < EDG_NEU_ANZ; i++) {
-        if (treffer(mx, my, es_x + 8, es_py + 16 + i * 32, es_lw - 16, 26)) {
-            edg_neu_starten(i);
-            return 1;
-        }
-    }
-    if (treffer(mx, my, es_rx + es_rw - 48, es_py - 4, 48, 16)) {
-        fs_chdir("..");
-        edg_liste_top = 0;
-        return 1;
-    }
-    for (i = 0; i < es_rows; i++) {
-        if (treffer(mx, my, es_rx, es_py + 20 + i * 12, es_rw, 12)) {
-            idx = file_index(edg_liste_top + i);
-            if (idx < 0) return 0;
-            if (ent_type(idx) == FT_DIR) {
-                fs_chdir(ent_name(idx));
-                edg_liste_top = 0;
-                return 1;
-            }
-            edg_oeffnen(ent_name(idx));
-            edg_screen = 1;
-            return 1;
-        }
-    }
-    return 0;
-}
-
-/* Welche Meldung steht gerade rechts in der Statuszeile? 0 = keine. */
-char* edg_statustext() {
-    if (edg_build) {
-        if (edg_run_danach) return "building, then run";
-        return "building ...";
-    }
-    if (edg_meldung == 1) return "saved";
-    if (edg_meldung == 2) return "built";
-    if (edg_meldung == 3) return "errors";
-    if (cod_gefunden == 2) return "not found";
-    return 0;
-}
-
-int edg_statusfarbe() {
-    if (edg_build) return C_ACCENT;
-    if (edg_meldung == 3 || cod_gefunden == 2) return C_WARN;
-    return C_GOOD;
-}
-
-void app_editor(int w) {
-    char* t;
-    int x; int y; int zeile; int spalte; int p; int c; int i;
-    int cz; int breite; int hoehe; int n;
-
-    if (edg_screen == 0) { edg_startscreen(w); return; }
-    edg_masse(w);
-    x = win_x[w] + 4;
-    y = win_y[w] + TITLE_H + 4;
-    breite = win_w[w] - 8;
-    hoehe = EDG_ROWS * 9 + 4;
-    t = ed_text();
-
-    /* Sichtbereich dem Cursor nachfuehren */
-    cz = ed_line_of(ed_pos);
-    if (edg_folgen) {
-        if (cz < edg_top) edg_top = cz;
-        if (cz >= edg_top + EDG_ROWS) edg_top = cz - EDG_ROWS + 1;
-    }
-
-    g_fill(x, y, breite, hoehe, C_WHITE);
-    g_frame(x, y, breite, hoehe, C_BLACK);
-    /* Spalte fuer die Zeilennummern, leicht abgesetzt */
-    g_fill(x + 1, y + 1, EDG_GUTTER - 3, hoehe - 2, C_WIN);
-    g_fill(x + EDG_GUTTER - 2, y + 1, 1, hoehe - 2, C_WINDARK);
-
-    p = ed_start_of_line(edg_top);
-    syn_bauen(p, EDG_ROWS, EDG_COLS);
-    for (zeile = 0; zeile < EDG_ROWS; zeile++) {
-        int lauf; int lauf_farbe; int lauf_start; int lauf_sp;
-        if (p <= ed_len)
-            g_num(x + 4, y + 3 + zeile * 9, edg_top + zeile + 1, C_WINDARK, 256);
-        spalte = 0;
-        lauf = 0;
-        lauf_farbe = C_BLACK;
-        lauf_sp = 0;
-        lauf_start = (int)t + p;
-        while (p < ed_len && t[p] != 10) {
-            if (spalte < EDG_COLS) {
-                c = syn_farbe(zeile, spalte, EDG_COLS);
-                /* Markierter Text wird einzeln und invers gemalt -- das
-                   passiert selten genug, dass es nichts kostet. */
-                if (ed_sel_von >= 0 && p >= ed_sel_von && p < ed_sel_bis) {
-                    if (lauf > 0) {
-                        g_str(x + EDG_GUTTER + 3 + lauf_sp * 8,
-                              y + 3 + zeile * 9, lauf_start, lauf, lauf_farbe, 256);
-                        lauf = 0;
-                    }
-                    g_fill(x + EDG_GUTTER + 3 + spalte * 8, y + 2 + zeile * 9, 8, 9,
-                           C_TITLEBAR);
-                    g_char(x + EDG_GUTTER + 3 + spalte * 8, y + 3 + zeile * 9,
-                           t[p], C_WHITE, 256);
-                    lauf_start = (int)t + p + 1;
-                } else if (lauf > 0 && c == lauf_farbe) {
-                    lauf++;
-                } else {
-                    if (lauf > 0)
-                        g_str(x + EDG_GUTTER + 3 + lauf_sp * 8,
-                              y + 3 + zeile * 9, lauf_start, lauf, lauf_farbe, 256);
-                    lauf_start = (int)t + p;
-                    lauf_farbe = c;
-                    lauf_sp = spalte;
-                    lauf = 1;
-                }
-            }
-            spalte++;
-            p++;
-        }
-        if (lauf > 0)
-            g_str(x + EDG_GUTTER + 3 + lauf_sp * 8, y + 3 + zeile * 9,
-                  lauf_start, lauf, lauf_farbe, 256);
-        if (p < ed_len) p++;
-    }
-
-    /* Schreibmarke */
-    spalte = ed_col_of(ed_pos);
-    if (spalte < EDG_COLS && cz - edg_top < EDG_ROWS) {
-        g_fill(x + EDG_GUTTER + 3 + spalte * 8, y + 3 + (cz - edg_top) * 9 + 8, 7, 1,
-               C_TITLEBAR);
-    }
-
-    /* Statuszeile */
-    y = y + hoehe + 4;
-    g_text(x, y, "File:", C_TEXT, 256);
-    if (edg_namemode) {
-        g_fill(x + 44, y - 1, 150, 10, C_TITLEBAR);
-        g_text(x + 46, y, edg_name, C_WHITE, 256);
-        g_fill(x + 48 + strlen(edg_name) * 8, y, 7, 8, C_WHITE);
-    } else {
-        g_text(x + 46, y, edg_name, C_ACCENT, 256);
-    }
-    fs_path(gui_pfad);
-    g_text(x + 210, y, "in", C_TEXT, 256);
-    g_text(x + 234, y, gui_pfad, C_TEXT, 256);
-
-    /* Suchfeld -- rechts neben dem Pfad, sonst wird es zu eng */
-    g_text(x + 350, y, "Ln", C_TEXT, 256);
-    g_num(x + 372, y, cz + 1, C_TEXT, 256);
-    g_text(x + 410, y, "Col", C_TEXT, 256);
-    g_num(x + 440, y, spalte + 1, C_TEXT, 256);
-    /* Die Byte-Zahl nur, wenn rechts keine Meldung steht -- beide teilen
-       sich denselben Platz. Vorher standen sie uebereinander, und das
-       gruene "saved" lief ausserdem unter dem ?-Knopf hindurch aus dem
-       Fenster heraus. */
-    if (edg_statustext() == 0) {
-        g_text(x + 480, y, "Bytes", C_TEXT, 256);
-        g_num(x + 528, y, ed_len, C_TEXT, 256);
-    }
-
-    /* Knopfleiste */
-    y = y + 14;
-    /* Ganz links der Weg zurueck zur Dateiauswahl -- wie der Up-Knopf in der
-       Dateiverwaltung. Ohne ihn kommt man aus einer offenen Datei nicht mehr
-       heraus, ausser ueber "New". */
-    n = edg_art();
-    /* Das ? erklaert, wie man ein BIOS schreibt -- bei einem C-Programm
-       waere es nur im Weg. */
-    if (n == ART_BIOS) g_button(x + win_w[w] - 36, y - 14, 20, 14, "?", 0);
-    for (i = 0; i < CB_GESAMT; i++) {
-        if (cb_sichtbar(n, i) == 0 || i == CB_SUCHE) continue;
-        g_button(x + cb_pos(n, i), y, cb_w(i), 16, cb_text(i),
-                 i == CB_FIND ? cod_suchmode : 0);
-    }
-    p = cb_pos(n, CB_SUCHE);
-    g_fill(x + p, y + 1, cb_w(CB_SUCHE), 14, C_WHITE);
-    g_frame(x + p, y + 1, cb_w(CB_SUCHE), 14, C_WINDARK);
-    g_text(x + p + 3, y + 4, cod_suche, C_TEXT, 256);
-    if (cod_suchmode)
-        g_fill(x + p + 3 + strlen(cod_suche) * 8, y + 4, 7, 8, C_ACCENT);
-
-    /* Statusfeld rechts neben den Knoepfen -- Ladebalken und Meldungen
-       teilen sich denselben Platz. */
-    y = y - 14;                          /* Meldungen in die Statuszeile */
-    t = edg_statustext();
-    if (t) {
-        /* Rechtsbuendig, und zwar VOR dem ?-Knopf. Feste Spalte 560 hiess
-           bei 588 Punkten Platz: drei Zeichen -- alles andere ragte hinaus. */
-        g_text(x + win_w[w] - 44 - strlen(t) * 8, y, t, edg_statusfarbe(), 256);
-    }
-}
 
 /* --- Zwischenablage ------------------------------------------------------
    Ausschneiden, Kopieren, Einfuegen mit Strg+X / Strg+C / Strg+V.
@@ -1067,27 +688,7 @@ void ed_einfuegen() {
     edg_meldung = 0;
 }
 
-/* Position im Text aus Mauskoordinaten bestimmen */
-int edg_pos_aus_maus(int w, int mx, int my) {
-    int x; int y; int zeile; int spalte; int p; int ende;
-    edg_masse(w);
-    x = win_x[w] + 4;
-    y = win_y[w] + TITLE_H + 4;
-    zeile = (my - y - 3) / 9 + edg_top;
-    spalte = (mx - x - 3 - EDG_GUTTER) / 8;
-    if (zeile < 0) zeile = 0;
-    if (spalte < 0) spalte = 0;
-    p = ed_start_of_line(zeile);
-    ende = ed_line_end(p);
-    if (p + spalte > ende) return ende;
-    return p + spalte;
-}
 
-/* Speichert den Text unter dem eingestellten Namen. */
-void edg_speichern() {
-    if (fs_write(edg_name, ED_BUF, ed_len) == 0) edg_meldung = 1;
-    else edg_meldung = 3;
-}
 
 /* Uebersetzt die Datei: passendes Werkzeug im Hintergrund starten. */
 /* ==========================================================================
@@ -1142,24 +743,30 @@ int bios_pruefen(int adr, int len) {
     return 0;
 }
 
-void bios_bauen(int modus) {
+/* Ein BIOS bauen und danach testen oder brennen.
+
+   <quelle> ist die Assembler-Datei; der Coder hat sie vorher gespeichert.
+   Frueher stand er im Kernel und diese Funktion griff einfach auf seine
+   Variablen zu -- jetzt bekommt sie den Namen gesagt. Das Brennen selbst
+   bleibt hier: es ist die einzige Stelle, an der man den Rechner
+   unbrauchbar machen kann, und die Sicherungen dagegen gehoeren dorthin,
+   wo kein Programm sie umgehen kann. */
+void bios_bauen(int modus, char* quelle) {
     char args[48];
     int i; int n;
 
     bios_modus = modus;
-    edg_speichern();
-    if (edg_meldung == 3) return;
 
     memset(edg_ziel, 0, 20);
-    n = strlen(edg_name);
+    n = strlen(quelle);
     i = n;
-    while (i > 0 && edg_name[i - 1] != '.') i--;
+    while (i > 0 && quelle[i - 1] != '.') i--;
     if (i == 0) i = n + 1;
-    strncpy(edg_ziel, edg_name, i);
+    strncpy(edg_ziel, quelle, i);
     edg_ziel[i - 1] = 0;
     strcat(edg_ziel, ".BIN");
 
-    strcpy(args, edg_name);
+    strcpy(args, quelle);
     strcat(args, " ");
     strcat(args, edg_ziel);
     prog_setargs(args);
@@ -1290,241 +897,8 @@ void app_bioshilfe(int i) {
                C_WINDARK, 256, win_w[i] - 16);
 }
 
-void edg_uebersetzen() {
-    char args[48];
-    int i; int n;
 
-    edg_speichern();
-    if (edg_meldung == 3) return;
 
-    /* Zielname: NAME.C -> NAME.TBX */
-    memset(edg_ziel, 0, 20);
-    n = strlen(edg_name);
-    i = n;
-    while (i > 0 && edg_name[i - 1] != '.') i--;
-    if (i == 0) i = n + 1;
-    strncpy(edg_ziel, edg_name, i);
-    edg_ziel[i - 1] = 0;
-    strcat(edg_ziel, ".TBX");
-
-    strcpy(args, edg_name);
-    strcat(args, " ");
-    strcat(args, edg_ziel);
-    prog_setargs(args);
-
-    build_progress = 0;
-    if (mt_active == 0) mt_enable();
-    if (endet_auf(edg_name, ".ASM")) edg_pid = prog_run("ASM.TBX", 1);
-    else                             edg_pid = prog_run("CC.TBX", 1);
-    if (edg_pid >= 0) {
-        edg_build = 1;
-        edg_meldung = 0;
-        build_status[0] = 0;
-        cap_start();                     /* Meldungen mitschreiben */
-        starte(APP_BUILD, "Compiling", 480, 300);
-    } else {
-        edg_meldung = 3;
-    }
-}
-
-/* Tastendruck im Editorfenster */
-void edg_taste(int k) {
-    int c; int code; int z; int sp2; int p;
-    if (edg_screen == 0) return;      /* dort wird nur geklickt */
-    edg_folgen = 1;              /* beim Tippen springt die Ansicht mit */
-    c = keychar(k);
-    code = keycode(k);
-
-    /* Im Suchmodus geht jeder Anschlag ins Suchfeld. Die Eingabetaste sucht
-       das naechste Vorkommen, ESC beendet die Suche. */
-    if (cod_suchmode) {
-        z = strlen(cod_suche);
-        if (code == K_ENTER) { cod_finden(); return; }
-        if (code == K_ESC)   { cod_suchmode = 0; cod_gefunden = 0; return; }
-        if (code == K_BACKSPACE) { if (z > 0) cod_suche[z - 1] = 0; return; }
-        if (c >= 32 && c < 127 && z < 28) {
-            cod_suche[z] = c;
-            cod_suche[z + 1] = 0;
-        }
-        return;
-    }
-    if (c == 6) { cod_suchmode = 1; cod_gefunden = 0; return; }   /* Strg+F */
-    if (code == K_F3) { cod_finden(); return; }
-
-    if (edg_namemode) {                          /* Dateiname wird getippt */
-        z = strlen(edg_name);
-        if (code == K_ENTER) { edg_namemode = 0; return; }
-        if (code == K_ESC)   { edg_namemode = 0; return; }
-        if (code == K_BACKSPACE) { if (z > 0) edg_name[z - 1] = 0; return; }
-        if (c >= 32 && c < 127 && z < 17) {
-            edg_name[z] = toupper(c);
-            edg_name[z + 1] = 0;
-        }
-        return;
-    }
-
-    if (code == K_F2) { edg_speichern(); return; }
-    if (code == K_F5) { edg_uebersetzen(); return; }
-    if (c == 3)  { ed_kopieren(); return; }                  /* Strg+C */
-    if (c == 24) { ed_kopieren(); ed_loesche_auswahl(); return; }   /* Strg+X */
-    if (c == 22) { ed_einfuegen(); return; }                 /* Strg+V */
-    if (c == 1) {                                            /* Strg+A */
-        ed_sel_von = 0;
-        ed_sel_bis = ed_len;
-        return;
-    }
-    if (code == K_BACKSPACE) { ed_backspace(); edg_meldung = 0; return; }
-    if (code == K_DEL)       { ed_delete(); edg_meldung = 0; return; }
-    if (code == K_ENTER)     { cod_umbruch(); edg_meldung = 0; return; }
-    if (code == K_LEFT)      { if (ed_pos > 0) ed_pos--; return; }
-    if (code == K_RIGHT)     { if (ed_pos < ed_len) ed_pos++; return; }
-    if (code == K_HOME)      { ed_pos = ed_line_start(ed_pos); return; }
-    if (code == K_END)       { ed_pos = ed_line_end(ed_pos); return; }
-    if (code == K_UP) {
-        z = ed_line_of(ed_pos);
-        sp2 = ed_col_of(ed_pos);
-        if (z > 0) {
-            p = ed_start_of_line(z - 1);
-            if (p + sp2 > ed_line_end(p)) p = ed_line_end(p);
-            else p = p + sp2;
-            ed_pos = p;
-        }
-        return;
-    }
-    if (code == K_DOWN) {
-        z = ed_line_of(ed_pos);
-        sp2 = ed_col_of(ed_pos);
-        p = ed_start_of_line(z + 1);
-        if (p + sp2 > ed_line_end(p)) p = ed_line_end(p);
-        else p = p + sp2;
-        ed_pos = p;
-        return;
-    }
-    if (code == K_PGUP) {
-        z = ed_line_of(ed_pos) - EDG_ROWS;
-        if (z < 0) z = 0;
-        ed_pos = ed_start_of_line(z);
-        return;
-    }
-    if (code == K_PGDN) {
-        ed_pos = ed_start_of_line(ed_line_of(ed_pos) + EDG_ROWS);
-        return;
-    }
-    if (c == 9) { ed_insert(32); ed_insert(32); edg_meldung = 0; return; }
-    if (c >= 32 && c < 127) {
-        if (ed_sel_von >= 0 && ed_sel_bis > ed_sel_von) ed_loesche_auswahl();
-        ed_insert(c);
-        edg_meldung = 0;
-    }
-}
-
-/* Klick im Editorfenster */
-int edg_klick(int w, int mx, int my) {
-    int x; int y; int n;
-    if (edg_screen == 0) return edg_start_klick(w, mx, my);
-    edg_folgen = 1;
-    edg_masse(w);
-    x = win_x[w] + 4;
-
-    /* Klick in den Text: Schreibmarke setzen, Auswahl beginnen */
-    y = win_y[w] + TITLE_H + 4;
-    if (my >= y && my < y + EDG_ROWS * 9 + 4) {
-        ed_pos = edg_pos_aus_maus(w, mx, my);
-        ed_sel_von = ed_pos;
-        ed_sel_bis = ed_pos;
-        edg_zieht = 1;
-        return 1;
-    }
-
-    y = win_y[w] + TITLE_H + 4 + EDG_ROWS * 9 + 8;
-
-    if (my >= y - 4 && my < y + 10) {            /* Zeile mit dem Dateinamen */
-        /* Das ? liegt in DIESER Zeile, ganz rechts. Es muss vor dem
-           `return 0` geprueft werden -- sonst verschluckt die Statuszeile
-           den Klick, und der Knopf tat nie etwas. */
-        /* Genau dieselbe Zahl wie beim Zeichnen: dort steht der Knopf bei
-           `y - 14` der Knopfleiste, und das ist genau diese Statuszeile. */
-        if (edg_art() == ART_BIOS
-            && treffer(mx, my, x + win_w[w] - 36, y, 20, 14)) {
-            bh_top = 0;
-            starte(APP_BIOSHILFE, "Writing a BIOS", 460, 300);
-            return 1;
-        }
-        if (mx >= x + 40 && mx < x + 200) { edg_namemode = 1; return 1; }
-        return 0;
-    }
-    y = y + 14;
-    if (my >= y && my < y + 16) {
-        n = edg_art();
-        if (treffer(mx, my, x + cb_pos(n, CB_BACK), y, cb_w(CB_BACK), 16)) {
-            edg_screen = 0;          /* zurueck zur Auswahl */
-            edg_liste_top = 0;
-            return 1;
-        }
-        if (treffer(mx, my, x + cb_pos(n, CB_NEW), y, cb_w(CB_NEW), 16)) {
-            /* Der Name muss mit weg. Sonst zeigt der Editor eine leere Seite,
-               heisst aber weiter PROGLIB.C -- und Save wuerde die Datei
-               loeschen. Die Endung bleibt, damit Compile weiter passt. */
-            int i;
-            i = strlen(edg_name);
-            while (i > 0 && edg_name[i - 1] != '.') i--;
-            if (i == 0) strcpy(edg_name, "NEW.C");
-            else {
-                char endung[12];
-                strncpy(endung, edg_name + i, 10);
-                strcpy(edg_name, "NEW.");
-                strcat(edg_name, endung);
-            }
-            ed_len = 0;
-            ed_pos = 0;
-            edg_top = 0;
-            edg_meldung = 0;
-            ed_sel_von = 0 - 1;
-            ed_sel_bis = 0 - 1;
-            return 1;
-        }
-        if (treffer(mx, my, x + cb_pos(n, CB_SAVE), y, cb_w(CB_SAVE), 16)) {
-            /* Speichern fragt jetzt nach Ort und Namen -- wie es sich
-               gehoert. Der bisherige Name steht als Vorschlag drin. */
-            if (edg_ort && edg_name[0]) edg_speichern();
-            else dlg_oeffne(APP_EDITOR, DLG_SPEICHERN, "", edg_name);
-            return 1;
-        }
-        if (treffer(mx, my, x + cb_pos(n, CB_NAME), y, cb_w(CB_NAME), 16))
-            { edg_namemode = 1; return 1; }
-        if (cb_sichtbar(n, CB_BUILD)
-            && treffer(mx, my, x + cb_pos(n, CB_BUILD), y, cb_w(CB_BUILD), 16))
-            { edg_uebersetzen(); return 1; }
-        if (cb_sichtbar(n, CB_TEST)
-            && treffer(mx, my, x + cb_pos(n, CB_TEST), y, cb_w(CB_TEST), 16))
-            { bios_bauen(BIOS_TEST); return 1; }
-        if (cb_sichtbar(n, CB_FLASH)
-            && treffer(mx, my, x + cb_pos(n, CB_FLASH), y, cb_w(CB_FLASH), 16))
-            { bios_bauen(BIOS_FLASH); return 1; }
-        if (treffer(mx, my, x + cb_pos(n, CB_FIND), y, cb_w(CB_FIND), 16)
-            || treffer(mx, my, x + cb_pos(n, CB_SUCHE), y + 1, cb_w(CB_SUCHE), 14)) {
-            cod_suchmode = 1;
-            cod_gefunden = 0;
-            return 1;
-        }
-        if (cb_sichtbar(n, CB_RUN)
-            && treffer(mx, my, x + cb_pos(n, CB_RUN), y, cb_w(CB_RUN), 16)) {
-            edg_speichern();
-            if (edg_meldung == 3) return 1;
-            /* Quelltext muss erst uebersetzt werden -- danach starten wir
-               das Ergebnis von selbst. Python und fertige Programme
-               koennen dagegen sofort los. */
-            if (endet_auf(edg_name, ".PY") || endet_auf(edg_name, ".TBX")) {
-                gui_im_fenster(edg_name);
-            } else {
-                edg_run_danach = 1;
-                edg_uebersetzen();
-            }
-            return 1;
-        }
-    }
-    return 0;
-}
 
 /* ==========================================================================
    Anwendung: Terminal
@@ -1591,53 +965,6 @@ void app_term(int w) {
    Das Fenster schliesst sich von allein, sobald der Lauf fertig ist.
    ========================================================================== */
 
-void app_build(int w) {
-    int x; int y; int breite; int i; int zeilen;
-    x = win_x[w] + 12;
-    y = win_y[w] + TITLE_H + 12;
-    breite = win_w[w] - 24;
-
-    /* Ist der Lauf vorbei und ging etwas schief, zeigt dasselbe Fenster die
-       Meldungen des Compilers -- mitgeschrieben ueber cap_* in lib.c. Vorher
-       standen sie nur im unsichtbaren Textbildschirm, und im Editor stand
-       bloss "Errors". */
-    if (edg_build == 0) {
-        g_text_max(x, y, "The compiler reported:", C_WARN, 256, breite);
-        zeilen = (win_h[w] - TITLE_H - 46) / 9;
-        if (zeilen > cap_voll) zeilen = cap_voll;
-        for (i = 0; i < zeilen; i++)
-            g_text_max(x, y + 16 + i * 9, cap_text(i), C_TEXT, 256, breite);
-        g_text_max(x, win_y[w] + win_h[w] - 16,
-                   "Close this window when you have read it.",
-                   C_WINDARK, 256, breite);
-        return;
-    }
-
-    g_text_max(x, y, edg_name, C_ACCENT, 256, breite / 2);
-    g_text(x + strlen(edg_name) * 8 + 8, y, "->", C_TEXT, 256);
-    g_text_max(x + strlen(edg_name) * 8 + 32, y, edg_ziel, C_ACCENT, 256,
-               breite - strlen(edg_name) * 8 - 32);
-
-    /* Balken, die Zahl steht rechts daneben und nicht darauf */
-    y = y + 20;
-    g_panel(x, y, breite - 48, 16, 1);
-    if (build_progress > 0)
-        g_fill(x + 2, y + 2, (breite - 52) * build_progress / 100, 12, C_TITLEBAR);
-    g_fill(x + breite - 44, y + 4, 44, 8, C_WIN);
-    g_num(x + breite - 40, y + 4, build_progress, C_TEXT, 256);
-    if (build_progress < 10)      g_text(x + breite - 32, y + 4, "%", C_TEXT, 256);
-    else if (build_progress < 100) g_text(x + breite - 24, y + 4, "%", C_TEXT, 256);
-    else                           g_text(x + breite - 16, y + 4, "%", C_TEXT, 256);
-
-    /* Was das Werkzeug gerade tut */
-    y = y + 24;
-    g_fill(x, y, breite, 10, C_WIN);
-    if (build_status[0]) g_text(x, y, build_status, C_TEXT, 256);
-    else                 g_text(x, y, "Starting the compiler ...", C_WINDARK, 256);
-
-    y = y + 16;
-    g_text(x, y, "This window closes by itself.", C_WINDARK, 256);
-}
 
 /* ==========================================================================
    Anwendung: System Monitor
@@ -2175,9 +1502,6 @@ void draw_window_inhalt(int i) {
     if (win_type[i] == APP_ABOUT)   app_about(i);
     if (win_type[i] == APP_CONTROL) app_control(i);
     if (win_type[i] == APP_TERM)    app_term(i);
-    if (win_type[i] == APP_EDITOR)  app_editor(i);
-    if (win_type[i] == APP_BUILD)   app_build(i);
-    if (win_type[i] == APP_DIALOG)  app_dialog(i);
     if (win_type[i] == APP_BIOSFRAGE) app_biosfrage(i);
     if (win_type[i] == APP_BIOSHILFE) app_bioshilfe(i);
     if (win_type[i] == APP_SETTINGS)  app_settings(i);
@@ -2253,7 +1577,7 @@ void gui_im_fenster(char* name) {
    Oberflaechen liegen die Anwendungen jetzt in einem Menue, und die Leiste
    zeigt stattdessen, welche Fenster gerade offen sind. */
 
-#define MENU_FEST   9             /* eingebaute Fenster, noch im Kernel */
+#define MENU_FEST   8             /* eingebaute Fenster, noch im Kernel */
 #define MENU_SICHT 7              /* so viele Eintraege sind auf einmal zu sehen */
 #define MENU_MAX   40
 #define MENU_X    2
@@ -2274,12 +1598,11 @@ int menu_datei[40];               /* Verzeichniseintrag, -1 = eingebaut */
 char* menu_eingebaut(int i) {
     if (i == 0) return "File Manager";
     if (i == 1) return "Command Prompt";
-    if (i == 2) return "Coder";
-    if (i == 3) return "System Monitor";
-    if (i == 4) return "Control Panel";
-    if (i == 5) return "Browser";
-    if (i == 6) return "Clock";
-    if (i == 7) return "Settings";
+    if (i == 2) return "System Monitor";
+    if (i == 3) return "Control Panel";
+    if (i == 4) return "Browser";
+    if (i == 5) return "Clock";
+    if (i == 6) return "Settings";
     return "About TOOBAD-OS";
 }
 
@@ -2349,9 +1672,6 @@ void draw_menu() {
 char* win_kurz(int typ) {
     if (typ == APP_FILES)   return "Files";
     if (typ == APP_TERM)    return "Prompt";
-    if (typ == APP_EDITOR)  return "Coder";
-    if (typ == APP_BUILD)   return "Compile";
-    if (typ == APP_DIALOG)  return "File";
     if (typ == APP_BIOSFRAGE) return "Firmware";
     if (typ == APP_BIOSHILFE) return "Help";
     if (typ == APP_SETTINGS)  return "Settings";
@@ -2652,7 +1972,7 @@ void wt_bauen() {
         while (n < ed_len) { wt_zeichen(t[n]); n++; }
         return;
     }
-    if (typ == APP_FILES || typ == APP_DIALOG) {
+    if (typ == APP_FILES) {
         fs_path(gui_pfad);
         wt_zeile(gui_pfad);
         for (n = 0; n < file_anzahl(); n++) {
@@ -2837,9 +2157,11 @@ void eintrag_oeffnen(int idx) {
            selbst eintippt -- dort ist das Fenster ja die Shell. */
         gui_ausfuehren(ent_name(idx));
     } else {
-        edg_oeffnen(ent_name(idx));          /* alles andere in den Editor */
-        edg_screen = 1;
-        starte(APP_EDITOR, "Coder", 596, 292);
+        /* Alles andere in den Coder -- der ist jetzt ein eigenes Programm
+           und bekommt den Dateinamen als Argument mit. */
+        prog_setargs(ent_name(idx));
+        if (mt_active == 0) mt_enable();
+        prog_run("CODER.TBX", 1);
     }
 }
 
@@ -3413,9 +2735,6 @@ void gui_main() {
                     draw_window(win_top);
                 }
                 term_push_key(k);                /* geht an die Kommandozeile */
-            } else if (win_top >= 0 && win_type[win_top] == APP_EDITOR) {
-                edg_taste(k);
-                draw_window(win_top);
             } else if (win_top >= 0 && win_type[win_top] == APP_BIOSHILFE) {
                 /* Blaettern war nie angeschlossen -- das Fenster sagte
                    "PgUp/PgDn scroll" und tat nichts. */
@@ -3439,9 +2758,6 @@ void gui_main() {
             } else if (win_top >= 0 && win_type[win_top] == APP_SETTINGS) {
                 st_taste(k);
                 draw_window(win_top);
-            } else if (win_top >= 0 && win_type[win_top] == APP_DIALOG) {
-                dlg_taste(k);
-                neu = 1;
             }
             /* ESC fuehrt NICHT mehr aus dem Schreibtisch heraus. Das stammt
                aus der Zeit, als die Textkonsole das Zuhause war und die
@@ -3453,56 +2769,16 @@ void gui_main() {
                Start > Exit desktop. */
         }
 
-        /* Laeuft gerade eine Uebersetzung? Balken auffrischen und schauen,
-           ob der Vorgang fertig ist. */
-        if (edg_build) {
+        /* Der Uebersetzungslauf gehoert jetzt dem Coder: er startet den
+           Compiler selbst und sieht selbst nach, ob er fertig ist. Fuer das
+           Brennen eines BIOS bleibt der Weg aber hier -- die Sicherungen
+           dagegen sollen nicht in einem Programm liegen. */
+        if (bios_wartet && edg_pid >= 0 && p_state[edg_pid] == PS_FREI) {
+            bios_wartet = 0;
             i = win_find(APP_BUILD);
-            if (edg_pid < 0 || p_state[edg_pid] == PS_FREI) {
-                edg_build = 0;
-                cap_aktiv = 0;
-                /* Bei Fehlern bleibt das Fenster stehen und zeigt sie an --
-                   sonst verschwindet es wie bisher. */
-                if (i >= 0 && fs_find(edg_ziel) >= 0) {
-                    win_type[i] = 0;
-                    win_voll[i] = 0;
-                    i = 0 - 1;
-                } else if (i >= 0) {
-                    /* Aus dem schmalen Fortschrittsfenster wird ein
-                       Meldungsfenster. 320x90 reichten fuer einen Balken,
-                       nicht fuer Compilerzeilen -- die sind gut 50 Zeichen
-                       lang und ragten rechts heraus. */
-                    strncpy(win_title(i), "Compiler messages", 18);
-                    win_w[i] = 520;
-                    win_h[i] = 240;
-                    if (win_x[i] + win_w[i] > G_W) win_x[i] = G_W - win_w[i] - 4;
-                    if (win_y[i] + win_h[i] > BAR_Y) win_y[i] = BAR_Y - win_h[i] - 4;
-                    if (win_x[i] < 0) win_x[i] = 4;
-                    if (win_y[i] < 0) win_y[i] = 4;
-                }
-                neu = 1;
-                /* War es ein Firmware-Bau? Dann geht es nicht ums Starten,
-                   sondern ums Pruefen und Nachfragen. */
-                if (bios_wartet && fs_find(edg_ziel) >= 0) {
-                    bios_fertig();
-                    if (i >= 0 && bios_frage) { win_type[i] = 0; win_voll[i] = 0; }
-                    neu = 1;
-                } else if (fs_find(edg_ziel) >= 0) {
-                    edg_meldung = 2;
-                    if (edg_run_danach) {        /* Run hatte darauf gewartet */
-                        edg_run_danach = 0;
-                        gui_im_fenster(edg_ziel);   /* Ausgabe ins Fenster */
-                        neu = 1;
-                    }
-                } else {
-                    edg_meldung = 3;
-                    edg_run_danach = 0;
-                    bios_wartet = 0;
-                    /* Direkt an die Stelle springen, die der Compiler
-                       genannt hat -- sonst sucht man sie von Hand. */
-                    cod_zur_fehlerzeile();
-                }
-            }
-            if (i >= 0 && neu == 0) draw_window(i);
+            if (i >= 0) { win_type[i] = 0; win_voll[i] = 0; }
+            bios_fertig();
+            neu = 1;
         }
 
         /* Hat die Kommandozeile etwas geschrieben? Dann neu malen. */
@@ -3566,26 +2842,19 @@ void gui_main() {
                             if (term_pid >= 0) term_lauf = 1;
                         }
                     }
-                    if (i == 2) {
-                        if (win_find(APP_EDITOR) < 0) {
-                            edg_screen = 0;       /* erst fragen, was ansteht */
-                            edg_liste_top = 0;
-                        }
-                        starte(APP_EDITOR, "Coder", 596, 292);
-                    }
-                    if (i == 3) starte(APP_MONITOR, "System Monitor", 320, 230);
-                    if (i == 4) starte(APP_CONTROL, "Control Panel", 320, 190);
-                    if (i == 5) {
+                    if (i == 2) starte(APP_MONITOR, "System Monitor", 320, 230);
+                    if (i == 3) starte(APP_CONTROL, "Control Panel", 320, 190);
+                    if (i == 4) {
                         if (win_find(APP_BROWSER) < 0) br_init();
                         starte(APP_BROWSER, "Browser", 600, 340);
                     }
-                    if (i == 6) starte(APP_CLOCK, "Clock", 200, 130);
-                    if (i == 7) {
+                    if (i == 5) starte(APP_CLOCK, "Clock", 200, 130);
+                    if (i == 6) {
                         st_schritt = ST_MENUE;
                         st_meldung[0] = 0;
                         starte(APP_SETTINGS, "Settings", 420, 200);
                     }
-                    if (i == 8) starte(APP_ABOUT, "About TOOBAD-OS", 340, 150);
+                    if (i == 7) starte(APP_ABOUT, "About TOOBAD-OS", 340, 150);
                     /* Selbst neu zeichnen: das continue unten springt am
                        "if (neu) draw_desktop()" am Schleifenende vorbei, und
                        dann bliebe das Menue stehen, bis man irgendwo anders
@@ -3696,8 +2965,6 @@ void gui_main() {
                             drag = i;
                             drag_dx = mx - win_x[i];
                             drag_dy = my - win_y[i];
-                        } else if (win_type[i] == APP_EDITOR) {
-                            if (edg_klick(i, mx, my)) neu = 1;
                         } else if (win_type[i] == APP_FILES) {
                             k = files_click(i, mx, my);
                             if (k) neu = 1;
@@ -3716,9 +2983,6 @@ void gui_main() {
                         } else if (win_type[i] == APP_CONTROL) {
                             control_click(i, mx, my);
                             neu = 1;
-                        } else if (win_type[i] == APP_DIALOG) {
-                            if (dlg_klick(i, mx, my)) neu = 1;
-                        } else if (win_type[i] == APP_POWER) {
                             if (power_klick(i, mx, my)) neu = 1;
                         } else if (win_type[i] == APP_FREMD) {
                             fw_melden(i, FE_KLICK,
@@ -3813,44 +3077,9 @@ void gui_main() {
                     file_sel = file_top + file_rows - 1;
                 draw_window(i);
             }
-            i = win_find(APP_EDITOR);
-            if (i >= 0 && i == win_top && edg_screen == 0) {
-                /* Nach unten nur so weit, bis die letzte Datei sichtbar ist --
-                   sonst scrollt man endlos in ein leeres Feld. */
-                edg_liste_top = edg_liste_top - k * 3;
-                if (edg_liste_top > file_anzahl() - es_rows)
-                    edg_liste_top = file_anzahl() - es_rows;
-                if (edg_liste_top < 0) edg_liste_top = 0;
-                draw_window(i);
-            } else if (i >= 0 && i == win_top) {
-                edg_folgen = 0;
-                edg_top = edg_top - k * 3;
-                if (edg_top < 0) edg_top = 0;
-                if (edg_top > ed_line_of(ed_len)) edg_top = ed_line_of(ed_len);
-                draw_window(i);
-            }
         }
 
-        /* Auswahl im Editor mit gedrueckter Maustaste aufziehen */
-        if (edg_zieht) {
-            if (btn == 0) {
-                edg_zieht = 0;
-                if (ed_sel_bis == ed_sel_von) { ed_sel_von = 0 - 1; ed_sel_bis = 0 - 1; }
-            } else {
-                i = win_find(APP_EDITOR);
-                if (i >= 0) {
-                    k = edg_pos_aus_maus(i, mx, my);
-                    if (k != ed_sel_bis) {
-                        if (k < ed_sel_von) { ed_sel_bis = ed_sel_von; ed_sel_von = k; }
-                        else ed_sel_bis = k;
-                        ed_pos = k;
-                        draw_window(i);
-                    }
-                }
-            }
-        }
 
-        /* Groesse ziehen */
         if (groesse_zieht >= 0) {
             if (btn == 0) {
                 groesse_zieht = 0 - 1;
