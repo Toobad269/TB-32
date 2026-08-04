@@ -572,6 +572,29 @@ def main():
         pruefe("Ein Klick auf den Verweis holt die naechste Seite",
                "Zweite Seite" in seitentext(L.m, sym), seitentext(L.m, sym))
         web.shutdown()
+
+        # --- Der Fenster-Server ---------------------------------------------
+        # Ein Programm von der Platte bekommt ein eigenes Fenster auf dem
+        # Schreibtisch. Geprueft wird die ganze Kette: Fenster anlegen, in den
+        # eigenen Puffer malen, Ereignisse bekommen, sich selbst schliessen.
+        menue(1)                                     # Command Prompt
+        L.warte(1.5)
+        L.eingabe("start fenster.tbx /b|ENTER", 8.0)
+        typen = [wort(L.m, sym["win_type"] + i * 4) for i in range(6)]
+        pruefe("Programm bekommt ein eigenes Fenster", 18 in typen, str(typen))
+        nr = typen.index(18) if 18 in typen else 0 - 1
+        gemalt = 0
+        if nr >= 0:
+            puffer = 0x00800000 + nr * 0x00040000
+            gemalt = sum(L.m.bus.read_block(puffer, 4000))
+        pruefe("Es malt in seinen eigenen Puffer", gemalt > 0, f"Summe {gemalt}")
+        pruefe("Der Bildschirm bleibt dabei heil",
+               sum(L.m.vga.gfx[:64000]) > 0)
+        # ESC geht an das oberste Fenster -- das Programm beendet sich damit
+        L.eingabe("ESC", 4.0)
+        typen = [wort(L.m, sym["win_type"] + i * 4) for i in range(6)]
+        pruefe("Und es raeumt sein Fenster selbst ab", 18 not in typen, str(typen))
+
         menue(MENU_ANZ - 1)                          # zurueck in die Konsole
         L.warte(2.0)
     finally:

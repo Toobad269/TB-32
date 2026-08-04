@@ -236,6 +236,15 @@ PORT_BLT_ZOOM    = 0x0054   # Vergroesserung fuer Kommando 3 (1 = normal)
 PORT_GFX_DOPPEL  = 0x0052   # 1 = Doppelpufferung an, 0 = aus
 PORT_GFX_TAUSCH  = 0x0053   # schreiben = fertiges Bild sichtbar machen
 
+# Der Blitter kann statt in den Bildschirm auch in einen Speicherbereich
+# malen. Das braucht der Fenster-Server: jedes Programm zeichnet in seinen
+# EIGENEN Puffer, und der Schreibtisch setzt die Puffer nachher zusammen.
+# Damit kann kein Programm ueber ein fremdes Fenster malen -- und wer
+# verdeckt ist, malt trotzdem weiter, ohne dass man es sieht.
+PORT_BLT_ZIEL    = 0x005B   # Adresse des Zielpuffers, 0 = Bildschirm
+PORT_BLT_ZIELB   = 0x005C   # dessen Breite in Punkten
+PORT_BLT_ZIELH   = 0x005D   # ... und Hoehe
+
 PORT_DMA_SRC     = 0x0056   # Blockkopierer: Quelladresse
 PORT_DMA_DST     = 0x0057   # ... Zieladresse
 PORT_DMA_LEN     = 0x0058   # ... Anzahl Bytes

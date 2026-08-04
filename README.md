@@ -58,6 +58,21 @@ Weg — dann geht alles außer HTTPS. Ausschalten mit `NET PROXY OFF`.
 Befehle: `NET`, `NET IP`, `NET GW`, `NET DNS`, `NET ARP`, `NET SEND`,
 `NET WATCH`, `PING`, `HOST`, `FETCH`.
 
+## Eigene Fenster für eigene Programme
+
+Ein Programm von der Platte kann ein Fenster auf dem Schreibtisch haben — es
+muss dafür nicht im Kernel stehen. `FENSTER.TBX` zeigt es:
+
+```
+WIN                          (Schreibtisch)
+START FENSTER.TBX /B         im Command Prompt
+```
+
+Der Blitter malt dabei in den **eigenen Bildpuffer** des Programms (Ports
+0x5B–0x5D), der Schreibtisch setzt die Fenster daraus zusammen. Ereignisse
+(Tasten, Klicks, Schließen) holt das Programm über die Syscalls 40–44 ab;
+die Bibliothek dazu steht in `programs/gfxlib.c`.
+
 ## Tasten am Gehäuse
 
 Diese Tasten gehören dem Fenster, nicht dem virtuellen Rechner — sie

@@ -9,6 +9,55 @@ Die tiefer liegenden Fallen haben zusätzlich einen ausführlichen Eintrag in
 
 ---
 
+## Der Fenster-Server: ein Programm von der Platte bekommt ein Fenster
+
+Bis hierher galt: entweder ein Programm hat den **ganzen** Bildschirm
+(Flappy, Calc), oder es ist als Fenster in den Kernel einkompiliert (Word,
+Paint, der Coder). `FENSTER.TBX` ist beides nicht -- es liegt als Datei auf
+der Platte, läuft als eigener Prozess, und hat trotzdem ein Fenster, das man
+verschieben kann, während daneben alles weiterläuft.
+
+**Der Kern der Sache: der Blitter kann jetzt in den Speicher malen.**
+Ports 0x5B–0x5D geben ihm einen Zielpuffer statt des Bildschirms. Jedes
+fremde Fenster hat einen (256 KB, ab 0x00800000), das Programm malt dort
+hinein, und der Schreibtisch setzt die Puffer zusammen. Damit kann kein
+Programm über ein fremdes Fenster malen, und ein verdecktes Fenster darf
+weiterzeichnen, ohne dass man etwas davon sieht -- genau wie bei einem
+Compositor.
+
+Ereignisse gehen den umgekehrten Weg: der Schreibtisch legt Tasten, Klicks
+und „bitte schließen" in einen Ring von acht Einträgen je Fenster, das
+Programm holt sie ab. Syscalls 40–44, Bibliothek in `gfxlib.c`.
+
+**Der Fehler, der die eigentliche Lehre war.** Der Bildschirm wurde
+schwarz. Ursache: der Blitter ist **ein einziges Stück Hardware**, und sein
+Zielpuffer ist ein Register. Das Programm stellte ihn auf seinen Puffer,
+wurde mitten im Malen unterbrochen -- und der Schreibtisch malte danach sein
+Bild in den **fremden Puffer** statt auf den Schirm. Auf dem Schirm blieb
+nichts.
+
+Die Lösung ist die, die jedes echte Betriebssystem nimmt: **der Zustand der
+Grafikhardware gehört zum Prozess** und wird beim Wechsel gesichert, genau
+wie die Register. `proc_schedule()` liest jetzt Zielpuffer, Größe und
+Zeichensatzadresse aus und legt sie zurück, wenn der Prozess wieder dran ist.
+Dafür wurden die vier Ports lesbar gemacht -- in beiden Emulatoren, sonst
+liefen sie auseinander.
+
+**Zweiter Fehler, gleiche Familie:** das Programm rief `gx_start()`. Das
+schaltet den Bildschirmmodus um und löscht das Bild -- für ein
+Vollbildprogramm richtig, für ein Fenster das Ende des Schreibtischs. Ein
+Fenster braucht nur die Adresse des Zeichensatzes.
+
+Vier neue Prüfungen: Fenster entsteht, Programm malt in seinen Puffer, der
+Bildschirm bleibt dabei heil, und das Programm räumt sein Fenster selbst ab.
+**82/82**, und beide Emulatoren rechnen weiter Befehl für Befehl gleich.
+
+**Was das für Word, Paint und den Coder heißt:** der Weg steht jetzt offen.
+Sie brauchen dafür Zeichenfunktionen, die in den eigenen Puffer malen statt
+auf den Schirm -- das ist Fleißarbeit, keine Forschung mehr.
+
+---
+
 ## Ein Aufruf genügt: pc.py startet das Netz mit
 
 Colin: *„ich will aber nur pc.py starten müssen damit Netz geht."* Recht hat

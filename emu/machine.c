@@ -142,29 +142,44 @@ static void gesetzt_init(void) {
 static void blit(Machine *m, int cmd) {
     int x = m->blt_x, y = m->blt_y, w = m->blt_w, h = m->blt_h;
     uint8_t col = (uint8_t)(m->blt_col & 0xFF);
-    uint8_t *fb = m->gfx;
-    m->dirty = 1;
+    uint8_t *fb;
+    int GFX_W_L, GFX_H_L;
+    /* Ziel: Bildschirm oder ein Puffer im Arbeitsspeicher. Der Rest rechnet
+       mit GFX_W_L/GFX_H_L -- die werden hier zu den Groessen des Ziels, und
+       nichts weiter unten muss davon wissen. Siehe hardware/devices.py, das
+       muss dieselbe Rechnung machen. */
+    if (m->blt_ziel) {
+        GFX_W_L = (int)m->blt_zielb;
+        GFX_H_L = (int)m->blt_zielh;
+        if (GFX_W_L <= 0 || GFX_H_L <= 0) return;
+        fb = m->ram + m->blt_ziel;
+    } else {
+        GFX_W_L = GFX_W;
+        GFX_H_L = GFX_H;
+        fb = m->gfx;
+        m->dirty = 1;
+    }
 
     if (cmd == 1) {                               /* gefuellte Flaeche */
         int x0, y0, x1, y1, breit, yy;
         if (w <= 0 || h <= 0) return;
         x0 = x < 0 ? 0 : x;  y0 = y < 0 ? 0 : y;
-        x1 = x + w > GFX_W ? GFX_W : x + w;
-        y1 = y + h > GFX_H ? GFX_H : y + h;
+        x1 = x + w > GFX_W_L ? GFX_W_L : x + w;
+        y1 = y + h > GFX_H_L ? GFX_H_L : y + h;
         if (x1 <= x0 || y1 <= y0) return;
         breit = x1 - x0;
-        for (yy = y0; yy < y1; yy++) memset(fb + yy * GFX_W + x0, col, (size_t)breit);
+        for (yy = y0; yy < y1; yy++) memset(fb + yy * GFX_W_L + x0, col, (size_t)breit);
         return;
     }
     if (cmd == 2) {                               /* Rahmen */
         int xx, yy;
-        for (xx = (x < 0 ? 0 : x); xx < x + w && xx < GFX_W; xx++) {
-            if (y >= 0 && y < GFX_H)             fb[y * GFX_W + xx] = col;
-            if (y + h - 1 >= 0 && y + h - 1 < GFX_H) fb[(y + h - 1) * GFX_W + xx] = col;
+        for (xx = (x < 0 ? 0 : x); xx < x + w && xx < GFX_W_L; xx++) {
+            if (y >= 0 && y < GFX_H_L)             fb[y * GFX_W_L + xx] = col;
+            if (y + h - 1 >= 0 && y + h - 1 < GFX_H_L) fb[(y + h - 1) * GFX_W_L + xx] = col;
         }
-        for (yy = (y < 0 ? 0 : y); yy < y + h && yy < GFX_H; yy++) {
-            if (x >= 0 && x < GFX_W)             fb[yy * GFX_W + x] = col;
-            if (x + w - 1 >= 0 && x + w - 1 < GFX_W) fb[yy * GFX_W + x + w - 1] = col;
+        for (yy = (y < 0 ? 0 : y); yy < y + h && yy < GFX_H_L; yy++) {
+            if (x >= 0 && x < GFX_W_L)             fb[yy * GFX_W_L + x] = col;
+            if (x + w - 1 >= 0 && x + w - 1 < GFX_W_L) fb[yy * GFX_W_L + x + w - 1] = col;
         }
         return;
     }
@@ -178,11 +193,11 @@ static void blit(Machine *m, int cmd) {
         if (zoom < 1) zoom = 1;
         br = 8 * zoom;
         block_read(m, m->blt_src + (uint32_t)(code - 32) * 8, muster, 8);
-        if (x < 0 || x > GFX_W - br || y < 0 || y > GFX_H - br) return;
+        if (x < 0 || x > GFX_W_L - br || y < 0 || y > GFX_H_L - br) return;
         for (r = 0; r < 8; r++) {
             int zr;
             for (zr = 0; zr < zoom; zr++) {
-                uint8_t *zeile = fb + (y + r * zoom + zr) * GFX_W + x;
+                uint8_t *zeile = fb + (y + r * zoom + zr) * GFX_W_L + x;
                 for (c = 0; c < br; c++) {
                     if (muster[r] & (0x80 >> (c / zoom))) zeile[c] = col;
                     else if (bg < 256) zeile[c] = (uint8_t)bg;
@@ -199,12 +214,12 @@ static void blit(Machine *m, int cmd) {
         if (!zeile) return;
         for (r = 0; r < h; r++) {
             int yy = y + r;
-            if (yy < 0 || yy >= GFX_H) continue;
+            if (yy < 0 || yy >= GFX_H_L) continue;
             block_read(m, m->blt_src + (uint32_t)(r * w), zeile, (uint32_t)w);
             for (c = 0; c < w; c++) {
                 int xx = x + c;
-                if (xx < 0 || xx >= GFX_W) continue;
-                if (zeile[c] != 255) fb[yy * GFX_W + xx] = zeile[c];
+                if (xx < 0 || xx >= GFX_W_L) continue;
+                if (zeile[c] != 255) fb[yy * GFX_W_L + xx] = zeile[c];
             }
         }
         free(zeile);
@@ -213,9 +228,9 @@ static void blit(Machine *m, int cmd) {
     if (cmd == 5) {                               /* Bereich kopieren */
         int sx = (int)m->blt_chr, sy = (int)m->blt_src, r;
         for (r = 0; r < h; r++) {
-            if (sy + r < 0 || sy + r >= GFX_H) continue;
-            if (y + r < 0 || y + r >= GFX_H) continue;
-            memmove(fb + (y + r) * GFX_W + x, fb + (sy + r) * GFX_W + sx, (size_t)w);
+            if (sy + r < 0 || sy + r >= GFX_H_L) continue;
+            if (y + r < 0 || y + r >= GFX_H_L) continue;
+            memmove(fb + (y + r) * GFX_W_L + x, fb + (sy + r) * GFX_W_L + sx, (size_t)w);
         }
         return;
     }
@@ -227,20 +242,20 @@ static void blit(Machine *m, int cmd) {
         if (zoom < 1) zoom = 1;
         br = 8 * zoom;
         if (w > 256) w = 256;
-        if (y < 0 || y > GFX_H - br) return;
+        if (y < 0 || y > GFX_H_L - br) return;
         txt = (uint8_t *)malloc((size_t)w);
         if (!txt) return;
         block_read(m, m->blt_chr, txt, (uint32_t)w);
         for (i = 0; i < w; i++) {
             int zx = x + i * br, code = txt[i];
             uint8_t muster[8];
-            if (zx < 0 || zx > GFX_W - br) continue;
+            if (zx < 0 || zx > GFX_W_L - br) continue;
             if (code < 32 || code > 127) code = 32;
             block_read(m, m->blt_src + (uint32_t)(code - 32) * 8, muster, 8);
             for (r = 0; r < 8; r++) {
                 int zr;
                 for (zr = 0; zr < zoom; zr++) {
-                    uint8_t *zeile = fb + (y + r * zoom + zr) * GFX_W + zx;
+                    uint8_t *zeile = fb + (y + r * zoom + zr) * GFX_W_L + zx;
                     for (c = 0; c < br; c++) {
                         if (muster[r] & (0x80 >> (c / zoom))) zeile[c] = col;
                         else if (bg < 256) zeile[c] = (uint8_t)bg;
@@ -263,15 +278,15 @@ static void blit(Machine *m, int cmd) {
         for (zy = 0; zy < h; zy++) {
             int yy = y + zy, qz;
             uint8_t *qz_zeile;
-            if (yy < 0 || yy >= GFX_H) continue;
+            if (yy < 0 || yy >= GFX_H_L) continue;
             qz = (zy * qh) / h;
             qz_zeile = quelle + qz * qb;
             for (zx = 0; zx < w; zx++) {
                 int xx = x + zx;
                 uint8_t v;
-                if (xx < 0 || xx >= GFX_W) continue;
+                if (xx < 0 || xx >= GFX_W_L) continue;
                 v = qz_zeile[(zx * qb) / w];
-                if (v != 255) fb[yy * GFX_W + xx] = v;
+                if (v != 255) fb[yy * GFX_W_L + xx] = v;
             }
         }
         free(quelle);
@@ -382,6 +397,12 @@ uint32_t port_in(Machine *m, uint32_t port) {
     case PORT_DISK_SIZE:   return m->disk_sektoren;
     case PORT_VGA_MODE:    return (uint32_t)m->mode;
     case PORT_VGA_CURSOR:  return m->cursor;
+    /* Lesbar fuer den Prozesswechsel: der Blitter gehoert dem Programm,
+       das gerade malt. Siehe hardware/devices.py -- dieselbe Rechnung. */
+    case PORT_BLT_ZIEL:  return m->blt_ziel;
+    case PORT_BLT_ZIELB: return m->blt_zielb;
+    case PORT_BLT_ZIELH: return m->blt_zielh;
+    case PORT_BLT_SRC:   return m->blt_src;
     case PORT_DMA_LEN:     return m->dma_len;
     case PORT_MOUSE_X:     return (uint32_t)m->maus_x;
     case PORT_MOUSE_Y:     return (uint32_t)m->maus_y;
@@ -431,7 +452,8 @@ void port_out(Machine *m, uint32_t port, uint32_t val) {
     case PORT_DISK_CMD:   disk_cmd(m, val); break;
 
     case PORT_VGA_MODE:
-        m->blt_zoom = 1;                  /* Moduswechsel setzt den Blitter zurueck */
+        m->blt_zoom = 1;
+    m->blt_ziel = 0;                  /* Moduswechsel setzt den Blitter zurueck */
         m->mode = (int)(val & 1);
         if (val & 0x100) {
             if (m->mode == 0) vga_clear_text(m, 0x07);
@@ -455,6 +477,9 @@ void port_out(Machine *m, uint32_t port, uint32_t val) {
     case PORT_BLT_SRC: m->blt_src = val; break;
     case PORT_BLT_BG:  m->blt_bg = val; break;
     case PORT_BLT_ZOOM: m->blt_zoom = (val < 1) ? 1 : (val > 16 ? 16 : val); break;
+    case PORT_BLT_ZIEL:  m->blt_ziel = val; break;
+    case PORT_BLT_ZIELB: m->blt_zielb = val; break;
+    case PORT_BLT_ZIELH: m->blt_zielh = val; break;
     case PORT_BLT_CMD: blit(m, (int)val); break;
 
     case PORT_GFX_DOPPEL: doppel_setzen(m, (int)val); break;
