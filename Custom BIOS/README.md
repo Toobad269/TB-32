@@ -27,9 +27,11 @@ Aufgespielt wird es im laufenden Rechner: **DEL → Firmware → Flash BIOS from
 File**. Das alte BIOS legt das Board vorher als Sicherung ab, und *Restore
 Backup BIOS* holt es zurück — wer sich aussperrt, kommt also wieder heraus.
 
-Die `.bin`- und `.sym`-Dateien sind **nicht** eingecheckt. Das ist im ganzen
-Projekt so: was bei jedem Bau neu entsteht, gehört nicht ins Verzeichnis.
-Ein Klon plus der Bauaufruf oben ergibt dasselbe Abbild, Byte für Byte.
+Das fertige `.bin` liegt **mit im Verzeichnis** — wer nur flashen will, muss
+nichts bauen. Das ist die Ausnahme von der Regel des Projekts, dass Erzeugtes
+nicht eingecheckt wird; ein BIOS-Abbild ist hier das Ergebnis und nicht bloß
+ein Zwischenschritt. Wer es doch selbst baut, bekommt Byte für Byte dasselbe.
+Die Symboltabelle `.sym` bleibt draußen, die braucht nur der Debugger.
 
 ## Ein weiteres dazulegen
 
