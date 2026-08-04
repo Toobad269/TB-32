@@ -187,19 +187,83 @@ int  ctrl_sel = 0;              /* markierte Zeile in der Systemsteuerung */
 /* Ein Aufruf statt sechs -- die Rechnung dazu steht bei sys_blit in
    start.asm. Koordinaten stecken zu zweit in einem Wort, der Blitter rechnet
    Werte ab 0x8000 selbst wieder ins Negative. */
+/* ==========================================================================
+   Aufzeichnung: ein Fenster in Text verwandeln
+
+   Statt fuer jedes Fenster von Hand nachzubauen, was darin steht, laesst
+   wt_bauen() das Fenster einfach NOCH EINMAL malen -- nur landet dabei
+   jeder Text im Puffer statt auf dem Schirm. Damit liefert auch jedes
+   kuenftige Fenster seinen Inhalt, ohne dass hier eine Zeile dazukommt.
+
+   Texte in derselben Bildzeile bleiben zusammen (Beschriftung und Wert),
+   eine neue Bildzeile wird eine neue Textzeile.
+   ========================================================================== */
+
+#define WT_BUF   0x00770000          /* hierhin kommt der Text */
+#define WT_MAX   60000
+
+int wt_aktiv = 0;                    /* 1 = malen heisst aufschreiben */
+int wt_zeile_y = 0 - 1;              /* zuletzt aufgeschriebene Bildzeile */
+int wt_wunsch = 0;                   /* 1 = das Gehaeuse haette gern Text */
+int wt_len = 0;                      /* so viele Bytes liegen bereit */
+
+void wt_zeichen(int c) {
+    if (wt_len < WT_MAX - 1) { byte_put(WT_BUF + wt_len, c); wt_len++; }
+}
+
+void wt_text(char* s) {
+    while (*s) { wt_zeichen(*s); s++; }
+}
+
+void wt_zeile(char* s) {
+    wt_text(s);
+    wt_zeichen(10);
+}
+
+/* Neue Bildzeile -> neue Textzeile. Gleiche Bildzeile -> mit Abstand dran,
+   damit Beschriftung und Wert zusammenbleiben. */
+void wt_trenner(int y) {
+    if (wt_len == 0) { wt_zeile_y = y; return; }
+    if (y == wt_zeile_y) { wt_zeichen(32); wt_zeichen(32); return; }
+    wt_zeichen(10);
+    wt_zeile_y = y;
+}
+
+void wt_merken(int y, char* s) {
+    if (s == 0 || s[0] == 0) return;
+    wt_trenner(y);
+    wt_text(s);
+}
+
+void wt_merken_zahl(int y, int n) {
+    char t[16];
+    int i; int j; int m;
+    wt_trenner(y);
+    if (n == 0) { wt_zeichen('0'); return; }
+    m = n;
+    if (m < 0) { wt_zeichen('-'); m = 0 - m; }
+    i = 0;
+    while (m > 0) { t[i] = '0' + m % 10; m = m / 10; i++; }
+    j = i - 1;
+    while (j >= 0) { wt_zeichen(t[j]); j--; }
+}
+
 void g_fill(int x, int y, int w, int h, int col) {
+    if (wt_aktiv) return;
     if (gui_fremd) return;
     sys_blit((x & 65535) | ((y & 65535) << 16),
              (w & 65535) | ((h & 65535) << 16), col, BLT_FILL);
 }
 
 void g_frame(int x, int y, int w, int h, int col) {
+    if (wt_aktiv) return;
     if (gui_fremd) return;
     sys_blit((x & 65535) | ((y & 65535) << 16),
              (w & 65535) | ((h & 65535) << 16), col, BLT_FRAME);
 }
 
 void g_char(int x, int y, int c, int col, int bg) {
+    if (wt_aktiv) return;
     if (gui_fremd) return;
     sys_blitchar((x & 65535) | ((y & 65535) << 16), col, c, bg);
 }
@@ -208,6 +272,7 @@ void g_char(int x, int y, int c, int col, int bg) {
    Text selbst aus dem Speicher (Kommando 6). Vorher war es ein Befehl je
    Buchstabe -- bei einer Editorseite 1600 Stueck. */
 void g_str(int x, int y, int adresse, int laenge, int col, int bg) {
+    if (wt_aktiv) return;
     if (gui_fremd) return;
     if (laenge <= 0) return;
     sys_out(P_BLT_X, x & 65535);
@@ -221,6 +286,7 @@ void g_str(int x, int y, int adresse, int laenge, int col, int bg) {
 }
 
 void g_text(int x, int y, char* s, int col, int bg) {
+    if (wt_aktiv) { wt_merken(y, s); return; }
     g_str(x, y, (int)s, strlen(s), col, bg);
 }
 
@@ -243,6 +309,7 @@ void g_text_max(int x, int y, char* s, int col, int bg, int maxpx) {
 }
 
 void g_num(int x, int y, int n, int col, int bg) {
+    if (wt_aktiv) { wt_merken_zahl(y, n); return; }
     char buf[16];
     itoa(n, buf);
     g_text(x, y, buf, col, bg);
@@ -251,6 +318,7 @@ void g_num(int x, int y, int n, int col, int bg) {
 /* Achtstellig hexadezimal -- fuer Pruefsummen. */
 void g_hex(int x, int y, int n, int col, int bg) {
     char t[12];
+    if (wt_aktiv) { wt_merken_zahl(y, n); return; }
     int i; int d;
     i = 0;
     while (i < 8) {
@@ -1767,6 +1835,25 @@ void win_vollbild(int i) {
    Pruefung steht hier unten an der Quelle und nicht bloss in der Hauptschleife:
    dort kann ein Programm mitten in der Runde auf Vollbild schalten, und alles,
    was danach noch gemalt wird, landet im fremden Bild. */
+/* Nur der Inhalt, ohne Rahmen und Knoepfe. Getrennt, weil wt_bauen() das
+   Fenster ein zweites Mal malen laesst -- in den Textpuffer statt auf den
+   Schirm. */
+void draw_window_inhalt(int i) {
+    if (win_type[i] == APP_FILES)   app_files(i);
+    if (win_type[i] == APP_CLOCK)   app_clock(i);
+    if (win_type[i] == APP_MONITOR) app_monitor(i);
+    if (win_type[i] == APP_ABOUT)   app_about(i);
+    if (win_type[i] == APP_CONTROL) app_control(i);
+    if (win_type[i] == APP_TERM)    app_term(i);
+    if (win_type[i] == APP_EDITOR)  app_editor(i);
+    if (win_type[i] == APP_BUILD)   app_build(i);
+    if (win_type[i] == APP_PAINT)   app_paint(i);
+    if (win_type[i] == APP_WORD)    app_word(i);
+    if (win_type[i] == APP_DIALOG)  app_dialog(i);
+    if (win_type[i] == APP_BIOSFRAGE) app_biosfrage(i);
+    if (win_type[i] == APP_BIOSHILFE) app_bioshilfe(i);
+}
+
 void draw_window(int i) {
     int tc; int kx; int ky; int k;
     if (gui_fremd) return;
@@ -1794,19 +1881,7 @@ void draw_window(int i) {
         g_fill(kx + 8 - k, ky + 3 + k, 1, 1, C_BLACK);
     }
 
-    if (win_type[i] == APP_FILES)   app_files(i);
-    if (win_type[i] == APP_CLOCK)   app_clock(i);
-    if (win_type[i] == APP_MONITOR) app_monitor(i);
-    if (win_type[i] == APP_ABOUT)   app_about(i);
-    if (win_type[i] == APP_CONTROL) app_control(i);
-    if (win_type[i] == APP_TERM)    app_term(i);
-    if (win_type[i] == APP_EDITOR)  app_editor(i);
-    if (win_type[i] == APP_BUILD)   app_build(i);
-    if (win_type[i] == APP_PAINT)   app_paint(i);
-    if (win_type[i] == APP_WORD)    app_word(i);
-    if (win_type[i] == APP_DIALOG)  app_dialog(i);
-    if (win_type[i] == APP_BIOSFRAGE) app_biosfrage(i);
-    if (win_type[i] == APP_BIOSHILFE) app_bioshilfe(i);
+    draw_window_inhalt(i);
 
     /* Anfasser zum Groessenaendern, unten rechts */
     if (win_voll[i] == 0) {
@@ -2166,25 +2241,6 @@ int win_unter(int mx, int my) {
    Zeile hier -- und nicht eine Zeile in pc.py, das sonst viel zu viel ueber
    das System wissen muesste.                                              */
 
-#define WT_BUF   0x00770000          /* hierhin kommt der Text */
-#define WT_MAX   60000
-
-int wt_wunsch = 0;                   /* 1 = das Gehaeuse haette gern Text */
-int wt_len = 0;                      /* so viele Bytes liegen bereit */
-
-void wt_zeichen(int c) {
-    if (wt_len < WT_MAX - 1) { byte_put(WT_BUF + wt_len, c); wt_len++; }
-}
-
-void wt_text(char* s) {
-    while (*s) { wt_zeichen(*s); s++; }
-}
-
-void wt_zeile(char* s) {
-    wt_text(s);
-    wt_zeichen(10);
-}
-
 /* Fuellt WT_BUF mit dem Inhalt des obersten Fensters. */
 void wt_bauen() {
     int i; int n; int typ; char* t;
@@ -2229,8 +2285,18 @@ void wt_bauen() {
         }
         return;
     }
-    /* Alles andere: wenigstens der Titel, damit nie gar nichts kommt. */
-    wt_zeile(win_title(i));
+    /* Alles andere -- Control Panel, Monitor, Uhr, About, die
+       Firmware-Fenster -- malt sich selbst NOCH EINMAL, nur landet dabei
+       jeder Text im Puffer statt auf dem Schirm. So liefert auch jedes
+       kuenftige Fenster seinen Inhalt, ohne dass hier eine Zeile dazukommt. */
+    /* Titel ohne Zeilenende -- den setzt der erste aufgezeichnete Text.
+       Sonst stehen drei Leerzeilen am Anfang. */
+    wt_text(win_title(i));
+    wt_zeile_y = 0 - 1;
+    wt_aktiv = 1;
+    draw_window_inhalt(i);
+    wt_aktiv = 0;
+    wt_zeichen(10);
 }
 
 void draw_desktop() {

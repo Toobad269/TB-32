@@ -43,7 +43,7 @@ deshalb überall, auch im BIOS, wo noch kein Betriebssystem läuft.
 |---|---|
 | `ü` | Einschaltknopf, wenn der Rechner aus ist |
 | `DEL` (macOS `fn`+`⌫`) oder `F2` | BIOS-Setup; schon während der Bedenkzeit drückbar |
-| `Strg`+`K` | **alles kopieren, ohne Rückmeldung.** Textmodus: der ganze Bildschirm. Grafikmodus: das System liefert den Text des obersten Fensters |
+| `Strg`+`K` | **alles kopieren, ohne Rückmeldung.** Textmodus: der ganze Bildschirm. Grafikmodus: das System liefert den Text des obersten Fensters — **jedes** Fenster, siehe 11.13 |
 | `Strg`+`V` / `Cmd`+`V` | vom Wirtsrechner einfügen |
 | `Cmd`+`C` | Auswahl aus TOOBAD-OS zum Wirt |
 | `Strg`+`R` | Reset (kein Neustart des Netzteils, also ohne Bedenkzeit) |
@@ -669,3 +669,27 @@ alle Bildschirmfunktionen, die Steuerzeichen und das Laden des Bootsektors.
 
 **Tasten:** `↑`/`↓` Zeile, `←`/`→` Reiter, `ENTER` oder `+`/`−` ändern,
 `F5` Standardwerte, `F10` sichern und raus, `ESC` verwerfen und raus.
+
+## 11.13 Wie `Strg`+`K` an den Text kommt
+
+Im Grafikmodus stehen auf dem Schirm Bildpunkte, kein Text — das Gehäuse
+kann dort nichts auslesen. Also **fragt** es: `pc.py` setzt `wt_wunsch`, der
+Schreibtisch sieht das in seiner nächsten Schleifenrunde, legt den Text nach
+`0x00770000` und setzt `wt_len`. Das Gehäuse holt ihn eine Zwanzigstelsekunde
+später ab.
+
+Vier Fenster antworten mit ihrem **vollen** Inhalt, nicht nur dem sichtbaren
+Ausschnitt: **Coder** (der ganze Quelltext), **Word** (der ganze Fließtext),
+**File Manager** und **Dateidialog** (Pfad und alle Einträge), **Terminal**
+(alle 22 Zeilen).
+
+Alle anderen — Control Panel, System Monitor, Clock, About, die
+Firmware-Fenster — **malen sich einfach noch einmal**, nur landet dabei
+jeder Text im Puffer statt auf dem Schirm (`wt_aktiv`). Texte in derselben
+Bildzeile bleiben mit zwei Leerzeichen zusammen, eine neue Bildzeile wird
+eine neue Textzeile.
+
+**Das ist der Grund, warum hier nichts nachgetragen werden muss:** ein neues
+Fenster liefert seinen Inhalt von allein, sobald es `g_text` und `g_num`
+benutzt. Wer eine eigene Malroutine schreibt, muss nur `if (wt_aktiv)`
+beachten.
