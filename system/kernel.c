@@ -1096,7 +1096,13 @@ int main() {
        Schreibtisch -- die Testwerkzeuge bekommen ein eigenes CMOS mit
        Konsole, weil sie den TEXTbildschirm auslesen. */
     if (cmos_get(CM_BOOTMODE) == 0) {
+        /* Der Blitter braucht die Adresse des Zeichensatzes, sonst malt er
+           aus dem Nichts -- der Anmeldeschirm war fast leer. gui_main()
+           setzt sie sonst selbst, laeuft hier aber erst danach. */
         sys_setmode(1 + 256);
+        sys_out(P_BLT_SRC, (int)font8);
+        sys_out(P_MCUR_ON, 0);
+        sys_flushkeys();
         if (benutzer_vorhanden()) gui_anmelden(0);
         else                      gui_anmelden(1);
         gui_main();
