@@ -168,7 +168,8 @@ def build():
     WERKZEUGE = {"CC.TBX", "ASM.TBX", "PY.TBX"}
     # Programme des Systems: sie stehen im Startmenue und liegen in
     # \SYSTEM\PROGS. Alles andere landet in \PROGS.
-    SYSTEMPROGRAMME = {"CALC.TBX", "FLAPPY.TBX", "FENSTER.TBX"}
+    SYSTEMPROGRAMME = {"PROMPT.TBX", "MONITOR.TBX", "CONTROL.TBX",
+                       "SETTINGS.TBX", "FILES.TBX"}
     # Bibliotheken werden nur eingebunden, nie fuer sich uebersetzt.
     NUR_BIBLIOTHEK = ("proglib.c", "gfxlib.c")
     # Diese Quelltexte kommen mit aufs Laufwerk, aber ohne fertiges Programm --

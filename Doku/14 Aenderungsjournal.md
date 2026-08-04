@@ -9,6 +9,46 @@ Die tiefer liegenden Fallen haben zusätzlich einen ausführlichen Eintrag in
 
 ---
 
+## Paint, Calc und Flappy sind ausgezogen
+
+Drei Programme liegen jetzt als Dateien auf der Platte statt im Kernel oder
+im Vollbild. **Paint war der erste echte Auszug aus dem Kernel** --
+`system/paint.c` gibt es nicht mehr, der Code steht in `programs/paint.c`
+und wird zu `\PROGS\PAINT.TBX`.
+
+**Der Umbau war fast mechanisch**, und das ist die gute Nachricht für alles,
+was noch folgt:
+
+| im Kernel | als Programm |
+|---|---|
+| `x = win_x[i]; y = win_y[i] + TITLE_H;` | `x = 0; y = 0;` — im eigenen Puffer fängt alles bei null an |
+| `g_text`, `g_fill`, `g_frame`, `g_button` | `gx_text`, `gx_fill`, `gx_frame`, `p_knopf` |
+| `fs_read`, `fs_write` | `fileread`, `filewrite` (Systemaufrufe) |
+| `sys_out(P_DMA_…)` | `portout(P_DMA_…)` |
+| Dateidialog des Kernels | Name im eigenen Fenster tippen |
+
+**Eine Sache brauchte neue Hardware-Auskunft.** Paint verfolgt beim Ziehen
+eines Strichs die Maus selbst -- über Ereignisse ginge das nicht, die kommen
+nur beim Drücken, nicht beim Bewegen. Dafür liefert `fw_groesse` jetzt auch
+die **Lage des Fensters auf dem Schirm**, damit das Programm von
+Bildschirm- auf Fensterkoordinaten umrechnen kann.
+
+Flappy hat nebenbei die Doppelpufferung verloren, und zwar zu Recht: die
+gilt für den Bildschirm. Wer in seinen eigenen Puffer malt, zeigt ihn erst
+mit `fenster_fertig()` -- flackern kann da nichts.
+
+Word musste eine Zeile ändern: es kopierte Bilder mit `pt_kopieren` aus
+Paint. Der Blockkopierer ist aber Hardware und steht jedem offen -- jetzt
+spricht Word die Ports direkt an.
+
+**Stand der Umzüge:** Calc, Flappy, Paint sind Dateien. Im Kernel stehen
+noch Dateimanager, Kommandozeile, Coder, System Monitor, Control Panel,
+Word, Browser, Settings -- und Clock und About, die dort bleiben sollen.
+
+85/85.
+
+---
+
 ## Der erste echte Umzug: der Taschenrechner läuft im Fenster
 
 `CALC.TBX` war ein Vollbildprogramm -- es nahm den ganzen Schirm und der

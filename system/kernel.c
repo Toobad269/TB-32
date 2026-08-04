@@ -21,7 +21,6 @@
 #include "syscall.c"
 #include "gui.c"
 #include "coder.c"
-#include "paint.c"
 #include "word.c"
 #include "dialog.c"
 

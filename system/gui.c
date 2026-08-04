@@ -65,7 +65,6 @@
 #define APP_TERM    7
 #define APP_EDITOR  8
 #define APP_BUILD   9
-#define APP_PAINT   10
 #define APP_WORD    11
 #define APP_DIALOG  12
 #define APP_BIOSFRAGE 13
@@ -2139,6 +2138,12 @@ int fw_groesse(int i, int aus) {
     mem_put(aus + 0, fw_addr(i));
     mem_put(aus + 4, win_w[i] - 2);
     mem_put(aus + 8, win_h[i] - TITLE_H - 1);
+    /* Auch die Lage auf dem Schirm: wer die Maus selbst verfolgt (Paint
+       beim Ziehen eines Strichs), muss von Bildschirm- auf
+       Fensterkoordinaten umrechnen. Ueber die Ereignisse allein ginge das
+       nicht -- die kommen nur beim Druecken, nicht beim Bewegen. */
+    mem_put(aus + 12, win_x[i] + 1);
+    mem_put(aus + 16, win_y[i] + TITLE_H);
     return 0;
 }
 
@@ -2173,7 +2178,6 @@ void draw_window_inhalt(int i) {
     if (win_type[i] == APP_TERM)    app_term(i);
     if (win_type[i] == APP_EDITOR)  app_editor(i);
     if (win_type[i] == APP_BUILD)   app_build(i);
-    if (win_type[i] == APP_PAINT)   app_paint(i);
     if (win_type[i] == APP_WORD)    app_word(i);
     if (win_type[i] == APP_DIALOG)  app_dialog(i);
     if (win_type[i] == APP_BIOSFRAGE) app_biosfrage(i);
@@ -2251,7 +2255,7 @@ void gui_im_fenster(char* name) {
    Oberflaechen liegen die Anwendungen jetzt in einem Menue, und die Leiste
    zeigt stattdessen, welche Fenster gerade offen sind. */
 
-#define MENU_FEST  11             /* eingebaute Fenster, noch im Kernel */
+#define MENU_FEST  10             /* eingebaute Fenster, noch im Kernel */
 #define MENU_SICHT 7              /* so viele Eintraege sind auf einmal zu sehen */
 #define MENU_MAX   40
 #define MENU_X    2
@@ -2275,11 +2279,10 @@ char* menu_eingebaut(int i) {
     if (i == 2) return "Coder";
     if (i == 3) return "System Monitor";
     if (i == 4) return "Control Panel";
-    if (i == 5) return "Paint";
-    if (i == 6) return "Word";
-    if (i == 7) return "Browser";
-    if (i == 8) return "Clock";
-    if (i == 9) return "Settings";
+    if (i == 5) return "Word";
+    if (i == 6) return "Browser";
+    if (i == 7) return "Clock";
+    if (i == 8) return "Settings";
     return "About TOOBAD-OS";
 }
 
@@ -2351,7 +2354,6 @@ char* win_kurz(int typ) {
     if (typ == APP_TERM)    return "Prompt";
     if (typ == APP_EDITOR)  return "Coder";
     if (typ == APP_BUILD)   return "Compile";
-    if (typ == APP_PAINT)   return "Paint";
     if (typ == APP_WORD)    return "Word";
     if (typ == APP_DIALOG)  return "File";
     if (typ == APP_BIOSFRAGE) return "Firmware";
@@ -3424,9 +3426,6 @@ void gui_main() {
             } else if (win_top >= 0 && win_type[win_top] == APP_EDITOR) {
                 edg_taste(k);
                 draw_window(win_top);
-            } else if (win_top >= 0 && win_type[win_top] == APP_PAINT) {
-                pt_taste(k);
-                draw_window(win_top);
             } else if (win_top >= 0 && win_type[win_top] == APP_BIOSHILFE) {
                 /* Blaettern war nie angeschlossen -- das Fenster sagte
                    "PgUp/PgDn scroll" und tat nichts. */
@@ -3590,24 +3589,20 @@ void gui_main() {
                     if (i == 3) starte(APP_MONITOR, "System Monitor", 320, 230);
                     if (i == 4) starte(APP_CONTROL, "Control Panel", 320, 190);
                     if (i == 5) {
-                        if (win_find(APP_PAINT) < 0) pt_init();
-                        starte(APP_PAINT, "Paint", 536, 356);
-                    }
-                    if (i == 6) {
                         if (win_find(APP_WORD) < 0) wd_init();
                         starte(APP_WORD, "Word", 600, 330);
                     }
-                    if (i == 7) {
+                    if (i == 6) {
                         if (win_find(APP_BROWSER) < 0) br_init();
                         starte(APP_BROWSER, "Browser", 600, 340);
                     }
-                    if (i == 8) starte(APP_CLOCK, "Clock", 200, 130);
-                    if (i == 9) {
+                    if (i == 7) starte(APP_CLOCK, "Clock", 200, 130);
+                    if (i == 8) {
                         st_schritt = ST_MENUE;
                         st_meldung[0] = 0;
                         starte(APP_SETTINGS, "Settings", 420, 200);
                     }
-                    if (i == 10) starte(APP_ABOUT, "About TOOBAD-OS", 340, 150);
+                    if (i == 9) starte(APP_ABOUT, "About TOOBAD-OS", 340, 150);
                     /* Selbst neu zeichnen: das continue unten springt am
                        "if (neu) draw_desktop()" am Schleifenende vorbei, und
                        dann bliebe das Menue stehen, bis man irgendwo anders
@@ -3738,8 +3733,6 @@ void gui_main() {
                         } else if (win_type[i] == APP_CONTROL) {
                             control_click(i, mx, my);
                             neu = 1;
-                        } else if (win_type[i] == APP_PAINT) {
-                            if (pt_klick(i, mx, my)) neu = 1;
                         } else if (win_type[i] == APP_WORD) {
                             if (wd_klick(i, mx, my)) neu = 1;
                         } else if (win_type[i] == APP_DIALOG) {
@@ -3904,22 +3897,6 @@ void gui_main() {
                 wd_ziehen(mx, my);
                 i = win_find(APP_WORD);
                 if (i >= 0) draw_window(i);
-            }
-        }
-
-        if (pt_zieht) {
-            if (btn == 0) {
-                pt_loslassen();
-                neu = 1;
-            } else {
-                pt_ziehen(mx, my);
-                i = win_find(APP_PAINT);
-                if (i >= 0) {
-                    /* Nur die Leinwand, nicht das ganze Fenster -- sonst
-                       flackern Knoepfe und Palette bei jeder Mausbewegung. */
-                    pt_leinwand_malen(i);
-                    pt_vorschau(i);      /* Figur im Entstehen, nur am Schirm */
-                }
             }
         }
 

@@ -384,7 +384,16 @@ int wd_bild_holen(int absatz, int start, int laenge) {
     }
     /* Punkte hinter dem Kopf an ihren Platz schaufeln -- der Blockkopierer
        macht das in einem Rutsch. */
-    pt_kopieren(WD_BILD, WD_DATEI + 8, wd_bild_qb * wd_bild_qh);
+    /* Paint ist ausgezogen -- der Blockkopierer bleibt aber Hardware und
+       steht jedem offen. */
+#define P_DMA_SRC  0x56
+#define P_DMA_DST  0x57
+#define P_DMA_LEN  0x58
+#define P_DMA_CMD  0x5A
+    sys_out(P_DMA_SRC, WD_DATEI + 8);
+    sys_out(P_DMA_DST, WD_BILD);
+    sys_out(P_DMA_LEN, wd_bild_qb * wd_bild_qh);
+    sys_out(P_DMA_CMD, 1);
     wd_bild_geladen = absatz;
     return 1;
 }

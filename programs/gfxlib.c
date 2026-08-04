@@ -334,6 +334,8 @@ int fn_nr = 0 - 1;                 /* unsere Fensternummer */
 int fn_puffer = 0;                 /* wohin wir malen */
 int fn_breite = 0;
 int fn_hoehe = 0;
+int fn_x = 0;                      /* Lage des Fensterinhalts auf dem Schirm */
+int fn_y = 0;
 
 /* Den Blitter auf unseren Puffer richten. Muss vor jedem Malen stehen --
    dazwischen malt der Schreibtisch auf den Bildschirm und stellt ihn zurueck. */
@@ -344,8 +346,19 @@ void fenster_malziel() {
     portout(P_BLT_SRC, gx_font);
 }
 
+/* Puffer, Groesse und Lage des eigenen Fensters holen. */
+void fenster_lage() {
+    int daten[6];
+    sc(42, fn_nr, (int)daten, 0, 0);
+    fn_puffer = daten[0];
+    fn_breite = daten[1];
+    fn_hoehe = daten[2];
+    fn_x = daten[3];
+    fn_y = daten[4];
+}
+
 int fenster_neu(char* titel, int breite, int hoehe) {
-    int daten[4];
+    int daten[6];
     /* KEIN gx_start() hier -- das schaltet den Bildschirmmodus um und
        loescht das Bild. Fuer ein Vollbildprogramm ist das richtig, fuer ein
        Fenster waere es das Ende des Schreibtischs: schwarz, und der
@@ -354,24 +367,15 @@ int fenster_neu(char* titel, int breite, int hoehe) {
     gx_font = fontaddr();
     fn_nr = sc(40, (int)titel, breite, hoehe, 0);
     if (fn_nr < 0) return 0 - 1;
-    sc(42, fn_nr, (int)daten, 0, 0);
-    fn_puffer = daten[0];
-    fn_breite = daten[1];
-    fn_hoehe = daten[2];
+    fenster_lage();
     return fn_nr;
 }
 
 /* Holt das naechste Ereignis. <e> muss Platz fuer drei Zahlen haben. */
 int fenster_ereignis(int* e) {
-    int daten[4];
     int art;
     art = sc(41, fn_nr, (int)e, 0, 0);
-    if (art == FE_MALEN) {                 /* Groesse koennte sich geaendert haben */
-        sc(42, fn_nr, (int)daten, 0, 0);
-        fn_puffer = daten[0];
-        fn_breite = daten[1];
-        fn_hoehe = daten[2];
-    }
+    if (art == FE_MALEN) fenster_lage();   /* Groesse/Lage koennen sich aendern */
     return art;
 }
 

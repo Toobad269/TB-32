@@ -550,7 +550,7 @@ def main():
         # laesst sich pruefen, was einen Browser ausmacht -- HTML lesen,
         # umbrechen, darstellen, und einem Verweis folgen.
         L.eingabe("WIN|ENTER", 3.0)
-        menue(7)                                     # Start > Browser
+        menue(6)                                     # Start > Browser
         L.warte(1.5)
         L.eingabe("|".join(["BACKSPACE"] * 20), 0.5)   # Adresszeile leeren
         L.eingabe(f"127.0.0.1:{web.server_port}/a|ENTER", 1.0)

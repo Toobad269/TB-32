@@ -21,7 +21,7 @@
 
 /* --- Spielfeld ----------------------------------------------------------- */
 
-#define BODEN      360               /* Oberkante des Bodens */
+#define BODEN      300               /* Oberkante des Bodens */
 #define VOGEL_X    140
 #define VOGEL_B     24               /* Breite und Hoehe des Vogels */
 #define VOGEL_H     18
@@ -75,7 +75,7 @@ void neues_spiel() {
     bilder = 0;
     bilder_zeit = ticks();
     for (i = 0; i < ROHRE; i++) {
-        rohr_x[i] = GX_BREIT + i * ABSTAND;
+        rohr_x[i] = fn_breite + i * ABSTAND;
         rohr_y[i] = 60 + rnd(BODEN - LUECKE - 100);
     }
 }
@@ -162,9 +162,9 @@ void vogel_malen() {
    darf die Punkteanzeige jetzt auch einfach obendrauf liegen, ohne sich ein
    Kaestchen freizuraeumen. */
 void hintergrund_malen() {
-    gx_fill(0, 0, GX_BREIT, BODEN, F_HIMMEL);
-    gx_fill(0, BODEN, GX_BREIT, 6, F_BODEN);
-    gx_fill(0, BODEN + 6, GX_BREIT, GX_HOCH - BODEN - 6, F_ERDE);
+    gx_fill(0, 0, fn_breite, BODEN, F_HIMMEL);
+    gx_fill(0, BODEN, fn_breite, 6, F_BODEN);
+    gx_fill(0, BODEN + 6, fn_breite, fn_hoehe - BODEN - 6, F_ERDE);
 }
 
 /* Kein Freiraeumen mehr -- die Ziffern legen sich einfach ueber das Bild.
@@ -198,8 +198,8 @@ void bild_malen() {
         bilder_zeit = ticks();
     }
     itoa(bildrate, text);
-    gx_text(6, GX_HOCH - 13, text, F_SCHRIFT);
-    gx_text(6 + gx_breite(text) + 8, GX_HOCH - 13, "fps", F_SCHRIFT);
+    gx_text(6, fn_hoehe - 11, text, F_SCHRIFT);
+    gx_text(6 + gx_breite(text) + 8, fn_hoehe - 11, "fps", F_SCHRIFT);
 
     if (lebt == 0) {
         gx_panel(180, 150, 280, 90, 0);
@@ -214,42 +214,47 @@ void bild_malen() {
    ========================================================================== */
 
 int main() {
-    int k; int c; int code; int druck; int alt;
+    int e[4];
+    int art; int druck; int laufen;
 
-    gx_start();
-    gx_doppelpuffer(1);              /* zweite Bildseite: kein Flackern mehr */
-    portout(P_MCUR_ON, 0);           /* kein Mauszeiger im Spiel */
+    /* Kein gx_start(): das gehoert Vollbildprogrammen. Auch keine
+       Doppelpufferung -- die gilt fuer den Bildschirm, und wir malen in
+       unseren eigenen Puffer. Der wird ohnehin erst gezeigt, wenn wir
+       fenster_fertig() sagen; flackern kann da nichts. */
+    if (fenster_neu("Flappy", 400, 340) < 0) {
+        print("Flappy braucht den Schreibtisch -- erst WIN eingeben.\n");
+        return 1;
+    }
     neues_spiel();
-    alt = 0;
 
-    while (1) {
+    laufen = 1;
+    while (laufen) {
         druck = 0;
 
-        /* --- Eingabe: Leertaste oder Maustaste --- */
-        if (haskey()) {
-            k = getkey();
-            c = keychar(k);
-            code = keycode(k);
-            if (code == K_ESC) break;
-            if (c == 32) druck = 1;
+        while (1) {                      /* alles abholen, was anliegt */
+            art = fenster_ereignis(e);
+            if (art == FE_NICHTS) break;
+            if (art == FE_SCHLIESS) { laufen = 0; break; }
+            if (art == FE_KLICK) druck = 1;
+            if (art == FE_TASTE) {
+                if (e[2] == K_ESC) { laufen = 0; break; }
+                if (e[1] == 32) druck = 1;
+            }
         }
-        gx_maus_lesen();
-        if (gx_klick()) druck = 1;
+        if (laufen == 0) break;
 
         if (druck) {
-            if (lebt) {
-                v16 = 0 - FLATTERN;
-            } else {
-                neues_spiel();
-            }
+            if (lebt) v16 = 0 - FLATTERN;
+            else neues_spiel();
         }
 
         if (lebt) schritt();
+        fenster_malziel();
         bild_malen();
-        gx_zeigen();                     /* fertiges Bild sichtbar machen */
-        gx_takt(2);                      /* 50 Bilder je Sekunde, gleichmaessig */
+        fenster_fertig();
+        gx_takt(2);                      /* 50 Bilder je Sekunde */
     }
 
-    gx_ende();
+    fenster_zu();
     return 0;
 }

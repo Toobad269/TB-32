@@ -1,19 +1,66 @@
 /* ==========================================================================
-   PAINT -- Zeichenprogramm als Fenster im Schreibtisch
+   PAINT  --  Malprogramm fuer TOOBAD-OS, jetzt als eigenes Programm
 
-   Die Leinwand liegt NICHT im Bildspeicher, sondern in einem eigenen Bereich
-   im RAM. Das hat zwei Gruende:
+   Frueher stand dieser Code im Kernel und malte mit dessen g_-Funktionen
+   direkt auf den Bildschirm. Jetzt liegt er als .TBX auf der Platte, laeuft
+   als eigener Prozess und malt in seinen eigenen Fensterpuffer -- der
+   Schreibtisch setzt ihn an die richtige Stelle.
 
-     * Ein Fenster kann verschoben, ueberdeckt oder zugeklappt werden. Waere
-       das Bild direkt auf dem Schirm, waere es danach kaputt.
-     * Rueckgaengig braucht eine zweite Kopie -- und die kann nur im RAM
-       liegen.
+   Der Umbau war fast mechanisch: aus  x = win_x[i]  wurde  x = 0, denn im
+   eigenen Puffer faengt alles bei null an. Aus den g_-Funktionen wurden die
+   gx_-Funktionen aus gfxlib.c, und aus fs_read/fs_write die Systemaufrufe.
 
-   Auf den Schirm kommt sie mit einem einzigen Blitterbefehl (Kommando 4,
-   "Bild aus dem RAM"). Der braucht dafuer 0,06 ms, also praktisch nichts.
-   Kopiert wird mit dem Blockkopierer (DMA): 125 KB in 0,03 ms, waehrend der
-   Prozessor sie Byte fuer Byte eine Zehntelsekunde lang umschaufeln wuerde.
+   Uebersetzen auf dem Geraet selbst:  CC PAINT.C
    ========================================================================== */
+
+#include "proglib.c"
+#include "gfxlib.c"
+
+/* Farben, die frueher aus gui.c kamen */
+#define C_BLACK    0
+#define C_WHITE   15
+#define C_TEXT     0
+#define C_WINDARK  8
+#define C_ACCENT   9
+#define C_WARN     4
+#define C_GOOD     2
+#define C_WIN      7
+
+#define K_BACKSPACE 14
+#define K_TAB       15
+
+/* Der Blockkopierer -- damit geht das Sichern der Leinwand in einem
+   Rutsch statt Punkt fuer Punkt. */
+#define P_DMA_SRC  0x56
+#define P_DMA_DST  0x57
+#define P_DMA_LEN  0x58
+#define P_DMA_VAL  0x59
+#define P_DMA_CMD  0x5A
+
+/* Ein Bild aus dem Speicher in den Fensterpuffer bringen. */
+void gx_bild(int x, int y, int w, int h, int quelle) {
+    portout(P_BLT_SRC, quelle);
+    portout(P_BLT_X, x);
+    portout(P_BLT_Y, y);
+    portout(P_BLT_W, w);
+    portout(P_BLT_H, h);
+    portout(P_BLT_CMD, 4);
+    portout(P_BLT_SRC, gx_font);      /* der Zeichensatz gehoert zurueck */
+}
+
+/* Ein Rechteck-Treffer. gx_treffer fragt die Maus selbst ab -- hier kommen
+   die Koordinaten aber aus dem Fenster-Ereignis. */
+int treffer(int mx, int my, int x, int y, int w, int h) {
+    return mx >= x && mx < x + w && my >= y && my < y + h;
+}
+
+/* Ein Knopf mit "gedrueckt"-Zustand, wie ihn der Kernel hatte. */
+void p_knopf(int x, int y, int w, int h, char* text, int gedrueckt) {
+    gx_panel(x, y, w, h, gedrueckt);
+    if (text[0])
+        gx_text_mitte(x + gedrueckt, y + (h - 8) / 2 + gedrueckt, w, text,
+                      C_TEXT);
+}
 
 #define PAINT_W      480             /* Leinwand in Bildpunkten */
 #define PAINT_H      260
@@ -66,10 +113,10 @@ int pt_meldung = 0;                  /* 0 nichts, 1 gespeichert, 2 geladen, 3 Fe
 /* --- Blockkopierer ------------------------------------------------------- */
 
 void pt_kopieren(int ziel, int quelle, int anzahl) {
-    sys_out(P_DMA_SRC, quelle);
-    sys_out(P_DMA_DST, ziel);
-    sys_out(P_DMA_LEN, anzahl);
-    sys_out(P_DMA_CMD, 1);
+    portout(P_DMA_SRC, quelle);
+    portout(P_DMA_DST, ziel);
+    portout(P_DMA_LEN, anzahl);
+    portout(P_DMA_CMD, 1);
 }
 
 /* Suchbefehle des Blockkopierers.
@@ -77,18 +124,18 @@ void pt_kopieren(int ziel, int quelle, int anzahl) {
      4 = an welcher Stelle ab adr steht das erste gleiche (oder -1)
      5 = wie viele Bytes VOR adr (einschliesslich) sind gleich wert */
 int pt_suchen(int adr, int wert, int max, int cmd) {
-    sys_out(P_DMA_SRC, adr);
-    sys_out(P_DMA_VAL, wert);
-    sys_out(P_DMA_LEN, max);
-    sys_out(P_DMA_CMD, cmd);
-    return sys_in(P_DMA_LEN);
+    portout(P_DMA_SRC, adr);
+    portout(P_DMA_VAL, wert);
+    portout(P_DMA_LEN, max);
+    portout(P_DMA_CMD, cmd);
+    return portin(P_DMA_LEN);
 }
 
 void pt_fuellen_roh(int ziel, int wert, int anzahl) {
-    sys_out(P_DMA_DST, ziel);
-    sys_out(P_DMA_VAL, wert);
-    sys_out(P_DMA_LEN, anzahl);
-    sys_out(P_DMA_CMD, 2);
+    portout(P_DMA_DST, ziel);
+    portout(P_DMA_VAL, wert);
+    portout(P_DMA_LEN, anzahl);
+    portout(P_DMA_CMD, 2);
 }
 
 /* --- Leinwand ------------------------------------------------------------ */
@@ -262,11 +309,14 @@ void pt_neu_anlegen() {
     pt_fuellen_roh(PAINT_BUF, C_WHITE, PAINT_W * PAINT_H);
 }
 
+/* Frueher oeffnete das den Dateidialog des Kernels. Ein eigenstaendiges
+   Programm hat den nicht -- es fragt den Namen in seinem eigenen Fenster ab
+   (pt_namemode), so wie es das fuer "Save as" schon immer getan hat. */
 void pt_neu() {
     pt_ort = 0;
-    dlg_oeffne(APP_PAINT, DLG_SPEICHERN, ".TBI",
-               pt_name[0] ? pt_name : "PICTURE.TBI");
-    dlg_neu = 1;
+    pt_neu_anlegen();
+    pt_namemode = 1;
+    pt_meldung = 0;
 }
 
 /* --- Datei --------------------------------------------------------------- */
@@ -276,14 +326,14 @@ void pt_speichern() {
     if (pt_name[0] == 0) { pt_meldung = 3; return; }
     mem_put(PAINT_KOPF, PAINT_W);
     mem_put(PAINT_KOPF + 4, PAINT_H);
-    if (fs_write(pt_name, PAINT_KOPF, 8 + PAINT_W * PAINT_H) < 0) pt_meldung = 3;
+    if (filewrite(pt_name, PAINT_KOPF, 8 + PAINT_W * PAINT_H) < 0) pt_meldung = 3;
     else pt_meldung = 1;
 }
 
 void pt_laden() {
     int n;
     if (pt_name[0] == 0) { pt_meldung = 3; return; }
-    n = fs_read(pt_name, PAINT_KOPF, 8 + PAINT_W * PAINT_H);
+    n = fileread(pt_name, PAINT_KOPF, 8 + PAINT_W * PAINT_H);
     if (n < 8) { pt_meldung = 3; return; }
     if (mem_get(PAINT_KOPF) != PAINT_W || mem_get(PAINT_KOPF + 4) != PAINT_H) {
         pt_meldung = 3;                  /* andere Groesse -- passt nicht */
@@ -332,33 +382,33 @@ int pt_pal_farbe(int i) {
 
 void app_paint(int i) {
     int x; int y; int k; int j; int px; int py;
-    x = win_x[i];
-    y = win_y[i] + TITLE_H;
+    x = 0;                  /* im eigenen Puffer faengt alles bei 0 an */
+    y = 0;
 
     /* Werkzeuge links */
     for (k = 0; k < W_ANZ; k++) {
-        g_button(x + 2 + (k % 2) * (PT_KNOPF + 1),
+        p_knopf(x + 2 + (k % 2) * (PT_KNOPF + 1),
                  y + 4 + (k / 2) * (PT_KNOPF + 1),
                  PT_KNOPF, 20, pt_wz_name(k), pt_werkzeug == k);
     }
     /* Strichstaerke */
     j = y + 4 + 4 * (PT_KNOPF + 1) + 6;
-    g_text(x + 4, j, "Size", C_TEXT, 256);
+    gx_text(x + 4, j, "Size", C_TEXT, 256);
     for (k = 0; k < 3; k++) {
         int s;
-        g_button(x + 3 + k * 14, j + 12, 12, 14, "", 0);
+        p_knopf(x + 3 + k * 14, j + 12, 12, 14, "", 0);
     }
-    g_text(x + 6, j + 15, "1", C_TEXT, 256);
-    g_text(x + 20, j + 15, "2", C_TEXT, 256);
-    g_text(x + 34, j + 15, "4", C_TEXT, 256);
-    g_frame(x + 2 + (pt_staerke / 2) * 14, j + 11, 14, 16, C_ACCENT);
+    gx_text(x + 6, j + 15, "1", C_TEXT, 256);
+    gx_text(x + 20, j + 15, "2", C_TEXT, 256);
+    gx_text(x + 34, j + 15, "4", C_TEXT, 256);
+    gx_frame(x + 2 + (pt_staerke / 2) * 14, j + 11, 14, 16, C_ACCENT);
 
     /* Aktionen */
     j = j + 32;
-    g_button(x + 2, j, 47, 14, "New", 0);
-    g_button(x + 2, j + 16, 47, 14, "Undo", 0);
-    g_button(x + 2, j + 32, 47, 14, "Save", 0);
-    g_button(x + 2, j + 48, 47, 14, "Open", 0);
+    p_knopf(x + 2, j, 47, 14, "New", 0);
+    p_knopf(x + 2, j + 16, 47, 14, "Undo", 0);
+    p_knopf(x + 2, j + 32, 47, 14, "Save", 0);
+    p_knopf(x + 2, j + 48, 47, 14, "Open", 0);
 
     /* Leinwand: ein einziger Blitterbefehl.
        Wichtig: Kommando 4 liest die Quelle aus demselben Register wie der
@@ -367,31 +417,28 @@ void app_paint(int i) {
        unserem Bild. */
     px = x + PT_LEIN_X;
     py = y + PT_LEIN_Y;
-    g_frame(px - 1, py - 1, PAINT_W + 2, PAINT_H + 2, C_WINDARK);
-    sys_out(P_BLT_SRC, PAINT_BUF);
-    sys_blit((px & 65535) | ((py & 65535) << 16),
-             (PAINT_W & 65535) | ((PAINT_H & 65535) << 16), 0, 4);
-    sys_out(P_BLT_SRC, (int)font8);
+    gx_frame(px - 1, py - 1, PAINT_W + 2, PAINT_H + 2, C_WINDARK);
+    gx_bild(px, py, PAINT_W, PAINT_H, PAINT_BUF);
 
     /* Farbleiste unter der Leinwand */
     for (k = 0; k < 32; k++) {
         int fx; int fy;
         fx = px + (k % 16) * PT_PAL_K;
         fy = y + PT_PAL_Y + (k / 16) * PT_PAL_K;
-        g_fill(fx, fy, PT_PAL_K - 1, PT_PAL_K - 1, pt_pal_farbe(k));
+        gx_fill(fx, fy, PT_PAL_K - 1, PT_PAL_K - 1, pt_pal_farbe(k));
         if (pt_pal_farbe(k) == pt_farbe)
-            g_frame(fx - 1, fy - 1, PT_PAL_K + 1, PT_PAL_K + 1, C_ACCENT);
+            gx_frame(fx - 1, fy - 1, PT_PAL_K + 1, PT_PAL_K + 1, C_ACCENT);
     }
 
     /* Dateiname und Meldung */
     j = y + PT_PAL_Y + 2 * PT_PAL_K + 4;
-    g_text(x + 4, j, "File:", C_TEXT, 256);
-    g_fill(x + 44, j - 2, 150, 12, C_WHITE);
-    g_text(x + 46, j, pt_name, C_TEXT, 256);
-    if (pt_namemode) g_fill(x + 46 + strlen(pt_name) * 8, j, 7, 8, C_ACCENT);
-    if (pt_meldung == 1) g_text(x + 200, j, "saved", C_GOOD, 256);
-    if (pt_meldung == 2) g_text(x + 200, j, "loaded", C_GOOD, 256);
-    if (pt_meldung == 3) g_text(x + 200, j, "no such file / name missing",
+    gx_text(x + 4, j, "File:", C_TEXT, 256);
+    gx_fill(x + 44, j - 2, 150, 12, C_WHITE);
+    gx_text(x + 46, j, pt_name, C_TEXT, 256);
+    if (pt_namemode) gx_fill(x + 46 + strlen(pt_name) * 8, j, 7, 8, C_ACCENT);
+    if (pt_meldung == 1) gx_text(x + 200, j, "saved", C_GOOD, 256);
+    if (pt_meldung == 2) gx_text(x + 200, j, "loaded", C_GOOD, 256);
+    if (pt_meldung == 3) gx_text(x + 200, j, "no such file / name missing",
                                 C_WARN, 256);
 }
 
@@ -402,12 +449,9 @@ void app_paint(int i) {
    nur noch das, was sich wirklich aendert. */
 void pt_leinwand_malen(int i) {
     int px; int py;
-    px = win_x[i] + PT_LEIN_X;
-    py = win_y[i] + TITLE_H + PT_LEIN_Y;
-    sys_out(P_BLT_SRC, PAINT_BUF);
-    sys_blit((px & 65535) | ((py & 65535) << 16),
-             (PAINT_W & 65535) | ((PAINT_H & 65535) << 16), 0, 4);
-    sys_out(P_BLT_SRC, (int)font8);
+    px = PT_LEIN_X;
+    py = PT_LEIN_Y;
+    gx_bild(px, py, PAINT_W, PAINT_H, PAINT_BUF);
 }
 
 /* Zeichnet die Figur, die man gerade aufzieht, direkt auf den Schirm --
@@ -422,10 +466,10 @@ void pt_rahmen_begrenzt(int px, int py, int x0, int y0, int x1, int y1, int farb
     if (x1 > PAINT_W - 1) x1 = PAINT_W - 1;
     if (y1 > PAINT_H - 1) y1 = PAINT_H - 1;
     if (x1 < x0 || y1 < y0) return;
-    g_fill(px + x0, py + y0, x1 - x0 + 1, 1, farbe);
-    g_fill(px + x0, py + y1, x1 - x0 + 1, 1, farbe);
-    g_fill(px + x0, py + y0, 1, y1 - y0 + 1, farbe);
-    g_fill(px + x1, py + y0, 1, y1 - y0 + 1, farbe);
+    gx_fill(px + x0, py + y0, x1 - x0 + 1, 1, farbe);
+    gx_fill(px + x0, py + y1, x1 - x0 + 1, 1, farbe);
+    gx_fill(px + x0, py + y0, 1, y1 - y0 + 1, farbe);
+    gx_fill(px + x1, py + y0, 1, y1 - y0 + 1, farbe);
 }
 
 void pt_vorschau(int i) {
@@ -433,8 +477,8 @@ void pt_vorschau(int i) {
     if (pt_zieht == 0) return;
     if (pt_werkzeug != W_LINIE && pt_werkzeug != W_RECHTECK
         && pt_werkzeug != W_GEFUELLT && pt_werkzeug != W_KREIS) return;
-    px = win_x[i] + PT_LEIN_X;
-    py = win_y[i] + TITLE_H + PT_LEIN_Y;
+    px = PT_LEIN_X;
+    py = PT_LEIN_Y;
     if (pt_werkzeug == W_RECHTECK || pt_werkzeug == W_GEFUELLT) {
         int x0; int y0; int x1; int y1; int t;
         x0 = pt_x0; x1 = pt_x1; y0 = pt_y0; y1 = pt_y1;
@@ -462,7 +506,7 @@ void pt_vorschau(int i) {
         sy = 1; if (ay > by) sy = 0 - 1;
         f = dx - dy;
         while (1) {
-            g_fill(px + ax, py + ay, 1, 1, pt_farbe);
+            gx_fill(px + ax, py + ay, 1, 1, pt_farbe);
             if (ax == bx && ay == by) return;
             e2 = f * 2;
             if (e2 > 0 - dy) { f = f - dy; ax = ax + sx; }
@@ -476,8 +520,8 @@ void pt_vorschau(int i) {
 /* Rueckgabe: 1 = neu zeichnen */
 int pt_klick(int i, int mx, int my) {
     int x; int y; int k; int j; int px; int py;
-    x = win_x[i];
-    y = win_y[i] + TITLE_H;
+    x = 0;                  /* im eigenen Puffer faengt alles bei 0 an */
+    y = 0;
     pt_meldung = 0;
 
     for (k = 0; k < W_ANZ; k++) {
@@ -505,11 +549,11 @@ int pt_klick(int i, int mx, int my) {
     if (treffer(mx, my, x + 2, j + 32, 47, 14)) {
         /* Steht der Platz schon fest, wird ohne Nachfrage gespeichert. */
         if (pt_ort && pt_name[0]) pt_speichern();
-        else dlg_oeffne(APP_PAINT, DLG_SPEICHERN, ".TBI", pt_name);
+        else pt_namemode = 1;
         return 1;
     }
     if (treffer(mx, my, x + 2, j + 48, 47, 14)) {
-        dlg_oeffne(APP_PAINT, DLG_OEFFNEN, ".TBI", pt_name);
+        pt_namemode = 2;          /* 2 = Name zum Oeffnen */
         return 1;
     }
 
@@ -559,8 +603,8 @@ int pt_klick(int i, int mx, int my) {
 void pt_ziehen(int mx, int my) {
     int px; int py; int nx; int ny;
     if (pt_zieht == 0 || pt_win < 0) return;
-    px = win_x[pt_win] + PT_LEIN_X;
-    py = win_y[pt_win] + TITLE_H + PT_LEIN_Y;
+    px = PT_LEIN_X;
+    py = PT_LEIN_Y;
     nx = mx - px;
     ny = my - py;
     if (nx < 0) nx = 0;
@@ -609,7 +653,12 @@ void pt_taste(int k) {
     code = keycode(k);
     if (pt_namemode) {
         n = strlen(pt_name);
-        if (code == K_ENTER) { pt_namemode = 0; return; }
+        if (code == K_ENTER) {
+            /* Modus 2 heisst: der Name war zum Oeffnen gedacht. */
+            if (pt_namemode == 2) pt_laden();
+            pt_namemode = 0;
+            return;
+        }
         if (code == K_ESC)   { pt_namemode = 0; return; }
         if (c == 8) { if (n > 0) pt_name[n - 1] = 0; return; }
         if (c >= 32 && c < 127 && n < 20) {
@@ -626,4 +675,64 @@ void pt_init() {
     if (pt_name[0] == 0) strncpy(pt_name, "BILD.TBI", 20);
     pt_fuellen_roh(PAINT_BUF, C_WHITE, PAINT_W * PAINT_H);
     pt_undo_da = 0;
+}
+
+
+/* ==========================================================================
+   Hauptschleife -- das, was frueher der Schreibtisch fuer uns getan hat
+   ========================================================================== */
+
+int main() {
+    int e[4];
+    int art; int laufen; int gedrueckt;
+
+    pt_init();
+    if (fenster_neu("Paint", 552, 356) < 0) {
+        print("Paint braucht den Schreibtisch -- erst WIN eingeben.\n");
+        return 1;
+    }
+    fenster_malziel();
+    app_paint(0);
+    fenster_fertig();
+
+    laufen = 1;
+    gedrueckt = 0;
+    while (laufen) {
+        art = fenster_ereignis(e);
+
+        if (art == FE_SCHLIESS) {
+            laufen = 0;
+        } else if (art == FE_TASTE) {
+            pt_taste((e[2] << 8) | e[1]);
+            fenster_malziel();
+            app_paint(0);
+            fenster_fertig();
+        } else if (art == FE_KLICK) {
+            /* Ein Klick ins Bild faengt einen Strich an; das Ziehen selbst
+               liest die Maus direkt, sonst kaeme jeder Punkt einzeln als
+               Ereignis und der Strich haette Luecken. */
+            if (pt_klick(0, e[1], e[2])) gedrueckt = 1;
+            fenster_malziel();
+            app_paint(0);
+            fenster_fertig();
+        } else {
+            /* Zieht gerade jemand? Dann die Maus selbst verfolgen. */
+            if (pt_zieht) {
+                gx_maus_lesen();
+                if (gx_btn & 1) {
+                    pt_ziehen(gx_mx - fn_x, gx_my - fn_y);
+                } else {
+                    pt_loslassen();
+                }
+                fenster_malziel();
+                app_paint(0);
+                fenster_fertig();
+            } else {
+                sleep(2);
+            }
+        }
+    }
+
+    fenster_zu();
+    return 0;
 }
