@@ -53,15 +53,40 @@ deshalb überall, auch im BIOS, wo noch kein Betriebssystem läuft.
 
 ## 3. Kommandozeile
 
-```
-DIR  CD  MD  RD  COPY  REN  DEL  TYPE  MORE  FC  DUMP
-FORMAT  CHKDSK  VOL
-VER  MEM  SYSTEMINFO  TEMP  DATE  TIME  CLS  COLOR  ECHO
-START  TASKLIST  TASKKILL
-WIN            startet den Schreibtisch
-SHUTDOWN  REBOOT  EXIT
-HELP           zeigt dieselbe Liste im System
-```
+| Befehl | Aufruf | was er tut |
+|---|---|---|
+| `DIR` | `DIR` | Inhalt des aktuellen Ordners |
+| `CD` / `CHDIR` | `CD name` \| `CD ..` | Ordner wechseln |
+| `MD` / `MKDIR` | `MD name` | Ordner anlegen |
+| `RD` / `RMDIR` | `RD name` | leeren Ordner löschen |
+| `COPY` | `COPY quelle ziel` | Datei kopieren |
+| `REN` | `REN alt neu` | umbenennen |
+| `DEL` / `ERASE` | `DEL name` | **in den Papierkorb** `\RECYCLED`; wer dort löscht, löscht endgültig |
+| `TYPE` | `TYPE name` | Datei ausgeben |
+| `MORE` | `MORE name` | seitenweise |
+| `FC` | `FC a b` | zwei Dateien vergleichen |
+| `DUMP` | `DUMP name` | Hexdump |
+| `FORMAT` | `FORMAT` | Laufwerk neu formatieren |
+| `CHKDSK` | `CHKDSK` | Dateisystem prüfen |
+| `VOL` | `VOL` | Laufwerksname |
+| `VER` | `VER` | Version von System und BIOS |
+| `MEM` | `MEM` | Speicherbelegung |
+| `SYSTEMINFO` | `SYSTEMINFO` | alles über die Maschine |
+| `TEMP` | `TEMP` | Temperatur, Lüfter, Drosselung |
+| `DATE` / `TIME` | | Datum / Uhrzeit |
+| `CLS` | | Bildschirm löschen |
+| `COLOR` | `COLOR nn` | Farbattribut setzen |
+| `ECHO` | `ECHO text` | Text ausgeben |
+| `START` | `START prog.tbx` | Programm starten |
+| `TASKLIST` | | laufende Prozesse |
+| `TASKKILL` | `TASKKILL nr` | Prozess beenden |
+| `EDIT` | `EDIT name` | Editor (der Coder im Textmodus) |
+| `DISPTEST` | | Bildschirmtest |
+| `WIN` / `DESKTOP` | | **Schreibtisch starten** |
+| `SHUTDOWN` / `REBOOT` / `EXIT` | | ausschalten / neu starten / zurück |
+| `HELP` | | dieselbe Liste im System |
+
+Ein Programm startet man auch **ohne** `START`, einfach mit seinem Namen.
 
 Namen sind **maximal 15 Zeichen**, Groß-/Kleinschreibung ist beim Suchen
 egal. Programme werden gesucht in: aktueller Ordner → `\SYSTEM` → `\PROGS`.
@@ -141,16 +166,245 @@ liegt im Board, nicht auf der Platte.
 
 Vollständige Anleitung mit allen Diensten: `Doku/16 Eigenes BIOS schreiben`.
 
-## 7. Architektur in Stichworten
+## 7. Architektur — die vollständigen Tabellen
 
-- 32-Bit-RISC, 16 Register, **feste 4-Byte-Befehle**, 57 Opcodes
-- `r0` Rückgabe und Arbeitsregister, `r1`–`r5` Argumente, `r6`–`r9` gesichert,
-  `r10`–`r12` Kratzregister, `r13` Assembler-Hilfsregister, `r14` fp, `r15` sp
-- BIOS-Dienste: `INT 0x10` Bildschirm (17 Funktionen), `0x13` Platte,
-  `0x16` Tastatur, `0x1A` Zeit. Systemaufrufe des OS: `INT 0x40`
-- Grafik 640×400, 256 Farben, Blitter mit sieben Kommandos, Blockkopierer
-- Dateisystem TBFS: Superblock 512, Verzeichnis 513–520, Daten ab 576,
-  **Dateien liegen am Stück**
+### Register
+
+| | |
+|---|---|
+| `r0` | Rückgabewert **und Arbeitsregister des Compilers** — jeder Ausdruck landet hier |
+| `r1`–`r5` | Argumente 1–5 (mehr gibt es nicht, der Compiler kann keine sechs) |
+| `r6`–`r9` | muss die gerufene Funktion sichern |
+| `r10`–`r12` | Kratzregister, dürfen jederzeit zerstört werden |
+| `r13` (`at`) | Hilfsregister des Assemblers — nach `ldwa`/`stwa` immer futsch |
+| `r14` (`fp`) | Framepointer |
+| `r15` (`sp`) | Stackpointer |
+
+**Weil der Compiler alles in `r0` rechnet, muss jeder Interrupthandler `r0`
+sichern.**
+
+### Speicherkarte
+
+| Adresse | was |
+|---|---|
+| `0x00000000` | Interruptvektoren, 256 × 4 Byte |
+| `0x00000400` | BIOS-Datenbereich (Cursor, Farbe, Ticks, Tastaturpuffer) |
+| `0x00007C00` | hierhin lädt der Bootsektor |
+| `0x00008000` | der Bootsektor liest das Verzeichnis hierhin |
+| `0x00010000` | **Kernel** |
+| `0x0007FFF0` | Stack der Firmware |
+| `0x00100000` | Bildschirmhistorie, 512 Zeilen |
+| `0x000B0000` | feste Puffer des Dateisystems — **der Kernel darf nicht bis hierher wachsen** |
+| `0x000D0000` | Textpuffer des Coders, 60 KB |
+| `0x00120000` | Terminalfenster |
+| `0x00130000` | Zwischenablage von TOOBAD-OS |
+| `0x00200000` | hierhin lädt das OS Programme |
+| `0x00600008` | Leinwand von Paint |
+| `0x00720000` | Text von Word |
+| `0x00770000` | Fenstertext für `Strg`+`K` |
+| `0x02000000` | Textbildspeicher, 80 × 25 × 2 Byte |
+| `0x02100000` | Grafikbildspeicher, 640 × 400, ein Byte je Punkt |
+| `0x0F000000` | **BIOS-ROM**, 64 KB, nur lesbar |
+
+RAM: 16 MB.
+
+### Befehlssatz — alle Opcodes
+
+Jeder Befehl ist **genau 4 Byte**. Formate: `n` ohne Operand, `r` ein
+Register, `rr`, `rrr`, `ri` Register+Konstante, `rri`, `mem` `[Basis+Offset]`,
+`j` Sprung, `c` Aufruf, `i` Konstante, `ir` Port+Register.
+
+| Opcode | Mnemonic | Format |
+|---|---|---|
+| `0x00` | `nop` | n |
+| `0x01` | `hlt` | n |
+| `0x02` | `cli` | n |
+| `0x03` | `sti` | n |
+| `0x04` | `iret` | n |
+| `0x05` | `ret` | n |
+| `0x06` | `brk` | n |
+| `0x10` | `mov` | rr |
+| `0x11` | `movi` | ri |
+| `0x13` | `movh` | ri |
+| `0x18` | `ldb` | mem |
+| `0x19` | `ldsb` | mem |
+| `0x1A` | `ldh` | mem |
+| `0x1B` | `ldw` | mem |
+| `0x1C` | `stb` | mem |
+| `0x1D` | `sth` | mem |
+| `0x1E` | `stw` | mem |
+| `0x20` | `add` | rrr |
+| `0x21` | `sub` | rrr |
+| `0x22` | `mul` | rrr |
+| `0x23` | `div` | rrr |
+| `0x24` | `mod` | rrr |
+| `0x25` | `and` | rrr |
+| `0x26` | `or` | rrr |
+| `0x27` | `xor` | rrr |
+| `0x28` | `shl` | rrr |
+| `0x29` | `shr` | rrr |
+| `0x2A` | `sar` | rrr |
+| `0x2B` | `not` | rr |
+| `0x2C` | `neg` | rr |
+| `0x2D` | `cmp` | rr |
+| `0x2E` | `tst` | rr |
+| `0x2F` | `udiv` | rrr |
+| `0x30` | `addi` | rri |
+| `0x31` | `subi` | rri |
+| `0x32` | `muli` | rri |
+| `0x33` | `divi` | rri |
+| `0x34` | `modi` | rri |
+| `0x35` | `andi` | rri |
+| `0x36` | `ori` | rri |
+| `0x37` | `xori` | rri |
+| `0x38` | `shli` | rri |
+| `0x39` | `shri` | rri |
+| `0x3A` | `sari` | rri |
+| `0x3D` | `cmpi` | ri |
+| `0x3E` | `tsti` | ri |
+| `0x3F` | `umod` | rrr |
+| `0x40` | `push` | r |
+| `0x41` | `pop` | r |
+| `0x42` | `call` | c |
+| `0x43` | `callr` | r |
+| `0x44` | `pushf` | n |
+| `0x45` | `popf` | n |
+| `0x50` | `ja` `jae` `jb` `jbe` `jc` `jeq` `jg` `jge` `jl` `jle` `jmp` `jn` `jnc` `jne` `jnn` `jnv` `jnz` `jv` `jz` | j |
+| `0x51` | `jmpr` | r |
+| `0x60` | `in` | ri |
+| `0x61` | `inr` | rr |
+| `0x62` | `out` | ir |
+| `0x63` | `outr` | rr |
+| `0x64` | `int` | i |
+
+**Kodierung:** `r`-Formate `(op<<24)|(rd<<20)|(ra<<16)|(rb<<12)`,
+`i`-Formate `(op<<24)|(rd<<20)|(ra<<16)|(imm&0xFFFF)`,
+Sprünge `(op<<24)|(cond<<20)|(off&0xFFFFF)` mit `off = (ziel-pc)/4`.
+
+**Bedingungen** für `0x50`: `al`=0 `z`/`eq`=1 `nz`/`ne`=2 `c`/`b`=3
+`nc`/`ae`=4 `n`=5 `nn`=6 `v`=7 `nv`=8 `be`=9 `a`=10 `l`=11 `ge`=12 `le`=13
+`g`=14.
+
+**Falle:** `cmp`, `cmpi`, `tst`, `tsti`, `jmpr`, `callr` benutzen **`rd`**,
+nicht `ra`. Wer das verwechselt, baut einen Emulator, der fast richtig ist.
+
+**Pseudo-Befehle** des Assemblers: `li rd, wert32` (wird `movi`+`movh`),
+`ldwa/ldha/ldba/stwa/stha/stba rd, ADRESSE` (wird `li at, ADRESSE` plus
+Zugriff über `at`).
+
+**Direktiven:** `.org` `.equ` `.include` `.db` `.dw` `.space` `.align`.
+Ausdrücke können `+ - * /` und Klammern, Punkt vor Strich.
+
+### Ports
+
+| Port | wofür |
+|---|---|
+| `0x00`/`0x01` | Interruptcontroller: quittieren / Maske |
+| `0x10`/`0x11` | Timer: Frequenz setzen / Ticks lesen |
+| `0x20`/`0x21` | Tastatur: Zeichen holen / liegt eins bereit |
+| `0x30`–`0x35` | Platte: LBA, Anzahl, Adresse, Befehl (1 lesen, 2 schreiben), Status, Größe |
+| `0x40`–`0x43` | Grafikkarte: Modus (0 Text, 1 Grafik), Cursor, Palette |
+| `0x44`–`0x4C` | **Blitter**: x, y, w, h, Farbe, Kommando, Zeichen, Quelle, Hintergrund |
+| `0x4D`–`0x4F` | Hardware-Mauszeiger: x, y, an |
+| `0x50`/`0x51` | Lautsprecher: Frequenz / an |
+| `0x52`/`0x53` | Doppelpufferung an / Bild sichtbar machen |
+| `0x54` | Zoom für Blitter-Kommando 3 |
+| `0x56`–`0x5A` | **Blockkopierer**: Quelle, Ziel, Länge, Füllbyte, Kommando |
+| `0x60`–`0x63` | Maus: x, y, Tasten (Bit 0 links, 1 Mitte, **2 rechts**), Rad |
+| `0x70`/`0x71` | CMOS: Adresse / Wert |
+| `0x80` | Entwickler-Log |
+| `0x90` | Netzteil: 1 aus, 2 Neustart |
+| `0xA0`–`0xA5` | Temperatur, Lüfter, Drosselung, Grenze, Lüftermodus, Höchstwert |
+| `0xB0`–`0xB2` | **BIOS-Chip**: Befehl, Puffergröße, Adresse |
+
+**Blitter-Kommandos** (Port `0x49`): 1 Fläche, 2 Rahmen, 3 Zeichen,
+4 Bild, 5 kopieren, 6 Zeichenkette, 7 Bild skaliert.
+**Blockkopierer** (Port `0x5A`): 1 kopieren, 2 füllen, 3/4/5 suchen.
+**BIOS-Chip** (Port `0xB0`): 1 Datei vom Wirt holen, 2 Puffer in den RAM,
+3 brennen, 4 Sicherung zurück, 5 Puffer aus dem RAM, 6 für einen Start
+anmelden, 7 abmelden, 8 dauerhaft anmelden, 9 liegt ein Wunsch an.
+
+**Ein neuer Port braucht drei Einträge:** Konstante in `hardware/isa.py`,
+Behandlung im Gerät, Registrierung in `hardware/machine.py`. Fehlt der
+dritte, tut er nichts — ohne jede Meldung. `m.bus.unknown_ports` verrät es.
+
+### BIOS-Dienste
+
+Funktionsnummer in `r0`, Argumente ab `r1`, Ergebnis in `r0`.
+
+**`INT 0x10` Bildschirm** — die Reihenfolge ist Pflicht:
+
+| r0 | Name | Argumente |
+|---|---|---|
+| 0 | putc | r1 Zeichen, r2 Attribut |
+| 1 | puts | r1 Zeiger, r2 Attribut |
+| 2 | setcursor | r1 x, r2 y |
+| 3 | clear | r1 Attribut |
+| 4 | getcursor | → `y<<16 \| x` |
+| 5 | putat | r1 x, r2 y, r3 Zeichen, r4 Attribut |
+| 6 | putn | r1 Zahl, r2 Attribut |
+| 7 | puthex | r1 Wert, r2 Attribut, **r3 Stellen** |
+| 8 | setmode | r1 = 0 Text, 1 Grafik |
+| 9 | box | r1 x, r2 y, r3 w, r4 h, r5 Attribut |
+| 10 | fillrect | dito |
+| 11 | hline | r1 x, r2 y, r3 Länge, r4 Zeichen, r5 Attribut |
+| 12 | scroll | — |
+| 13 | clearrow | r1 y, r2 Attribut |
+| 14 | putsat | r1 x, r2 y, r3 Text, r4 Attribut |
+| 15/16 | sbcount / sbline | Bildschirmhistorie |
+
+`putc` **muss die Steuerzeichen 8, 9, 10 und 13 selbst behandeln.** Fehlt
+die 8, druckt die Rücktaste ein Kästchen statt zu löschen.
+
+**`INT 0x13` Platte:** 0 lesen (r1 Sektor, r2 Anzahl, r3 Adresse → r0
+Status), 1 schreiben, 2 Größe.
+**`INT 0x16` Tastatur:** 0 warten (→ `Scancode<<8 \| ASCII`), 1 nachsehen,
+2 leeren. Ins Warten gehört ein `hlt`.
+**`INT 0x1A` Zeit:** 0 Ticks (100/s), 1 Uhrzeit `h<<16\|m<<8\|s`,
+2 Datum `j<<16\|m<<8\|t`.
+
+### Systemaufrufe des OS — `INT 0x40`
+
+Nummer in `r0`, Argumente `r1`–`r4`.
+
+| Nr | | Nr | |
+|---|---|---|---|
+| 0 | putc | 17 | setmode |
+| 1 | puts | 18 | out(port, wert) |
+| 2 | getkey | 19 | in(port) |
+| 3 | cls | 20 | box |
+| 4 | exit | 21 | hline |
+| 5 | ticks | 22 | memkb |
+| 6 | putn | 23 | flushkeys |
+| 7 | setcursor | 24–27 | Verzeichnis abfragen |
+| 8 | putat | 28 | Fortschritt melden (0–100) |
+| 9 | haskey | 29 | Statustext melden |
+| 10 | fileread | 30 | Adresse des Zeichensatzes |
+| 11 | filewrite | 31 | Fläche/Rahmen malen |
+| 12 | clock | 32 | Zeichen malen |
+| 13 | date | 33 | fileread mit Suchpfad |
+| 14 | sleep | | |
+| 15 | beep | | |
+| 16 | disksize | | |
+
+`INT 0x41` gibt die Rechenzeit freiwillig ab.
+
+### Dateisystem TBFS
+
+| | |
+|---|---|
+| Superblock | Sektor 512, Kennung `TBFS` = `0x54424653` |
+| Verzeichnis | Sektoren 513–520, 128 Einträge à 32 Byte |
+| Daten | ab Sektor 576 |
+| Eintrag | Name 16 Byte, Start `+16`, Größe `+20`, Info `+24`, Zeit `+28` |
+| Info | Art im untersten Byte (1 Datei, 2 Ordner), **Elternordner+1** in Bit 16–31 |
+
+**Dateien liegen am Stück.** Nur deshalb passt ein Lader in 512 Byte.
+Der Aufbau steht an **vier** Stellen: `system/fs.c`, `tools/tbfs.py`,
+`system/boot.asm`, `firmware/setup.asm` — wer eine ändert, ändert alle.
+
+Eigene Formate: `.TBX` Programm (lädt nach `0x200000`), `.TBI` Bild
+(Breite, Höhe, dann ein Byte je Punkt), `.TBW` Word-Dokument.
 
 ## 8. Bauen und Prüfen
 
