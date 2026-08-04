@@ -66,7 +66,47 @@ einzeln und lesbar.
 Der Rechner baut seinen eigenen Compiler und seine eigene Firmware selbst —
 das nennt man Bootstrapping, und es ist der eigentliche Prüfstein.
 
+## Was drauf ist
+
+**Auf der Kommandozeile** (`HELP` zeigt sie im System selbst):
+
+| | |
+|---|---|
+| Dateien | `DIR` `CD` `MD` `RD` `COPY` `REN` `DEL` `TYPE` `MORE` `FC` `DUMP` |
+| Laufwerk | `FORMAT` `CHKDSK` `VOL` |
+| System | `VER` `MEM` `SYSTEMINFO` `TEMP` `DATE` `TIME` `CLS` `COLOR` `ECHO` |
+| Prozesse | `START` `TASKLIST` `TASKKILL` |
+| Oberfläche | `WIN` startet den Schreibtisch |
+| Ende | `SHUTDOWN` `REBOOT` `EXIT` |
+
+**Programme auf dem Laufwerk:**
+
+| | |
+|---|---|
+| `CC` | C-Compiler — **läuft auf dem TB-32 selbst und übersetzt sich selbst** |
+| `ASM` | Assembler, ebenfalls auf dem Gerät. Kann auch ein BIOS bauen |
+| `PY` | kleiner Python-Interpreter |
+| `CALC` | Taschenrechner |
+| `FLAPPY` | Spiel, zeigt die Grafikleistung |
+| `BENCH` `MEMTEST` `KELLERTEST` `CRASH` | Messen und Kaputtmachen zum Prüfen |
+
+**Auf dem Schreibtisch** (Startmenü):
+
+| | |
+|---|---|
+| **File Manager** | Dateien ansehen, umbenennen, löschen, per Maus ziehen |
+| **Command Prompt** | die Kommandozeile in einem Fenster |
+| **Coder** | Editor mit Syntaxfarben, Suche, Übersetzen, Starten — und **Firmware bauen** (`Test` / `Flash`) |
+| **Paint** | Malen mit Werkzeugen, Füllen, Rückgängig, eigenes Format `.TBI` |
+| **Word** | Textverarbeitung mit Auswahl, Farben, Listen, Seiten und **eingebetteten Bildern** |
+| **System Monitor** | Prozesse, Speicher, Takt, Temperatur |
+| **Control Panel** | CPU-Takt, Lüfter, POST-Einstellungen — schreibt ins CMOS |
+| **Clock** | Uhr und Laufzeit |
+
 ## Doku
+
+**Für KI-Assistenten:** [`AI_README.md`](AI_README.md) — Aufbau, jeder
+Befehl, jede Oberfläche und die Fallen, an einem Ort.
 
 Die Arbeitsreferenz liegt in [`Doku/`](Doku/) als Obsidian-Vault. Anfangen
 bei `00 START HIER`. Besonders lesenswert: `07 Fallstricke` (teuer erkaufte

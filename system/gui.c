@@ -2153,6 +2153,86 @@ int win_unter(int mx, int my) {
     return 0 - 1;
 }
 
+/* ==========================================================================
+   "Gib mir den Text dieses Fensters"
+
+   Das Gehaeuse (Strg+K) kann im Grafikmodus nichts auslesen -- dort stehen
+   Bildpunkte, kein Text. Es kann aber BITTEN: es setzt wt_wunsch auf 1, der
+   Schreibtisch sieht das in seiner Schleife, legt den Text hin und setzt den
+   Wunsch zurueck.
+
+   Der Vorteil gegenueber "das Gehaeuse liest jeden Puffer selbst": jedes
+   Programm beantwortet die Frage fuer sich. Ein neues Fenster braucht eine
+   Zeile hier -- und nicht eine Zeile in pc.py, das sonst viel zu viel ueber
+   das System wissen muesste.                                              */
+
+#define WT_BUF   0x00770000          /* hierhin kommt der Text */
+#define WT_MAX   60000
+
+int wt_wunsch = 0;                   /* 1 = das Gehaeuse haette gern Text */
+int wt_len = 0;                      /* so viele Bytes liegen bereit */
+
+void wt_zeichen(int c) {
+    if (wt_len < WT_MAX - 1) { byte_put(WT_BUF + wt_len, c); wt_len++; }
+}
+
+void wt_text(char* s) {
+    while (*s) { wt_zeichen(*s); s++; }
+}
+
+void wt_zeile(char* s) {
+    wt_text(s);
+    wt_zeichen(10);
+}
+
+/* Fuellt WT_BUF mit dem Inhalt des obersten Fensters. */
+void wt_bauen() {
+    int i; int n; int typ; char* t;
+    wt_len = 0;
+    i = win_top;
+    if (i < 0 || win_type[i] == 0) return;
+    typ = win_type[i];
+
+    if (typ == APP_EDITOR) {                 /* Coder: der ganze Quelltext */
+        t = ed_text();
+        n = 0;
+        while (n < ed_len) { wt_zeichen(t[n]); n++; }
+        return;
+    }
+    if (typ == APP_WORD) {                   /* Word: der ganze Fliesstext */
+        t = (char*)WD_TEXT;
+        n = 0;
+        while (n < wd_len) { wt_zeichen(t[n]); n++; }
+        return;
+    }
+    if (typ == APP_FILES || typ == APP_DIALOG) {
+        fs_path(gui_pfad);
+        wt_zeile(gui_pfad);
+        for (n = 0; n < file_anzahl(); n++) {
+            i = file_index(n);
+            wt_text(ent_name(i));
+            if (ent_type(i) == FT_DIR) wt_text("   <DIR>");
+            wt_zeichen(10);
+        }
+        return;
+    }
+    if (typ == APP_TERM) {                   /* Terminalfenster, Zelle fuer Zelle */
+        n = 0;
+        while (n < TERM_H) {
+            i = 0;
+            while (i < TERM_W) {
+                wt_zeichen(byte_get(TERM_BUF + (n * TERM_W + i) * 2));
+                i++;
+            }
+            wt_zeichen(10);
+            n++;
+        }
+        return;
+    }
+    /* Alles andere: wenigstens der Titel, damit nie gar nichts kommt. */
+    wt_zeile(win_title(i));
+}
+
 void draw_desktop() {
     int i;
     if (gui_fremd) return;
@@ -2386,6 +2466,13 @@ void gui_main() {
     sys_out(P_GFX_TAUSCH, 2);
 
     while (gui_running) {
+        /* Hat das Gehaeuse um den Text des obersten Fensters gebeten?
+           Dann liegt er eine Schleifenrunde spaeter bereit. Billiger als
+           ihn staendig aktuell zu halten -- gefragt wird selten. */
+        if (wt_wunsch) {
+            wt_bauen();
+            wt_wunsch = 0;
+        }
         /* Ein Programm im Fenster hat in den Grafikmodus geschaltet -- es
            braucht den ganzen Bildschirm. Solange malen wir nichts und lesen
            auch keine Tasten, sonst kaempfen zwei Programme um beides. */

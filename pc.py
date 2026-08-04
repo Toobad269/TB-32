@@ -372,6 +372,40 @@ ED_BUF = 0x000D0000              # Textpuffer des Coders (siehe system/edit.c)
 APP_EDITOR = 8                   # Fensterart des Coders (siehe system/gui.c)
 
 
+WT_BUF = 0x00770000              # Fenstertext, den das System bereitlegt
+
+
+def fenstertext_erbitten(m):
+    """Bittet TOOBAD-OS um den Text des obersten Fensters.
+
+    Im Grafikmodus stehen auf dem Schirm Bildpunkte, kein Text -- das
+    Gehaeuse kann dort nichts auslesen. Also fragt es: es setzt `wt_wunsch`,
+    und der Schreibtisch legt den Text eine Schleifenrunde spaeter hin.
+
+    So beantwortet jedes Programm die Frage fuer sich. Ein neues Fenster
+    braucht eine Zeile im System -- und keine hier, wo pc.py sonst viel zu
+    viel ueber das System wissen muesste."""
+    a = kernel_symbol("wt_wunsch")
+    if a is None:
+        return False
+    struct.pack_into("<i", m.bus.ram, a, 1)
+    return True
+
+
+def fenstertext_holen(m):
+    """Liegt der erbetene Text bereit? Dann als Zeichenkette zurueck."""
+    a = kernel_symbol("wt_wunsch")
+    b = kernel_symbol("wt_len")
+    if a is None or b is None:
+        return None
+    if struct.unpack_from("<i", m.bus.ram, a)[0] != 0:
+        return None                       # noch nicht beantwortet
+    n = struct.unpack_from("<i", m.bus.ram, b)[0]
+    if n <= 0 or n > 60000:
+        return ""
+    return bytes(m.bus.ram[WT_BUF:WT_BUF + n]).decode("latin-1")
+
+
 def alles_kopieren(m):
     """Strg+K: alles Sichtbare in die Zwischenablage des Macs -- still.
 
@@ -386,19 +420,7 @@ def alles_kopieren(m):
     Ohne Rückmeldung: keine Meldung im Gast, kein Blinken. Wer die Taste
     drückt, weiß, was er wollte."""
     if m.vga.mode != VGA.MODE_TEXT:
-        oben = kernel_symbol("win_top")
-        typen = kernel_symbol("win_type")
-        laenge = kernel_symbol("ed_len")
-        if oben is not None and typen is not None and laenge is not None:
-            try:
-                i = struct.unpack_from("<i", m.bus.ram, oben)[0]
-                if i >= 0 and struct.unpack_from("<i", m.bus.ram, typen + i * 4)[0] == APP_EDITOR:
-                    n = struct.unpack_from("<i", m.bus.ram, laenge)[0]
-                    if 0 < n <= 60000:
-                        return bytes(m.bus.ram[ED_BUF:ED_BUF + n]).decode("latin-1")
-            except Exception:
-                pass
-        return ""
+        return None                       # das System wird gefragt, siehe oben
 
     t = m.vga.text
     zeilen = []
@@ -580,6 +602,7 @@ def main():
     # Rechner beim Programmstart schon an, und genau das soll er nicht sein.
     kaltstart = time.perf_counter() + EINSCHALT_HALT_S
     vorrat = []                          # Tasten aus der Bedenkzeit
+    kopie_wartet = 0                     # bis wann auf den Fenstertext warten
     bios_name = Machine.rom_name(rom_bytes(m.rom_path)) or "UNNAMED BIOS"
     m.vga.mode = VGA.MODE_TEXT
     m.vga.clear_text(0x00)
@@ -698,7 +721,10 @@ def main():
                 if e.key == pygame.K_k and (mods & pygame.KMOD_CTRL
                                             or mods & pygame.KMOD_META):
                     text = alles_kopieren(m)
-                    if text:
+                    if text is None:              # Grafikmodus: System fragen
+                        if fenstertext_erbitten(m):
+                            kopie_wartet = now + 1.0
+                    elif text:
                         mac_clipboard_set(text)
                     continue
                 if e.key == pygame.K_r and (mods & pygame.KMOD_CTRL):
@@ -808,6 +834,15 @@ def main():
         cpu_ms = (time.perf_counter() - rahmen_start) * 1000.0
         ips_measured = int(n / dt) if dt > 0 else 0
 
+        # Liegt der erbetene Fenstertext inzwischen bereit?
+        if kopie_wartet:
+            t = fenstertext_holen(m)
+            if t is not None:
+                if t:
+                    mac_clipboard_set(t)
+                kopie_wartet = 0
+            elif now > kopie_wartet:
+                kopie_wartet = 0          # das System antwortet nicht, gut
         if kaltstart is not None:
             startbild(m.vga, bios_name, EINSCHALT_HALT_S - (kaltstart - now),
                       m.flash.einmal is not None)
