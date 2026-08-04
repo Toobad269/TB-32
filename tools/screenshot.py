@@ -19,7 +19,7 @@ sys.path.insert(0, ROOT)
 
 import pygame
 from hardware.machine import Machine
-from tools.headless import KEYNAMES
+from tools.headless import KEYNAMES, test_cmos
 
 
 def main():
@@ -42,7 +42,7 @@ def main():
     from pc import Monitor
     monitor = Monitor(scale)
 
-    m = Machine(ROOT)
+    m = Machine(ROOT, cmos=test_cmos())
     m.power_on()
     dt = 1 / 60
     start_typing = int(float(sys.argv[sys.argv.index("--after") + 1]) / dt) \

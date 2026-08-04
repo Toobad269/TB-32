@@ -26,7 +26,7 @@ sys.path.insert(0, ROOT)
 
 from hardware.machine import Machine
 from hardware import devices as dev
-from tools.headless import screen_text
+from tools.headless import screen_text, test_cmos
 
 GRUEN, ROT, GELB, WEG = "\033[92m", "\033[91m", "\033[93m", "\033[0m"
 
@@ -35,7 +35,7 @@ class PC:
     """Ein laufender Rechner, der auf Bildschirmausgaben warten kann."""
 
     def __init__(self):
-        self.m = Machine(ROOT)
+        self.m = Machine(ROOT, cmos=test_cmos())
         self.m.power_on()
         self.dt = 1 / 60
 

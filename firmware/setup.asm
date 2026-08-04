@@ -1344,7 +1344,7 @@ setup_message:
 ; --- Die vier Reiter -----------------------------------------------------
 ;  je Reiter: Zeiger auf die Eintragstabelle, Anzahl der Zeilen
 setup_tabs:
-    .dw tab_main,     6
+    .dw tab_main,     7
     .dw tab_hardware, 5
     .dw tab_cooling,  6
     .dw tab_security, 4
@@ -1360,6 +1360,7 @@ tab_main:
     .dw s_e_quick, CM_QUICKBOOT, 2, opts_onoff
     .dw s_e_beep,  CM_BEEP,      2, opts_onoff
     .dw s_e_verb,  CM_VERBOSE,   2, opts_verb
+    .dw s_e_boot2, CM_BOOTMODE,  2, opts_boot2
     .dw s_e_def,   REG_DEFAULTS, 0, 0
 
 tab_hardware:
@@ -1405,6 +1406,7 @@ opts_fan:    .dw s_fan0, s_fan1, s_fan2
 opts_boot:   .dw s_boot0, s_boot1, s_boot2
 opts_speed:  .dw s_spd0, s_spd1, s_spd2, s_spd3, s_spd4
 opts_verb:   .dw s_short, s_full
+opts_boot2:  .dw s_bm0, s_bm1
 
 s_set_title: .db "TOOBAD BIOS SETUP UTILITY", 0
 s_set_main:  .db " Main ", 0
@@ -1424,6 +1426,9 @@ s_e_quick:   .db "Quick Boot (skip full memory test)", 0
 s_e_beep:    .db "POST Beep", 0
 s_e_speed:   .db "CPU Clock Speed", 0
 s_e_verb:    .db "POST Messages", 0
+s_e_boot2:   .db "Boot To", 0
+s_bm0:       .db "Desktop", 0
+s_bm1:       .db "Console", 0
 s_e_def:     .db "Load Setup Defaults", 0
 s_e_mem:     .db "Installed Memory", 0
 s_e_disk:    .db "Primary Master", 0

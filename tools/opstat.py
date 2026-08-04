@@ -18,12 +18,13 @@ os.environ["SDL_VIDEODRIVER"] = "dummy"
 os.environ["SDL_AUDIODRIVER"] = "dummy"
 
 from hardware.machine import Machine
+from tools.headless import test_cmos
 from hardware import devices as dev
 from hardware.isa import RAM_SIZE, INSTRUCTIONS
 
 
 def main():
-    m = Machine(ROOT)
+    m = Machine(ROOT, cmos=test_cmos())
     m.power_on()
     dt = 1 / 60
 

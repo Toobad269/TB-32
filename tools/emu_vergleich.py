@@ -27,6 +27,8 @@ sys.path.insert(0, ROOT)
 os.environ["SDL_VIDEODRIVER"] = "dummy"
 os.environ["SDL_AUDIODRIVER"] = "dummy"
 
+from tools.headless import test_cmos
+
 GRUEN, ROT, WEG = "\033[92m", "\033[91m", "\033[0m"
 
 SPUR_C = r'''
@@ -35,7 +37,8 @@ SPUR_C = r'''
 #include <stdlib.h>
 int main(int argc, char** argv) {
     int n = argc > 1 ? atoi(argv[1]) : 200000, i;
-    Machine *m = m_new("firmware/bios.bin", "disk/hd0.img", "disk/cmos.bin");
+    Machine *m = m_new("firmware/bios.bin", "disk/hd0.img",
+                       argc > 3 ? argv[3] : "disk/cmos.bin");
     FILE* f = fopen(argv[2], "w");
     if (!m || !f) return 1;
     m_power_on(m);
@@ -71,14 +74,14 @@ def spur_c(schritte, ziel):
     if r.returncode != 0:
         print(r.stderr)
         return False
-    subprocess.run([binaer, str(schritte), ziel], cwd=ROOT)
+    subprocess.run([binaer, str(schritte), ziel, test_cmos()], cwd=ROOT)
     return True
 
 
 def spur_py(schritte, ziel):
     from hardware.machine import Machine
     from hardware.isa import IRQ_TIMER
-    m = Machine(ROOT)
+    m = Machine(ROOT, cmos=test_cmos())
     m.power_on()
     m.timer.hz = 0
     with open(ziel, "w") as f:
@@ -126,14 +129,14 @@ def main():
               f"Programmzaehler und Flags jedes Mal gleich")
 
     print("\n--- Der ganze Bootvorgang -----------------------------------")
-    r = subprocess.run([os.path.join(ROOT, "emu", "tb32"), "4.0"],
+    r = subprocess.run([os.path.join(ROOT, "emu", "tb32"), "4.0", "", test_cmos()],
                        cwd=ROOT, capture_output=True, text=True)
     c_schirm = [z.rstrip() for z in r.stdout.splitlines()]
     tempo_c = r.stderr.strip().splitlines()[-1] if r.stderr.strip() else ""
 
     from hardware.machine import Machine
     from tools.headless import screen_text
-    m = Machine(ROOT)
+    m = Machine(ROOT, cmos=test_cmos())
     m.power_on()
     t0 = time.perf_counter()
     for _ in range(240):

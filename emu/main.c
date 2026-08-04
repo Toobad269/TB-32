@@ -32,14 +32,17 @@ static void schirm_zeigen(Machine *m) {
 
 int main(int argc, char **argv) {
     double sekunden = (argc > 1) ? atof(argv[1]) : 4.0;
-    const char *tasten = (argc > 2) ? argv[2] : NULL;
+    /* Leerer String heisst "nichts tippen" -- so kann man das CMOS als
+       vierten Parameter mitgeben, ohne eine Taste zu senden. */
+    const char *tasten = (argc > 2 && argv[2][0]) ? argv[2] : NULL;
     const double dt = 1.0 / 60.0;
     int schritte, i;
     clock_t t0;
     double echt;
     Machine *m;
 
-    m = m_new("firmware/bios.bin", "disk/hd0.img", "disk/cmos.bin");
+    m = m_new("firmware/bios.bin", "disk/hd0.img",
+                          argc > 3 ? argv[3] : "disk/cmos.bin");
     if (!m) {
         fprintf(stderr, "Maschine liess sich nicht bauen. "
                         "Erst 'python3 build.py' laufen lassen.\n");

@@ -2522,6 +2522,112 @@ int files_click(int w, int mx, int my) {
     return 0;
 }
 
+/* ==========================================================================
+   Anmeldung im Grafikmodus
+
+   Sie kommt VOR den Schreibtisch, nicht hinein: sonst saehe man kurz die
+   Fenster von jemand anderem, bevor gefragt wird.
+
+   Dieselbe Pruefsumme wie die Textfassung in kernel.c -- neu ist nur die
+   Oberflaeche. Und dieselbe Einschraenkung: das haelt neugierige Leute auf,
+   es ist keine Sicherheit.
+   ========================================================================== */
+
+char gl_name[24];
+char gl_pw[32];
+char gl_pw2[32];
+int  gl_feld = 0;                    /* welches Feld gerade dran ist */
+int  gl_fehler = 0;
+
+void gl_kasten(int y, char* beschriftung, char* inhalt, int sterne, int aktiv) {
+    int x; int i; int n;
+    x = 180;
+    g_text(x, y, beschriftung, C_TEXT, 256);
+    g_fill(x + 96, y - 3, 180, 14, C_WHITE);
+    g_frame(x + 96, y - 3, 180, 14, aktiv ? C_ACCENT : C_WINDARK);
+    n = strlen(inhalt);
+    if (sterne) {
+        for (i = 0; i < n && i < 22; i++)
+            g_char(x + 100 + i * 8, y, '*', C_TEXT, 256);
+    } else {
+        g_text(x + 100, y, inhalt, C_TEXT, 256);
+    }
+    if (aktiv) g_fill(x + 100 + n * 8, y, 7, 8, C_ACCENT);
+}
+
+void gl_malen(int neu_anlegen) {
+    g_fill(0, 0, G_W, G_H, C_DESK);
+    g_fill(140, 120, 360, neu_anlegen ? 150 : 120, C_WIN);
+    g_frame(140, 120, 360, neu_anlegen ? 150 : 120, C_WINDARK);
+    g_fill(140, 120, 360, 16, C_TITLEBAR);
+    g_text(148, 124, neu_anlegen ? "Welcome to TOOBAD-OS" : "TOOBAD-OS", C_WHITE, 256);
+
+    if (neu_anlegen) {
+        g_text(160, 148, "This is the first start of this machine.", C_TEXT, 256);
+        gl_kasten(174, "User name", gl_name, 0, gl_feld == 0);
+        gl_kasten(196, "Password",  gl_pw,   1, gl_feld == 1);
+        gl_kasten(218, "Repeat",    gl_pw2,  1, gl_feld == 2);
+        g_text(160, 244, "TAB switches fields, ENTER confirms", C_WINDARK, 256);
+        if (gl_fehler) g_text(160, 244, "The two entries differ.", C_WARN, 256);
+    } else {
+        g_text(160, 150, "User", C_WINDARK, 256);
+        g_text(200, 150, gl_name, C_ACCENT, 256);
+        gl_kasten(176, "Password", gl_pw, 1, 1);
+        g_text(160, 206, "ENTER to sign in", C_WINDARK, 256);
+        if (gl_fehler) g_text(160, 206, "Wrong password.", C_WARN, 256);
+    }
+    sys_out(P_GFX_TAUSCH, 2);
+}
+
+/* Rueckgabe: 1 = angemeldet. Laeuft, bis es stimmt. */
+int gui_anmelden(int neu_anlegen) {
+    int k; int c; int code; int n;
+    char* ziel;
+
+    memset(gl_pw, 0, 32);
+    memset(gl_pw2, 0, 32);
+    gl_feld = neu_anlegen ? 0 : 1;
+    gl_fehler = 0;
+
+    while (1) {
+        gl_malen(neu_anlegen);
+        k = getkey();
+        c = keychar(k);
+        code = keycode(k);
+
+        if (gl_feld == 0) ziel = gl_name;
+        else if (gl_feld == 1) ziel = gl_pw;
+        else ziel = gl_pw2;
+        n = strlen(ziel);
+
+        if (code == K_TAB) {
+            if (neu_anlegen) { gl_feld++; if (gl_feld > 2) gl_feld = 0; }
+            continue;
+        }
+        if (code == K_BACKSPACE) { if (n > 0) ziel[n - 1] = 0; continue; }
+        if (code == K_ENTER) {
+            if (neu_anlegen) {
+                if (gl_feld < 2) { gl_feld++; continue; }
+                if (gl_name[0] == 0) { gl_feld = 0; continue; }
+                if (strcmp(gl_pw, gl_pw2) != 0) {
+                    gl_fehler = 1;
+                    memset(gl_pw, 0, 32);
+                    memset(gl_pw2, 0, 32);
+                    gl_feld = 1;
+                    continue;
+                }
+                benutzer_anlegen(gl_name, gl_pw);
+                return 1;
+            }
+            if (benutzer_passt(gl_pw)) return 1;
+            gl_fehler = 1;
+            memset(gl_pw, 0, 32);
+            continue;
+        }
+        if (c >= 32 && c < 127 && n < 20) { ziel[n] = c; ziel[n + 1] = 0; }
+    }
+}
+
 void gui_main() {
     int mx; int my; int btn; int alt_btn; int i; int k;
     int drag; int drag_dx; int drag_dy; int neu; int letzte_sek;

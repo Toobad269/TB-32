@@ -29,6 +29,27 @@ KEYNAMES = {
 }
 
 
+def test_cmos():
+    """Ein eigenes CMOS fuer Testlaeufe: Startziel = Textkonsole.
+
+    Seit der Rechner in den Schreibtisch startet, stehen im Textbildspeicher
+    nur noch die Reste von vorher -- jedes Werkzeug, das screen_text() liest,
+    waere blind. Es bekommt deshalb eine Kopie des CMOS mit Byte 0x1D = 1.
+    Das eigene CMOS des Nutzers bleibt unberuehrt, auch beim Herunterfahren."""
+    import shutil
+    import tempfile
+    ziel = os.path.join(tempfile.gettempdir(), "tb32_test_cmos.bin")
+    quelle = os.path.join(ROOT, "disk", "cmos.bin")
+    if os.path.exists(quelle):
+        shutil.copy(quelle, ziel)
+    d = bytearray(open(ziel, "rb").read().ljust(64, b"\x00")) if os.path.exists(ziel) \
+        else bytearray(64)
+    d[0x1D] = 1                       # 1 = Textkonsole
+    with open(ziel, "wb") as f:
+        f.write(bytes(d))
+    return ziel
+
+
 def screen_text(m):
     out = []
     t = m.vga.text
@@ -53,7 +74,7 @@ def main():
                 for ch in part:
                     keys.append((0, ord(ch)))
 
-    m = Machine(ROOT)
+    m = Machine(ROOT, cmos=test_cmos())
     m.power_on()
 
     dt = 1.0 / 60

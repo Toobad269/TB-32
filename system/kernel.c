@@ -884,6 +884,16 @@ void shell() {
             if (term_aktiv) return;              /* Terminalfenster schliessen */
             print("Not running in a window.\n");
         }
+        else if (stricmp(cmd, "tbcmd") == 0) {
+            /* Aus dem Fenster in die grosse Vollbildkonsole. Gegenstueck
+               zu WIN, das zurueck in den Schreibtisch fuehrt. */
+            if (term_aktiv) {
+                term_aktiv = 0;
+                gui_running = 0;
+            } else {
+                print("You are already in the full-screen console.\n");
+            }
+        }
         else if (stricmp(cmd, "reboot") == 0) {
             print("The system is restarting ...\n");
             sleep(40);
@@ -941,6 +951,8 @@ void shell() {
    nachbauen, und es soll niemand fuer mehr halten.
    ========================================================================== */
 
+#define CM_BOOTMODE 0x1D             /* 0 = Schreibtisch, 1 = Textkonsole */
+
 #define USER_BUF   0x000C0000
 #define USER_NAME  0                     /* 20 Byte Name */
 #define USER_HASH  20                    /* 4 Byte Pruefsumme des Passworts */
@@ -973,6 +985,23 @@ int passwort_lesen(char* buf, int max) {
         }
     }
 }
+
+void benutzer_anlegen(char* name, char* pw) {
+    memset((char*)USER_BUF, 0, USER_LEN);
+    strncpy((char*)(USER_BUF + USER_NAME), name, 19);
+    mem_put(USER_BUF + USER_HASH, pw_summe(pw));
+    fs_write("USER.DAT", USER_BUF, USER_LEN);
+}
+
+int benutzer_passt(char* pw) {
+    return pw_summe(pw) == mem_get(USER_BUF + USER_HASH);
+}
+
+int benutzer_vorhanden() {
+    return fs_read("USER.DAT", USER_BUF, USER_LEN) == USER_LEN;
+}
+
+char* benutzer_name() { return (char*)(USER_BUF + USER_NAME); }
 
 void ersteinrichtung() {
     char name[24];
@@ -1036,7 +1065,7 @@ void anmelden() {
 }
 
 void benutzer_pruefen() {
-    if (fs_read("USER.DAT", USER_BUF, USER_LEN) != USER_LEN) {
+    if (benutzer_vorhanden() == 0) {
         ersteinrichtung();               /* frische Platte: einrichten */
         return;
     }
@@ -1062,7 +1091,20 @@ int main() {
     if (formatiert) printc("OK\n", GREEN);
     else printc("new disk, initialised\n", YELLOW);
 
-    benutzer_pruefen();
+    /* Startziel: Schreibtisch oder Textkonsole. Steht im CMOS neben Quick
+       Boot, aenderbar im Setup und im Control Panel. Standard ist der
+       Schreibtisch -- die Testwerkzeuge bekommen ein eigenes CMOS mit
+       Konsole, weil sie den TEXTbildschirm auslesen. */
+    if (cmos_get(CM_BOOTMODE) == 0) {
+        sys_setmode(1 + 256);
+        if (benutzer_vorhanden()) gui_anmelden(0);
+        else                      gui_anmelden(1);
+        gui_main();
+        sys_setmode(0);
+        cls(NORMAL);
+    } else {
+        benutzer_pruefen();
+    }
 
     print("Starting command interpreter ...\n\n");
     print("Type ");

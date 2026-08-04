@@ -23,7 +23,7 @@ os.environ["SDL_AUDIODRIVER"] = "dummy"
 
 from hardware.machine import Machine
 from hardware import devices as dev
-from tools.headless import KEYNAMES, screen_text
+from tools.headless import KEYNAMES, screen_text, test_cmos
 
 GRUEN, ROT, GELB, WEG = "\033[92m", "\033[91m", "\033[93m", "\033[0m"
 
@@ -44,7 +44,7 @@ class Lauf:
     """Ein Rechner, der im Hintergrund läuft und den man tippen lassen kann."""
 
     def __init__(self, rom=None):
-        self.m = Machine(ROOT, rom=rom)
+        self.m = Machine(ROOT, rom=rom, cmos=test_cmos())
         self.m.power_on()
         self.dt = 1 / 60
         # Alles, was seit dem Einschalten je auf dem Schirm stand. Der POST
@@ -183,7 +183,7 @@ def flash_test():
         # --- Dual BIOS: ein zerstörter Chip wird automatisch ersetzt ------
         with open(chip, "wb") as f:
             f.write(b"\x00" * 64)               # Chip vernichtet
-        R = Machine(ROOT, rom=chip)
+        R = Machine(ROOT, rom=chip, cmos=test_cmos())
         R.power_on()
         pruefe("Zerstörter Chip: das Board greift zur Sicherung",
                R.rom_gerettet)
