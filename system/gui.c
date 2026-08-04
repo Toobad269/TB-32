@@ -2564,17 +2564,33 @@ void gl_kasten(int y, char* beschriftung, char* inhalt, int sterne, int aktiv) {
 
 int gl_menue = 0;                    /* Klappmenue offen? */
 
+/* Ein Ring mit Luecke oben und ein Strich hinein. x,y ist die linke obere
+   Ecke eines 12x12-Feldes. Der Ring wird aus einzelnen Punkten gesetzt --
+   vier Balken sahen aus wie ein Kasten, nicht wie ein Schalter. */
+void gl_punkt(int x, int y, int col) { g_fill(x, y, 2, 2, col); }
+
 void gl_power_symbol(int x, int y, int col) {
-    g_fill(x + 3, y + 2, 2, 5, col);          /* der Strich oben */
-    g_fill(x, y + 3, 2, 4, col);              /* linker Bogen */
-    g_fill(x + 6, y + 3, 2, 4, col);          /* rechter Bogen */
-    g_fill(x + 1, y + 7, 6, 2, col);          /* unten herum */
+    int cx; int cy;
+    cx = x + 5;
+    cy = y + 6;
+    gl_punkt(cx - 3, cy - 4, col);            /* oben links neben der Luecke */
+    gl_punkt(cx - 5, cy - 2, col);
+    gl_punkt(cx - 5, cy,     col);
+    gl_punkt(cx - 4, cy + 3, col);
+    gl_punkt(cx - 2, cy + 4, col);            /* unten herum */
+    gl_punkt(cx,     cy + 5, col);
+    gl_punkt(cx + 2, cy + 4, col);
+    gl_punkt(cx + 4, cy + 3, col);
+    gl_punkt(cx + 5, cy,     col);
+    gl_punkt(cx + 5, cy - 2, col);
+    gl_punkt(cx + 3, cy - 4, col);            /* oben rechts neben der Luecke */
+    g_fill(cx, cy - 6, 2, 7, col);            /* der Strich in die Luecke */
 }
 
 void gl_power_malen() {
     int mx; int my;
     g_panel(PW_X, PW_Y, PW_B, PW_H, gl_menue);
-    gl_power_symbol(PW_X + 10, PW_Y + 8, C_TEXT);
+    gl_power_symbol(PW_X + 8, PW_Y + 6, C_TEXT);
     if (gl_menue == 0) return;
     mx = PW_X + PW_B - 150;
     my = PW_Y - 44;
