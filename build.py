@@ -208,6 +208,17 @@ def build():
                 ziel, wo = sysprogs_dir, "SYSTEM\\PROGS"
             else:
                 ziel, wo = progs_dir, "PROGS"
+            # Eine gleichnamige Datei im ANDEREN Ordner muss weg. Sonst
+            # liegt nach einem Umzug beides da, und der Suchpfad findet die
+            # alte Fassung -- der Rechner startete das Programm von gestern
+            # und niemand verstand, warum die Aenderung nichts bewirkte.
+            for anderer in (system_dir, sysprogs_dir, progs_dir):
+                if anderer == ziel:
+                    continue
+                alt = fs.find(name, anderer)
+                if alt >= 0:
+                    fs.delete(name, anderer)
+                    print(f"  Aufgeraeumt  alte Fassung von {name} entfernt")
             fs.put(name, code, ziel)
             namen.append(f"{wo}\\{name}")
         if namen:

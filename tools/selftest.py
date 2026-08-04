@@ -616,6 +616,25 @@ def main():
         typen = [wort(L.m, sym["win_type"] + i * 4) for i in range(6)]
         pruefe("Und es raeumt sein Fenster selbst ab", 18 not in typen, str(typen))
 
+        # Und ein richtiges Programm: der Taschenrechner, frueher Vollbild.
+        # Erst die Kommandozeile wieder nach vorn -- nach dem Schliessen des
+        # Beispielfensters liegt sonst ein anderes Fenster obenauf, und die
+        # Eingabe landete im Browser.
+        menue(1)
+        L.warte(1.5)
+        L.eingabe("start calc.tbx /b|ENTER", 1.0)
+        # Warten, bis das Fenster steht: der Rechner malt beim ersten Bild
+        # zwanzig Knoepfe, und wie lange das dauert, haengt am Takt.
+        for _ in range(int(30.0 / L.dt)):
+            L.m.run_slice(L.dt)
+            if 18 in [wort(L.m, sym["win_type"] + i * 4) for i in range(6)]:
+                break
+        typen = [wort(L.m, sym["win_type"] + i * 4) for i in range(6)]
+        pruefe("Der Taschenrechner laeuft im Fenster", 18 in typen, str(typen))
+        pruefe("Der Schreibtisch bleibt dabei stehen",
+               sum(L.m.vga.gfx[:64000]) > 0)
+        L.eingabe("ESC", 4.0)
+
 
         menue_fest(1)                                # zurueck in die Konsole
         L.warte(2.0)

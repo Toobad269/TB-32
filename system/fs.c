@@ -128,13 +128,22 @@ int fs_find_in(char* name, int ordner) {
 int fs_find(char* name) { return fs_find_in(name, cwd); }
 
 /* Programme werden der Reihe nach gesucht: im aktuellen Ordner, dann in
-   \SYSTEM, dann in \PROGS. Das ist der Suchpfad des Systems -- dasselbe,
-   was unter DOS in der Umgebungsvariablen PATH steht. */
+   \SYSTEM, dann in \SYSTEM\PROGS, dann in \PROGS. Das ist der Suchpfad
+   des Systems -- dasselbe, was unter DOS in der Umgebungsvariablen PATH
+   steht. Die Reihenfolge ist wichtig: was zum System gehoert, gewinnt gegen
+   eine gleichnamige Datei in \PROGS. Sonst kann man das System mit einer
+   untergeschobenen Datei aushebeln. */
 int fs_find_prog(char* name) {
-    int i; int d;
+    int i; int d; int sys;
     i = fs_find_in(name, cwd);
     if (i >= 0) return i;
-    d = fs_find_in("SYSTEM", 0 - 1);
+    sys = fs_find_in("SYSTEM", 0 - 1);
+    d = sys;
+    if (d >= 0 && ent_type(d) == FT_DIR) {
+        i = fs_find_in(name, d);
+        if (i >= 0) return i;
+    }
+    d = sys >= 0 ? fs_find_in("PROGS", sys) : 0 - 1;
     if (d >= 0 && ent_type(d) == FT_DIR) {
         i = fs_find_in(name, d);
         if (i >= 0) return i;

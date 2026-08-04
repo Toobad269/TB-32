@@ -9,6 +9,43 @@ Die tiefer liegenden Fallen haben zusätzlich einen ausführlichen Eintrag in
 
 ---
 
+## Der erste echte Umzug: der Taschenrechner läuft im Fenster
+
+`CALC.TBX` war ein Vollbildprogramm -- es nahm den ganzen Schirm und der
+Schreibtisch war weg. Jetzt liegt es in `\SYSTEM\PROGS`, steht im
+Startmenü und läuft in einem Fenster, das man verschieben kann. Tasten und
+Mausklicks kommen über die Fenster-Ereignisse, gemalt wird in den eigenen
+Bildpuffer.
+
+Der Umbau selbst ist klein: `gx_start()` raus (das schaltet den
+Bildschirmmodus um und löschte den Schreibtisch), `fenster_neu()` rein, vor
+jedem Malen `fenster_malziel()`, und die Hauptschleife holt Ereignisse statt
+Tasten. Die Maßangaben mussten schrumpfen -- der Rechner war für 640×400
+entworfen und passt so in kein Fenster.
+
+**Der Fehler, der eine halbe Stunde kostete, und die Lehre daraus.** Nach
+dem Umbau wurde der Bildschirm schwarz, obwohl der neue Code das gar nicht
+mehr kann. Der Grund: **CALC.TBX lag doppelt auf der Platte.** Die neue
+Fassung in `\SYSTEM\PROGS`, die alte noch in `\PROGS` -- und der Suchpfad
+(cwd, `\SYSTEM`, `\PROGS`) fand die **alte**. Der Rechner startete also
+brav das Programm von gestern, mitsamt seinem `gx_start()`.
+
+Zwei Dinge behoben:
+
+1. Der Suchpfad kennt jetzt auch `\SYSTEM\PROGS`, und zwar **vor**
+   `\PROGS`. Was zum System gehört, gewinnt gegen eine gleichnamige Datei
+   im Benutzerordner -- sonst kann man das System mit einer untergeschobenen
+   Datei aushebeln.
+2. `build.py` räumt beim Bauen die alte Fassung aus dem anderen Ordner weg
+   und sagt es auch. Ein Umzug, der eine Leiche zurücklässt, ist kein Umzug.
+
+Fremde Fenster tragen in der Leiste jetzt ihren eigenen Namen -- „Calculator"
+statt „Program". Bei denen weiß nur das Programm, wie es heißt.
+
+Zwei neue Prüfungen. 85/85.
+
+---
+
 ## Das Startmenü zeigt, was da ist -- und \SYSTEM ist geschützt
 
 **Das Menü liest die Ordner.** Es zeigt oben die eingebauten Fenster, danach

@@ -25,22 +25,25 @@
 
 /* --- Aussehen ------------------------------------------------------------ */
 
-#define GEH_X     190                /* Gehaeuse */
-#define GEH_Y      30
+/* Der Rechner sass frueher mitten auf dem Bildschirm. Jetzt sitzt er in
+   einem Fenster, also faengt alles bei 0 an -- gemalt wird in den eigenen
+   Bildpuffer, und der Schreibtisch setzt ihn an die richtige Stelle. */
+#define GEH_X       8                /* Gehaeuse */
+#define GEH_Y      22
 #define GEH_W     260
-#define GEH_H     330
+#define GEH_H     282
 
-#define LCD_X     204                /* Anzeigefeld */
-#define LCD_Y      44
+#define LCD_X      22                /* Anzeigefeld */
+#define LCD_Y      36
 #define LCD_W     232
-#define LCD_H      48
+#define LCD_H      40
 
-#define KN_X      199                /* erste Knopfspalte */
-#define KN_Y      108
+#define KN_X       17                /* erste Knopfspalte */
+#define KN_Y       92
 #define KN_W       56
-#define KN_H       44
+#define KN_H       36
 #define KN_DX      62
-#define KN_DY      50
+#define KN_DY      42
 
 #define F_LCD     149                /* helles Gelbgruen  (3,4,1 im Farbwuerfel) */
 #define F_ZIFFER   22                /* dunkles Gruen     (0,1,0) */
@@ -293,9 +296,9 @@ void zeichne_anzeige() {
     /* rechtsbuendig, wie bei einem echten Rechner */
     b = strlen(anzeige) * 16;
     if (b > LCD_W - 16) {
-        gx_text(LCD_X + 8, LCD_Y + 20, anzeige, F_ZIFFER);   /* zu lang: klein */
+        gx_text(LCD_X + 8, LCD_Y + 16, anzeige, F_ZIFFER);   /* zu lang: klein */
     } else {
-        gx_text_gross(LCD_X + LCD_W - 8 - b, LCD_Y + 16, anzeige, F_ZIFFER, 2);
+        gx_text_gross(LCD_X + LCD_W - 8 - b, LCD_Y + 12, anzeige, F_ZIFFER, 2);
     }
     /* kleine Anzeige des wartenden Operators, oben links */
     if (op) gx_char(LCD_X + 6, LCD_Y + 6, op, F_ZIFFER, 256);
@@ -309,15 +312,16 @@ void zeichne_knopf(int i, int gedrueckt) {
 
 void zeichne_alles() {
     int i;
-    gx_fill(0, 0, GX_BREIT, GX_HOCH, F_HINTER);
-    gx_text(GEH_X, 12, "TOOBAD CALCULATOR", GX_WEISS);
+    gx_fill(0, 0, fn_breite, fn_hoehe, F_HINTER);
+    gx_text(GEH_X, 6, "TOOBAD CALCULATOR", GX_WEISS);
 
     gx_panel(GEH_X, GEH_Y, GEH_W, GEH_H, 0);
     gx_panel(LCD_X, LCD_Y, LCD_W, LCD_H, 1);
     for (i = 0; i < 20; i++) zeichne_knopf(i, 0);
     zeichne_anzeige();
 
-    gx_text(GEH_X - 40, 372, "Maus oder Tastatur   --   ESC beendet", GX_GRAU);
+    gx_text(GEH_X, GEH_Y + GEH_H + 6, "Maus oder Tastatur   --   ESC beendet",
+            GX_GRAU);
 }
 
 /* ==========================================================================
@@ -325,49 +329,73 @@ void zeichne_alles() {
    ========================================================================== */
 
 int main() {
-    int k; int c; int code; int i; int getroffen;
+    int e[4];
+    int art; int c; int code; int i; int getroffen;
+    int laufen;
 
     loeschen();
-    gx_start();
+    /* Kein gx_start(): das gehoert Vollbildprogrammen und wuerde den
+       Schreibtisch loeschen. Ein Fenster bekommt seinen Platz zugeteilt. */
+    if (fenster_neu("Calculator", GEH_W + 16, GEH_H + 56) < 0) {
+        print("Der Rechner braucht den Schreibtisch -- erst WIN eingeben.\n");
+        return 1;
+    }
+    fenster_malziel();
     zeichne_alles();
+    fenster_fertig();
 
-    while (1) {
-        /* --- Tastatur --- */
-        if (haskey()) {
-            k = getkey();
-            c = keychar(k);
-            code = keycode(k);
-            if (code == K_ESC) break;
-            if (c >= '0' && c <= '9') ziffer(c);
-            else if (c == '.' || c == ',') ziffer('.');
-            else if (c == '+' || c == '-' || c == '*' || c == '/') operator(c);
-            else if (c == '=' || code == K_ENTER) gleich();
-            else if (c == '%') prozent();
-            else if (c == 8) rueckwaerts();
-            else if (c == 'c' || c == 'C') loeschen();
-            zeichne_anzeige();
-        }
+    laufen = 1;
+    while (laufen) {
+        art = fenster_ereignis(e);
 
-        /* --- Maus --- */
-        gx_maus_lesen();
-        if (gx_klick()) {
+        if (art == FE_SCHLIESS) {
+            laufen = 0;
+        } else if (art == FE_MALEN) {
+            fenster_malziel();
+            zeichne_alles();
+            fenster_fertig();
+        } else if (art == FE_TASTE) {
+            c = e[1];
+            code = e[2];
+            if (code == K_ESC) { laufen = 0; }
+            else {
+                if (c >= '0' && c <= '9') ziffer(c);
+                else if (c == '.' || c == ',') ziffer('.');
+                else if (c == '+' || c == '-' || c == '*' || c == '/') operator(c);
+                else if (c == '=' || code == K_ENTER) gleich();
+                else if (c == '%') prozent();
+                else if (c == 8) rueckwaerts();
+                else if (c == 'c' || c == 'C') loeschen();
+                fenster_malziel();
+                zeichne_anzeige();
+                fenster_fertig();
+            }
+        } else if (art == FE_KLICK) {
             getroffen = 0 - 1;
             for (i = 0; i < 20; i++) {
-                if (gx_treffer(knopf_x(i), knopf_y(i), KN_W, KN_H)) { getroffen = i; break; }
+                if (e[1] >= knopf_x(i) && e[1] < knopf_x(i) + KN_W
+                    && e[2] >= knopf_y(i) && e[2] < knopf_y(i) + KN_H) {
+                    getroffen = i;
+                    break;
+                }
             }
             if (getroffen >= 0) {
+                fenster_malziel();
                 zeichne_knopf(getroffen, 1);      /* kurz gedrueckt zeigen */
+                fenster_fertig();
                 beep(880, 2);
                 knopf_tun(getroffen);
                 sleep(6);
+                fenster_malziel();
                 zeichne_knopf(getroffen, 0);
                 zeichne_anzeige();
+                fenster_fertig();
             }
+        } else {
+            sleep(2);        /* nichts los: Rechenzeit abgeben */
         }
-
-        sleep(1);            /* Rechenzeit abgeben, sonst frisst die Schleife alles */
     }
 
-    gx_ende();
+    fenster_zu();
     return 0;
 }

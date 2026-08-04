@@ -2381,7 +2381,10 @@ void draw_taskbar() {
         if (x + 66 > G_W - 80) break;
         /* Beschriftung notfalls kuerzen -- 64 Punkte fassen 8 Zeichen, ein
            laengeres Wort stand vorher links und rechts aus dem Knopf heraus. */
-        strncpy(kurz, win_kurz(win_type[i]), 9);
+        /* Fremde Fenster tragen ihren eigenen Namen in der Leiste -- bei
+           denen weiss nur das Programm, wie es heisst. */
+        if (win_type[i] == APP_FREMD) strncpy(kurz, win_title(i), 9);
+        else strncpy(kurz, win_kurz(win_type[i]), 9);
         g_button(x, BAR_Y + 2, 64, 18, kurz, i == win_top);
         x = x + 66;
     }
