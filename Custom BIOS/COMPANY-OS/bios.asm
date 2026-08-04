@@ -1,5 +1,10 @@
 ; ===========================================================================
-;  TOOBAD BIOS v2.5.2  --  Firmware fuer den TB-32
+;  TB-LOCK BIOS v2.5.2  --  Firmware fuer den TB-32, mit Setup-Passwort
+;
+;  Das serienmaessige TOOBAD BIOS, erweitert um genau eine Sache: einen
+;  Reiter "Password" im Setup und ein Tor davor. Alles Neue steht in
+;  passwort.asm; hier sind nur drei Zeilen anders (Name im Kopf, zweimal
+;  setup_tor statt setup_main, ein .include mehr).
 ;
 ;  Das hier ist KEIN Python. Das ist echter Maschinencode, der im ROM des
 ;  virtuellen Rechners liegt und von der emulierten CPU ausgefuehrt wird.
@@ -26,8 +31,13 @@ reset:
     .dw 0                             ; 0x0C  Pruefsumme (build.py traegt ein)
     ; 0x10  Der Name, den das Mainboard beim Einschalten zeigt.
     ; Genau 32 Byte -- der Code faengt bei 0x30 an.
-    .db "TOOBAD BIOS v2.5.2", 0      ; 19 Byte
-    .space 13                         ; ... macht zusammen genau 32
+    ; "COMPANY-OS BIOS v1.0" sind 20 Zeichen, mit der Null 21 Byte --
+    ; also .space 11, damit es zusammen GENAU 32 ergibt. Ein Byte zu viel,
+    ; und der Code faengt bei 0x31 statt 0x30 an: der Rechner springt beim
+    ; Einschalten mitten in einen Befehl und laeuft ins Nichts, ohne eine
+    ; einzige Meldung. Dieselbe Falle wie beim Umbenennen auf v2.5.2.
+    .db "COMPANY-OS BIOS v1.0", 0     ; 21 Byte mit der Null
+    .space 11                         ; ... macht zusammen genau 32
 
 bios_start:                           ; 0x30  ab hier der Code
     li sp, BIOS_STACK
@@ -577,11 +587,27 @@ print:
 ; ===========================================================================
 
 post:
-    ; Der Eigentuemer-Eintrag gehoert einem Firmen-BIOS. Dieses hier ist
-    ; keines -- also leeren wir das Feld, damit nicht der Eintrag eines
-    ; frueher geflashten BIOS stehenbleibt und das System ihn weiter zeigt.
-    movi r2, 0
-    stwa BDA_FIRMA, r2
+    ; --- Der Eigentuemer-Eintrag ------------------------------------------
+    ; Er wandert aus dem Abbild in den Speicher, damit das Betriebssystem
+    ; ihn findet. Bei echten PCs macht das SMBIOS genauso: die Firmware legt
+    ; eine Tabelle hin, das System liest sie.
+    li r10, s_firma
+    li r11, BDA_FIRMA
+    movi r12, 0
+.firma_kopieren:
+    ldb r13, [r10]
+    stb [r11], r13
+    cmpi r13, 0
+    jz .firma_fertig
+    addi r10, r10, 1
+    addi r11, r11, 1
+    addi r12, r12, 1
+    cmpi r12, 31
+    jl .firma_kopieren
+    movi r13, 0
+    stb [r11], r13
+.firma_fertig:
+    movi r2, 1                        ; Bit 0: Eintrag anzeigen
     stwa BDA_POLICY, r2
 
     push r6
@@ -739,7 +765,7 @@ post:
     jmp .loop
 .setup:
     call kbd_getkey
-    call setup_main
+    call setup_tor                    ; TB-LOCK: erst das Passwort
 .fertig:
     call kuehlung_anwenden
     call secure_pruefen
@@ -822,7 +848,7 @@ secure_pruefen:
     li r1, s_sec_halt
     call panic
 .sec_setup:
-    call setup_main
+    call setup_tor                    ; TB-LOCK: erst das Passwort
     movi r1, ATTR_NORMAL
     call vid_clear
     jmp secure_pruefen                ; danach nochmal nachsehen
@@ -999,6 +1025,7 @@ panic:
 
 .include "video.asm"
 .include "setup.asm"
+.include "passwort.asm"
 
 ; ===========================================================================
 ;  Texte
@@ -1025,6 +1052,9 @@ s_sec_hint1:  .db "If you rebuilt the system yourself, this is expected.", 0
 s_sec_hint2:  .db "DEL = Setup (Security > Trust Current Boot Image)", 0
 s_sec_halt:   .db "Secure Boot: halted", 0
 s_booting:    .db "Starting system ...", 0
+; Der Eigentuemer. Wer sein eigenes Firmen-BIOS baut, aendert genau diese
+; Zeile und laesst bauen.py laufen. Hoechstens 31 Zeichen.
+s_firma:      .db "Controlled by Microsoft", 0
 s_bootmsg:    .db "Booting from Hard Disk 0 ... ", 0
 s_nosig:      .db "no boot signature", 0
 s_diskerr:    .db "read error", 0
@@ -1034,6 +1064,11 @@ s_halted:     .db "The system has been halted.", 0
 s_div0:       .db "Divide by zero", 0
 s_badop:      .db "Invalid opcode", 0
 
+; .align 4 ist hier lebenswichtig: darueber stehen Zeichenketten belieber
+; Laenge, und eine Worttabelle muss auf einer Vierergrenze liegen. Ohne das
+; verschiebt schon EIN zusaetzlicher Text die ganze Tabelle -- der Rechner
+; sprang danach ins Nichts, ohne eine einzige Meldung.
+.align 4
 cpu_speed_names:
     .dw s_spd0, s_spd1, s_spd2, s_spd3, s_spd4
 s_spd0:       .db "@ 0.4 MHz", 0

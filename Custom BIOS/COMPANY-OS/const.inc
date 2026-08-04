@@ -23,27 +23,24 @@
 .equ BDA_KEYBUF,    0x00000420      ; 32 Eintrage a 4 Byte
 .equ BDA_MEMKB,     0x000004A0
 .equ BDA_DISKSEC,   0x000004A4
-.equ BDA_SCRATCH,   0x000004B0      ; 64 Byte Kratzpapier fur Zahlenausgabe
-
-; --- Was das BIOS dem Betriebssystem ueber den Rechner sagt ----------------
+; --- Was das BIOS dem Betriebssystem ueber den Rechner sagt ---------------
 ; Bei echten PCs heisst das SMBIOS: die Firmware legt eine Tabelle in den
-; Speicher, das System liest sie aus. Genau dafuer ist das hier.
-;
-; BDA_FIRMA traegt den Eigentuemer-Eintrag ("Controlled by ..."), den ein
-; Firmen-BIOS mitbringt. Steht dort eine Null, gehoert der Rechner niemandem
-; Besonderem und das System zeigt nichts an.
-;
-; BDA_POLICY sind Schalter: Bit 0 Eintrag anzeigen, Bit 1 kein Compiler,
-; Bit 2 kein Netz, Bit 3 Passwort verlangt, Bit 4 nur von der eigenen Platte
-; starten.
-.equ BDA_FIRMA,     0x00000500      ; 32 Byte Text, mit Null abgeschlossen
-.equ BDA_POLICY,    0x00000524      ; ein Wort Schalter
+; Speicher, das System liest sie aus.
+.equ BDA_FIRMA,     0x00000500      ; 32 Byte Eigentuemer-Eintrag
+.equ BDA_POLICY,    0x00000524      ; Schalter: Bit 0 = Eintrag anzeigen
+
+.equ BDA_SCRATCH,   0x000004B0      ; 64 Byte Kratzpapier fur Zahlenausgabe
 ; Eigener Platz fuer das Setup. NICHT in BDA_SCRATCH legen -- dort formatiert
 ; vid_putn seine Ziffern hin, und dann waere der gemerkte Reiter nach der
 ; ersten ausgegebenen Zahl weg.
 .equ SETUP_TAB,     0x00000600      ; aktiver Reiter
 .equ SETUP_ROW,     0x00000604      ; markierte Zeile
 .equ SETUP_SAVE,    0x00000610      ; 16 Byte CMOS-Sicherung fuer ESC
+; TB-LOCK: die beiden Eingabepuffer fuer das Passwort. Sie liegen hinter
+; SETUP_SAVE (0x610..0x61F) und damit weiterhin auf dem Kratzpapier, das
+; allein der Firmware gehoert -- der Kernel faengt erst bei 0x10000 an.
+.equ PW_BUF1,       0x00000620      ; 32 Byte: das eingetippte Passwort
+.equ PW_BUF2,       0x00000640      ; 32 Byte: die Wiederholung
 .equ BDA_SBHEAD,    0x000004A8      ; Ringpuffer der Bildschirmhistorie
 .equ BDA_SBCOUNT,   0x000004AC
 
@@ -184,6 +181,15 @@
 .equ CM_SUM2,       0x1B
 .equ CM_SUM3,       0x1C
 .equ CM_BOOTMODE,   0x1D            ; 0 = Schreibtisch, 1 = Textkonsole
+; TB-LOCK: das Supervisor-Passwort. Ab 0x20, nicht darunter -- setup_backup
+; sichert 0x10..0x1F fuer ESC, ein Passwort dort waere beim Verlassen ohne
+; Speichern wieder weg. Unter 0x2E bleibt es, damit die Knopfzelle es in ihre
+; eigene Pruefsumme einrechnet.
+.equ CM_PWFLAG,     0x20            ; 0 = keins gesetzt, 1 = gesetzt
+.equ CM_PWSUM0,     0x21            ; Pruefsumme des Passworts, vier Byte,
+.equ CM_PWSUM1,     0x22            ; niedrigstes zuerst
+.equ CM_PWSUM2,     0x23
+.equ CM_PWSUM3,     0x24
 .equ CM_SAVE,       0x3F            ; Schreiben loest "in Datei sichern" aus
 
 ; --- Tastatur-Scancodes ----------------------------------------------------

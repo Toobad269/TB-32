@@ -1166,6 +1166,25 @@ void win_vollbild(int i) {
    Fenster ein zweites Mal malen laesst -- in den Textpuffer statt auf den
    Schirm. */
 
+/* --- Der Eigentuemer-Eintrag der Firmware --------------------------------
+   Ein Firmen-BIOS legt beim Start einen Text in den Speicher (BDA_FIRMA,
+   0x500) -- so wie SMBIOS bei echten Rechnern. Steht dort etwas, zeigt das
+   System es an: oben rechts auf dem Schreibtisch und im Anmeldeschirm.
+   Loeschen kann man es nur, indem man ein anderes BIOS einspielt -- und
+   genau das ist der Sinn: der Eintrag liegt UNTER dem Betriebssystem. */
+#define BDA_FIRMA   0x00000500
+#define BDA_POLICY  0x00000524
+
+char* firma_text() { return (char*)BDA_FIRMA; }
+
+int firma_da() {
+    int c;
+    c = byte_get(BDA_FIRMA);
+    return c >= 32 && c < 127;
+}
+
+int firma_policy() { return mem_get(BDA_POLICY); }
+
 /* Ein Bild aus dem Arbeitsspeicher auf den Schirm bringen (Blitter-Befehl 4). */
 void g_bild(int x, int y, int w, int h, int quelle) {
     sys_out(P_BLT_SRC, quelle);
@@ -1804,6 +1823,11 @@ void draw_desktop() {
     if (gui_fremd) return;
     g_fill(0, 0, G_W, BAR_Y, C_DESK);
     g_text(8, 8, "TOOBAD-OS Desktop", C_WHITE, 256);
+    /* Gehoert der Rechner einer Firma, steht das oben rechts -- immer
+       sichtbar, nicht wegklickbar. */
+    if (firma_da())
+        g_text(G_W - 8 - strlen(firma_text()) * 8, 8, firma_text(),
+               C_WINDARK, 256);
     g_fill(8, 18, 136, 1, C_ACCENT);
     draw_icons();
 
@@ -2123,6 +2147,9 @@ void gl_malen(int neu_anlegen) {
         if (gl_fehler) g_text(160, 206, "Wrong password.", C_WARN, 256);
         else g_text(160, 206, "ENTER to sign in", C_WINDARK, 256);
     }
+    if (firma_da())
+        g_text((G_W - strlen(firma_text()) * 8) / 2, 300, firma_text(),
+               C_WINDARK, 256);
     gl_power_malen();
     sys_out(P_GFX_TAUSCH, 2);
 }
