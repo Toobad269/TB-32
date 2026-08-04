@@ -439,11 +439,14 @@ void cmd_fetch(char* wirt, char* pfad) {
     if (br_proxy != 0) {
         print("Through the proxy ... ");
         if (tcp_verbinden(br_proxy, br_proxy_port) == 0) {
-            printc("the proxy does not answer\n", YELLOW);
-            return;
-        }
-        printc("connected\n", GREEN);
-    } else {
+            /* Keiner da: dann eben selbst. Voreingestellt ist der Vermittler,
+               den pc.py mitstartet -- wer den Kernel anders benutzt, soll
+               deshalb nicht im Regen stehen. */
+            printc("none there, going direct\n", YELLOW);
+            br_proxy = 0;
+        } else printc("connected\n", GREEN);
+    }
+    if (br_proxy == 0) {
         ip = ip_lesen(wirt);
         if (ip == 0) {
             print("Looking up ");

@@ -43,7 +43,10 @@ char br_zurueck[160];                /* die Adresse davor */
 /* Der Vermittler. 0 = keiner, dann redet der Browser direkt mit dem Server.
    Ist einer gesetzt, geht JEDE Anfrage an ihn -- und dann darf die Adresse
    auch https sein, denn die Verschluesselung macht er. */
-int  br_proxy = 0;
+/* Voreingestellt auf den Vermittler, den pc.py mitstartet. Antwortet dort
+   niemand, faellt der Browser auf den unmittelbaren Weg zurueck -- dann geht
+   alles ausser HTTPS. Abschalten mit NET PROXY OFF. */
+int  br_proxy = 0x7F000001;          /* 127.0.0.1 */
 int  br_proxy_port = 8080;
 int  br_https = 0;                   /* war die Adresse verschluesselt? */
 
@@ -387,10 +390,17 @@ int br_holen(char* url) {
            holen soll. Genau so macht es jeder Browser mit Proxy. */
         br_setz(br_status, "Asking the proxy ...", 78);
         if (tcp_verbinden(br_proxy, br_proxy_port) == 0) {
-            br_setz(br_status, "The proxy does not answer.", 78);
-            return 0;
+            if (br_https) {
+                br_setz(br_status,
+                        "The proxy does not answer -- HTTPS needs it.", 78);
+                return 0;
+            }
+            /* Kein Vermittler da? Dann eben selbst. Wer den Kernel ohne
+               pc.py benutzt, soll nicht vor einer toten Anzeige sitzen. */
+            br_proxy = 0;
         }
-    } else {
+    }
+    if (br_proxy == 0) {
         br_setz(br_status, "Looking up the name ...", 78);
         ip = ip_lesen(br_wirt);
         if (ip == 0) ip = dns_aufloesen(br_wirt);

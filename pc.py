@@ -9,6 +9,7 @@ Maschinencode auf der emulierten CPU (siehe hardware/ und firmware/).
     python3 pc.py               normal starten
     python3 pc.py --scale 3     größer
     python3 pc.py --turbo       so schnell wie der Mac kann
+    python3 pc.py --kein-netz   ohne Router und Vermittler
 """
 
 import os
@@ -576,11 +577,38 @@ def bios_datei_waehlen():
         return None
 
 
+def netz_starten():
+    """Router und Vermittler mitstarten, damit ein einziger Aufruf reicht.
+
+    Beide sind reines Python und laufen in eigenen Faeden im selben Prozess.
+    Der Vermittler-Port ist dabei die Tuersteher-Pruefung: laeuft schon ein
+    zweites TOOBAD-Fenster, ist er belegt -- dann startet dieses hier weder
+    Vermittler noch Router. Zwei Router am selben Draht wuerden sich beim
+    Beantworten von ARP gegenseitig ins Wort fallen.
+
+    Mit --kein-netz bleibt alles aus; dann redet der TB-32 nur mit anderen
+    TB-32 auf demselben Rechner."""
+    if "--kein-netz" in sys.argv:
+        print("Netz: aus (--kein-netz)")
+        return
+    import proxy
+    import router
+    if proxy.im_hintergrund(8080) is None:
+        print("Netz: laeuft schon in einem anderen Fenster")
+        return
+    if router.im_hintergrund() is None:
+        print("Netz: der Draht liess sich nicht anschliessen")
+        return
+    print("Netz: Router 10.0.0.254, Vermittler auf 8080 -- beide laufen mit")
+
+
 def main():
     scale = 2
     if "--scale" in sys.argv:
         scale = int(sys.argv[sys.argv.index("--scale") + 1])
     turbo = "--turbo" in sys.argv
+
+    netz_starten()
 
     pygame.init()
     pygame.display.set_caption("TOOBAD TB-32")

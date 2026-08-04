@@ -42,6 +42,14 @@ def fehlerseite(code, titel, text):
             f"Connection: close\r\n\r\n").encode() + seite
 
 
+LEISE = False
+
+
+def sag(text):
+    if not LEISE:
+        print(text)
+
+
 class Vermittler(socketserver.StreamRequestHandler):
     timeout = FRIST
 
@@ -82,7 +90,7 @@ class Vermittler(socketserver.StreamRequestHandler):
         if not ziel.startswith("http"):
             ziel = "http://" + ziel
 
-        print(f"  {ziel}")
+        sag(f"  {ziel}")
         try:
             anfrage = urllib.request.Request(
                 ziel, headers={"User-Agent": "TOOBAD-OS/2.5.2",
@@ -97,7 +105,7 @@ class Vermittler(socketserver.StreamRequestHandler):
             code = e.code
         except (urllib.error.URLError, ssl.SSLError, socket.timeout, OSError) as e:
             grund = str(getattr(e, "reason", e))
-            print(f"       ging nicht: {grund}")
+            sag(f"       ging nicht: {grund}")
             self.wfile.write(fehlerseite(502, "Could not fetch", grund))
             return
 
@@ -111,12 +119,28 @@ class Vermittler(socketserver.StreamRequestHandler):
                 self.wfile.write(inhalt)
         except OSError:
             pass
-        print(f"       {len(inhalt)} Byte weitergereicht")
+        sag(f"       {len(inhalt)} Byte weitergereicht")
 
 
 class Server(socketserver.ThreadingTCPServer):
     allow_reuse_address = True
     daemon_threads = True
+
+
+def im_hintergrund(port=8080):
+    """Startet den Vermittler in einem eigenen Faden -- fuer pc.py.
+
+    Ist der Port schon belegt, laeuft anderswo bereits einer: dann geben wir
+    None zurueck und niemand startet einen zweiten."""
+    import threading
+    global LEISE
+    LEISE = True
+    try:
+        s = Server(("127.0.0.1", port), Vermittler)
+    except OSError:
+        return None
+    threading.Thread(target=s.serve_forever, daemon=True).start()
+    return s
 
 
 def main():

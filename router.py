@@ -73,8 +73,10 @@ def summe16(daten, start=0):
 
 
 class Router:
-    def __init__(self, ip=IP, dns=None):
+    def __init__(self, ip=IP, dns=None, leise=False):
         self.ip = ip2i(ip)
+        self.leise = leise            # im Fenster von pc.py will das niemand sehen
+        self.laeuft = True
         # Wohin Namensfragen wirklich gehen. Normal an den, den der TB-32
         # nennt; mit --dns an einen anderen (eigener Server, oder im
         # Selbsttest an einen Prueflings-Dienst auf einem hohen Port).
@@ -99,6 +101,10 @@ class Router:
         s.setsockopt(socket.IPPROTO_IP, socket.IP_MULTICAST_LOOP, 1)
         s.setblocking(False)
         return s
+
+    def sag(self, text):
+        if not self.leise:
+            print(text)
 
     # -- hinaus auf den Draht ----------------------------------------------
     def rahmen_senden(self, ziel_mac, art, nutz):
@@ -152,7 +158,7 @@ class Router:
         antwort = (struct.pack(">HHBBH", 1, ART_IP, 6, 4, 2) + MAC +
                    struct.pack(">I", self.ip) + p[8:14] + p[14:18])
         self.rahmen_senden(von_mac, ART_ARP, antwort)
-        print(f"  ARP  {i2ip(frager_ip)} fragt nach uns -> beantwortet")
+        self.sag(f"  ARP  {i2ip(frager_ip)} fragt nach uns -> beantwortet")
 
     def ip_paket(self, p, von_mac):
         if len(p) < 20:
@@ -170,7 +176,7 @@ class Router:
             struct.pack_into(">H", antwort, 2, 0)
             struct.pack_into(">H", antwort, 2, summe16(bytes(antwort)))
             self.ip_senden(von_mac, quellip, PROTO_ICMP, bytes(antwort))
-            print(f"  PING von {i2ip(quellip)} -> beantwortet")
+            self.sag(f"  PING von {i2ip(quellip)} -> beantwortet")
             return
 
         if proto == PROTO_TCP and len(nutz) >= 20:
@@ -221,7 +227,7 @@ class Router:
                 s.connect((i2ip(zielip), zport))
                 s.setblocking(False)
             except OSError as e:
-                print(f"  TCP  {i2ip(zielip)}:{zport} nicht erreichbar: {e}")
+                self.sag(f"  TCP  {i2ip(zielip)}:{zport} nicht erreichbar: {e}")
                 v = {"quellip": quellip, "qport": qport, "zport": zport,
                      "zielip": zielip, "seq": 0, "ack": seq + 1,
                      "mac": von_mac}
@@ -233,7 +239,7 @@ class Router:
             self.tcp[schluessel] = v
             self.tcp_segment(v, SYN | ACK)
             v["seq"] += 1                       # das SYN zaehlt ein Byte
-            print(f"  TCP  {i2ip(quellip)}:{qport} -> {i2ip(zielip)}:{zport} steht")
+            self.sag(f"  TCP  {i2ip(quellip)}:{qport} -> {i2ip(zielip)}:{zport} steht")
             return
 
         if v is None:
@@ -290,7 +296,7 @@ class Router:
                     self.tcp_segment(v, FIN | ACK)
                     v["seq"] += 1
                     self.tcp_zu(schluessel)
-                    print("       Server hat geschlossen")
+                    self.sag("       Server hat geschlossen")
                     continue
                 # In Haeppchen, die durch einen Rahmen passen
                 for i in range(0, len(daten), 512):
@@ -298,7 +304,7 @@ class Router:
                     self.tcp_segment(v, PSH | ACK, stueck)
                     v["seq"] += len(stueck)
                     time.sleep(0.01)            # dem TB-32 Zeit zum Lesen
-                print(f"       {len(daten)} Byte an {i2ip(v['quellip'])}:{v['qport']}")
+                self.sag(f"       {len(daten)} Byte an {i2ip(v['quellip'])}:{v['qport']}")
 
     def udp_hinaus(self, quellip, qport, zielip, zport, daten, von_mac):
         schluessel = (quellip, qport, zielip, zport)
@@ -311,13 +317,13 @@ class Router:
             s.setblocking(False)
             weg = [s, 0.0, von_mac]
             self.wege[schluessel] = weg
-            print(f"  UDP  {i2ip(quellip)}:{qport} -> {i2ip(zielip)}:{zport}")
+            self.sag(f"  UDP  {i2ip(quellip)}:{qport} -> {i2ip(zielip)}:{zport}")
         weg[1] = time.time()
         weg[2] = von_mac
         try:
             weg[0].sendto(daten, wohin)
         except OSError as e:
-            print(f"       ging nicht: {e}")
+            self.sag(f"       ging nicht: {e}")
 
     def antworten_holen(self):
         """Was von draussen zurueckkommt, geht an den richtigen TB-32."""
@@ -344,7 +350,7 @@ class Router:
                 self.ip_senden(ziel_mac, quellip, PROTO_UDP, kopf + daten,
                                quellip=zielip)
                 weg[1] = time.time()
-                print(f"       {len(daten)} Byte zurueck an {i2ip(quellip)}:{qport}")
+                self.sag(f"       {len(daten)} Byte zurueck an {i2ip(quellip)}:{qport}")
 
     def aufraeumen(self):
         jetzt = time.time()
@@ -354,12 +360,13 @@ class Router:
                 del self.wege[schluessel]
 
     def laufen(self):
-        mac = ":".join(f"{b:02X}" for b in MAC)
-        print(f"Router laeuft.  {i2ip(self.ip)}   {mac}")
-        print("Im TB-32:  NET GW zeigt den Weg nach draussen, "
-              "HOST <name> fragt nach einer Adresse.")
-        print("Strg+C beendet.\n")
-        while True:
+        if not self.leise:
+            mac = ":".join(f"{b:02X}" for b in MAC)
+            print(f"Router laeuft.  {i2ip(self.ip)}   {mac}")
+            print("Im TB-32:  NET GW zeigt den Weg nach draussen, "
+                  "HOST <name> fragt nach einer Adresse.")
+            print("Strg+C beendet.\n")
+        while self.laeuft:
             bereit, _, _ = select.select([self.draht], [], [], 0.05)
             if bereit:
                 while True:
@@ -399,6 +406,20 @@ def main():
     except KeyboardInterrupt:
         print("\nRouter aus.")
     return 0
+
+
+def im_hintergrund(dns=None):
+    """Startet den Router in einem eigenen Faden -- fuer pc.py.
+
+    Rueckgabe: der Router, oder None wenn es nicht ging."""
+    import threading
+    try:
+        r = Router(dns=dns, leise=True)
+    except OSError:
+        return None
+    faden = threading.Thread(target=r.laufen, daemon=True)
+    faden.start()
+    return r
 
 
 if __name__ == "__main__":

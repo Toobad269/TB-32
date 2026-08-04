@@ -9,6 +9,33 @@ Die tiefer liegenden Fallen haben zusätzlich einen ausführlichen Eintrag in
 
 ---
 
+## Ein Aufruf genügt: pc.py startet das Netz mit
+
+Colin: *„ich will aber nur pc.py starten müssen damit Netz geht."* Recht hat
+er -- drei Fenster für einen Rechner ist keine Bedienung.
+
+Router und Vermittler laufen jetzt in eigenen Fäden **im selben Prozess** wie
+das Gehäuse. Beide sind reines Python, beide warten ohnehin die meiste Zeit,
+und beide gehen mit dem Fenster aus.
+
+**Der Türsteher ist der Port des Vermittlers.** Startet man ein zweites
+TOOBAD-Fenster, ist 8080 belegt -- dann startet dieses weder Vermittler noch
+Router. Das ist wichtig: **zwei Router am selben Draht** würden sich beim
+Beantworten von ARP gegenseitig ins Wort fallen, und die Verbindungen
+lägen halb beim einen und halb beim anderen.
+
+**Der Vermittler ist voreingestellt** (127.0.0.1:8080). Antwortet dort
+niemand, fällt Browser wie `FETCH` auf den unmittelbaren Weg zurück -- dann
+geht alles außer HTTPS. Wer den Kernel ohne `pc.py` benutzt, sitzt so nicht
+vor einer toten Anzeige.
+
+`python3 pc.py --kein-netz` lässt beides aus. Einzeln starten geht weiterhin
+(`router.py`, `proxy.py`) -- dann sieht man ihnen beim Arbeiten zu.
+
+78/78.
+
+---
+
 ## Netzwerk fertig: der Vermittler bringt HTTPS
 
 `https://example.com` steht im Browserfenster. Der TB-32 spricht dabei
