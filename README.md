@@ -40,6 +40,18 @@ Ergebnis ist Byte für Byte dasselbe wie vom Mac-Werkzeug.
 
 Gebraucht wird Python 3 und `pygame`.
 
+## Was das hier eigentlich ist
+
+Ein **CPU-Emulator**, ein **eigener Befehlssatz**, ein **Assembler**, ein
+**C-Compiler**, ein **BIOS** und ein **Betriebssystem mit Fenstern** — alles
+von Grund auf selbst gebaut, nichts übernommen. Wer sich für *osdev*,
+Retro-Computing, Compilerbau oder schlicht dafür interessiert, wie ein
+Rechner unter der Oberfläche funktioniert, findet hier jede Schicht
+einzeln und lesbar.
+
+Der Rechner baut seinen eigenen Compiler und seine eigene Firmware selbst —
+das nennt man Bootstrapping, und es ist der eigentliche Prüfstein.
+
 ## Doku
 
 Die Arbeitsreferenz liegt in [`Doku/`](Doku/) als Obsidian-Vault. Anfangen
@@ -54,3 +66,7 @@ python3 tools/ctest.py          # Sprachtests für den Compiler
 python3 tools/bootstrap.py      # der Compiler übersetzt sich selbst
 python3 tools/emu_vergleich.py  # C gegen Python, Befehl für Befehl
 ```
+
+## Lizenz
+
+MIT — siehe [LICENSE](LICENSE). Mach damit, was du willst.
