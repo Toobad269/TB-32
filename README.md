@@ -108,10 +108,15 @@ Ergebnis ist Byte für Byte dasselbe wie vom Mac-Werkzeug.
 | | |
 |---|---|
 | **macOS** | hier entwickelt und getestet |
-| **Linux / Windows** | sollte laufen — es ist nur Python und pygame. Zwei Sachen sind aber macOS-gebunden und tun dort schlicht nichts: die Zwischenablage zum Wirtsrechner (`pbcopy`/`pbpaste`) und der Dateidialog zum Flashen des BIOS (`osascript`) |
+| **Linux** | getestet — Bau, alle vier Testwerkzeuge und der Schreibtisch laufen durch. Zwei Sachen sind aber macOS-gebunden und tun hier schlicht nichts: die Zwischenablage zum Wirtsrechner (`pbcopy`/`pbpaste`) und der Dateidialog zum Flashen des BIOS (`osascript`) |
+| **Windows** | **nicht ausprobiert.** Es ist nur Python und pygame, sollte also laufen; dieselben zwei macOS-Bindungen fehlen dort ebenfalls |
 | **Raspberry Pi ohne Linux** | **geht noch nicht.** Der C-Emulator ist der Weg dorthin und rechnet nachweislich identisch, aber Startbild, Tastatur und Bildausgabe stecken bis heute in `pc.py`. Siehe `Doku/15 Weg zum Raspberry Pi` |
 
-Gebraucht wird Python 3 und `pygame`.
+Gebraucht wird Python 3 und `pygame`:
+
+```bash
+pip3 install -r requirements.txt
+```
 
 ## Was das hier eigentlich ist
 
@@ -179,6 +184,9 @@ python3 tools/ctest.py          # Sprachtests für den Compiler
 python3 tools/bootstrap.py      # der Compiler übersetzt sich selbst
 python3 tools/emu_vergleich.py  # C gegen Python, Befehl für Befehl
 ```
+
+Der letzte baut die C-Fassung des Emulators und braucht deshalb `make` und
+einen C-Compiler; die drei anderen kommen mit Python und pygame aus.
 
 ## Lizenz
 

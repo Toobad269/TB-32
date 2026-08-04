@@ -1,0 +1,8 @@
+# Der TB-32 braucht genau eine fremde Bibliothek. pygame macht das Fenster,
+# die Tastatur, die Maus und den Ton -- alles andere ist Python selbst.
+#
+#     pip3 install -r requirements.txt
+#
+# pygame 2 ist Pflicht, nicht Geschmack: `pc.py` nimmt Zeichen ueber
+# pygame.TEXTINPUT entgegen, und das gibt es erst ab 2.0.
+pygame>=2.0

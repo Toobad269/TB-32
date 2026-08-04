@@ -10,6 +10,10 @@ system/boot.bin
 emu/tb32
 emu/*.o
 *.TBX
+# Ausnahme: die fertigen Abbilder aus "Custom BIOS/" liegen mit im
+# Verzeichnis, damit man ein eigenes BIOS flashen kann, ohne es erst zu
+# bauen. Die Symboltabelle daneben braucht dafuer niemand.
+Custom BIOS/*/*.sym
 
 # --- Die virtuelle Festplatte ----------------------------------------------
 # 8 MB, und sie aendert sich bei jedem Speichern im laufenden System.
