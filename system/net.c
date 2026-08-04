@@ -152,6 +152,8 @@ void net_put32(int a, int v) {
 
 int  ip_meine = 0;                   /* eigene Adresse, 0 = keine */
 int  ip_maske = 0xFFFFFF00;          /* /24 -- alles im selben Netz */
+int  ip_gateway = 0x0A0000FE;        /* 10.0.0.254 -- der Weg nach draussen */
+int  ip_dns     = 0x01010101;        /* 1.1.1.1 -- wer die Namen kennt */
 int  arp_ip[ARP_MAX];
 char arp_mac[48];                    /* ARP_MAX * 6 */
 int  arp_frei[ARP_MAX];              /* 0 = Platz leer, 1 = belegt */
@@ -252,19 +254,25 @@ void arp_antworten(int rx) {
    nicht kennen, nach dem fragen wir erst -- und melden Fehlschlag, wenn
    niemand antwortet. */
 int ip_senden(int zielip, int proto, int daten, int len) {
-    int p; int i; int gesamt; int frist;
+    int p; int i; int gesamt; int frist; int naechster;
     char mac[8];
 
     if (ip_meine == 0) return 0 - 2;             /* keine eigene Adresse */
 
-    if (arp_finden(zielip, mac) == 0) {
-        arp_anfragen(zielip);
+    /* Wer nicht im eigenen Netz wohnt, ist nur ueber den Gateway zu
+       erreichen -- den Router. Nach IHM fragen wir dann, nicht nach dem
+       eigentlichen Ziel. Genau das macht jeder Rechner im Internet. */
+    naechster = zielip;
+    if ((zielip & ip_maske) != (ip_meine & ip_maske)) naechster = ip_gateway;
+
+    if (arp_finden(naechster, mac) == 0) {
+        arp_anfragen(naechster);
         frist = sys_ticks() + 100;               /* eine Sekunde warten */
         while (sys_ticks() < frist) {
             net_bearbeiten();
-            if (arp_finden(zielip, mac)) break;
+            if (arp_finden(naechster, mac)) break;
         }
-        if (arp_finden(zielip, mac) == 0) return 0 - 1;   /* niemand da */
+        if (arp_finden(naechster, mac) == 0) return 0 - 1;   /* niemand da */
     }
 
     p = net_kopf_bauen(NET_SENDE, mac, ART_IP);
@@ -311,7 +319,7 @@ void icmp_antworten(int rx, int kopf, int nutz, int len) {
    PING, auch wenn niemand davor sitzt.
    Rueckgabe: 1 = es lag etwas an. */
 int net_bearbeiten() {
-    int len; int p; int art; int kopf; int nutz; int nlen;
+    int len; int p; int art; int kopf; int nutz; int nlen; int i2;
     len = net_empfangen(NET_PUFFER);
     if (len <= 0) return 0;
     art = (net_getb(NET_PUFFER + 12) << 8) | net_getb(NET_PUFFER + 13);
@@ -333,6 +341,17 @@ int net_bearbeiten() {
         if (net_get32(kopf + 16) != ip_meine || ip_meine == 0) return 1;
         nutz = kopf + (net_getb(kopf) & 0x0F) * 4;
         nlen = net_get16(kopf + 2) - (net_getb(kopf) & 0x0F) * 4;
+        if (net_getb(kopf + 9) == PROTO_UDP && nlen >= 8) {
+            /* Ein UDP-Paket: Absender und Zielport merken, Inhalt ablegen.
+               Ein Platz reicht -- gefragt wird, dann wird gewartet. */
+            udp_von = net_get32(kopf + 12);
+            udp_port = net_get16(nutz + 2);
+            udp_len = net_get16(nutz + 4) - 8;
+            if (udp_len > 512) udp_len = 512;
+            for (i2 = 0; i2 < udp_len; i2++)
+                net_putb(UDP_POST + i2, net_getb(nutz + 8 + i2));
+            return 1;
+        }
         if (net_getb(kopf + 9) == PROTO_ICMP && nlen > 0) {
             if (net_getb(nutz) == 8) {                  /* Frage: bist du da? */
                 icmp_antworten(NET_PUFFER, kopf, nutz, nlen);
@@ -432,4 +451,148 @@ void net_start() {
     if (net_da() == 0) return;
     net_mac(mac);
     ip_meine = 0x0A000000 | (mac[5] & 0xFF);
+}
+
+/* ===========================================================================
+   Stufe 3: UDP und DNS.
+
+   IP bringt ein Paket zum richtigen Rechner. Aber auf einem Rechner laufen
+   viele Programme -- welches ist gemeint? Dafuer gibt es Portnummern, und
+   das einfachste Protokoll mit Ports ist UDP: acht Byte Kopf, fertig. Kein
+   Verbindungsaufbau, keine Bestaetigung. Ein Paket geht raus, vielleicht
+   kommt eins zurueck.
+
+   Genau so arbeitet DNS -- die Stelle, die aus "example.com" eine Adresse
+   macht. Eine Frage hin, eine Antwort zurueck.
+   =========================================================================== */
+
+#define PROTO_UDP     17
+#define UDP_BAU       0x00162000     /* hier wird ein UDP-Paket gebaut */
+#define UDP_POST      0x00163000     /* ... und hier liegt, was ankam */
+
+int udp_port_frei = 40000;
+int udp_von = 0;                     /* von wem kam das letzte Paket */
+int udp_port = 0;                    /* ... an welchen unserer Ports */
+int udp_len = 0;                     /* ... und wie lang war es */
+
+/* Die Pruefsumme von UDP rechnet Absender und Ziel mit, obwohl die im
+   IP-Kopf stehen -- der "Pseudokopf". Damit faellt auf, wenn ein Paket beim
+   richtigen Rechner, aber im falschen Zusammenhang landet. */
+int udp_pruefsumme(int quellip, int zielip, int addr, int len) {
+    int summe; int i;
+    summe = 0;
+    summe = summe + ((quellip >> 16) & 0xFFFF) + (quellip & 0xFFFF);
+    summe = summe + ((zielip >> 16) & 0xFFFF) + (zielip & 0xFFFF);
+    summe = summe + PROTO_UDP + len;
+    i = 0;
+    while (i + 1 < len) {
+        summe = summe + net_get16(addr + i);
+        i = i + 2;
+    }
+    if (i < len) summe = summe + (net_getb(addr + i) << 8);
+    while (summe >> 16) summe = (summe & 0xFFFF) + (summe >> 16);
+    summe = (~summe) & 0xFFFF;
+    if (summe == 0) summe = 0xFFFF;  /* 0 hiesse "nicht gerechnet" */
+    return summe;
+}
+
+/* <daten> und <len> sind die Nutzdaten. Rueckgabe wie bei ip_senden. */
+int udp_senden(int zielip, int quellport, int zielport, int daten, int len) {
+    int i;
+    net_put16(UDP_BAU, quellport);
+    net_put16(UDP_BAU + 2, zielport);
+    net_put16(UDP_BAU + 4, 8 + len);
+    net_put16(UDP_BAU + 6, 0);
+    for (i = 0; i < len; i++) net_putb(UDP_BAU + 8 + i, net_getb(daten + i));
+    net_put16(UDP_BAU + 6, udp_pruefsumme(ip_meine, zielip, UDP_BAU, 8 + len));
+    return ip_senden(zielip, PROTO_UDP, UDP_BAU, 8 + len);
+}
+
+/* --- DNS ------------------------------------------------------------------
+   Ein Name wird in Stuecke zerlegt: "example.com" wird zu
+   7 e x a m p l e 3 c o m 0. Vor jedem Stueck steht seine Laenge, am Ende
+   eine Null. Rueckgabe: wie viele Byte geschrieben wurden. */
+int dns_name_schreiben(int addr, char* name) {
+    int n; int anfang; int laenge; int i;
+    n = 0;
+    i = 0;
+    while (1) {
+        anfang = n;                  /* hier kommt gleich die Laenge hin */
+        n++;
+        laenge = 0;
+        while (name[i] != 0 && name[i] != '.') {
+            net_putb(addr + n, name[i]);
+            n++;
+            i++;
+            laenge++;
+        }
+        net_putb(addr + anfang, laenge);
+        if (name[i] == 0) break;
+        i++;                         /* den Punkt ueberspringen */
+    }
+    net_putb(addr + n, 0);
+    n++;
+    return n;
+}
+
+/* Ueber einen Namen in einer Antwort hinweggehen. Namen duerfen abgekuerzt
+   sein: zwei Byte, die mit 0xC0 anfangen, zeigen auf eine Stelle weiter
+   vorn im selben Paket. Wer das nicht beachtet, laeuft ins Leere. */
+int dns_name_ueberspringen(int addr, int ende) {
+    int n;
+    n = addr;
+    while (n < ende) {
+        if ((net_getb(n) & 0xC0) == 0xC0) return n + 2;
+        if (net_getb(n) == 0) return n + 1;
+        n = n + net_getb(n) + 1;
+    }
+    return ende;
+}
+
+/* Fragt den Namensdienst nach <name>. Rueckgabe: Adresse, 0 = nichts. */
+int dns_aufloesen(char* name) {
+    int len; int port; int frist; int i;
+    int p; int ende; int anzahl; int typ; int rlen;
+
+    if (net_da() == 0 || ip_meine == 0) return 0;
+
+    net_put16(UDP_POST + 512, 0x7742);          /* Kennung */
+    net_put16(UDP_POST + 514, 0x0100);          /* bitte nachschlagen */
+    net_put16(UDP_POST + 516, 1);               /* eine Frage */
+    net_put16(UDP_POST + 518, 0);
+    net_put16(UDP_POST + 520, 0);
+    net_put16(UDP_POST + 522, 0);
+    len = 12 + dns_name_schreiben(UDP_POST + 524, name);
+    net_put16(UDP_POST + 512 + len, 1);         /* Art A: eine IPv4-Adresse */
+    net_put16(UDP_POST + 514 + len, 1);         /* Klasse: Internet */
+    len = len + 4;
+
+    port = udp_port_frei;
+    udp_port_frei = udp_port_frei + 1;
+    if (udp_port_frei > 45000) udp_port_frei = 40000;
+
+    udp_len = 0;
+    udp_port = 0;
+    if (udp_senden(ip_dns, port, 53, UDP_POST + 512, len) < 0) return 0;
+
+    frist = sys_ticks() + 300;                  /* drei Sekunden */
+    while (sys_ticks() < frist) {
+        net_bearbeiten();
+        if (udp_len > 0 && udp_port == port) break;
+    }
+    if (udp_len <= 12 || udp_port != port) return 0;
+
+    ende = UDP_POST + udp_len;
+    anzahl = net_get16(UDP_POST + 6);           /* wie viele Antworten */
+    p = dns_name_ueberspringen(UDP_POST + 12, ende) + 4;   /* Frage weg */
+    for (i = 0; i < anzahl; i++) {
+        p = dns_name_ueberspringen(p, ende);
+        if (p + 10 > ende) return 0;
+        typ = net_get16(p);
+        rlen = net_get16(p + 8);
+        p = p + 10;
+        if (typ == 1 && rlen == 4) return net_get32(p);
+        p = p + rlen;                           /* etwas anderes: weiter */
+    }
+    return 0;
 }

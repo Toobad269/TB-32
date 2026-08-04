@@ -9,6 +9,50 @@ Die tiefer liegenden Fallen haben zusätzlich einen ausführlichen Eintrag in
 
 ---
 
+## Netzwerk, Stufe 3: UDP, DNS und der Router
+
+IP bringt ein Paket zum richtigen **Rechner**. Aber dort laufen viele
+Programme -- welches ist gemeint? Dafür gibt es Portnummern, und das
+einfachste Protokoll mit Ports ist **UDP**: acht Byte Kopf, fertig. Kein
+Verbindungsaufbau, keine Bestätigung. Genau so arbeitet **DNS**, die Stelle,
+die aus `example.com` eine Adresse macht.
+
+**Die Prüfsumme von UDP rechnet Absender und Ziel mit**, obwohl die schon im
+IP-Kopf stehen -- der „Pseudokopf". Damit fällt auf, wenn ein Paket beim
+richtigen Rechner, aber im falschen Zusammenhang landet. Und eine 0 heißt
+„nicht gerechnet", deshalb wird aus einer errechneten 0 eine 0xFFFF.
+
+**Namen stehen in Stücken:** `example.com` wird zu `7 example 3 com 0`. In
+der Antwort dürfen Namen **abgekürzt** sein -- zwei Byte, die mit `0xC0`
+anfangen, zeigen auf eine Stelle weiter vorn im selben Paket. Wer das nicht
+beachtet, läuft beim Überspringen ins Leere und findet die Adresse nie.
+
+**Wegewahl:** was nicht im eigenen Netz liegt, geht an den **Gateway**. Nach
+ihm wird dann per ARP gefragt, nicht nach dem eigentlichen Ziel -- genau das
+macht jeder Rechner im Internet.
+
+**Neu: `router.py`.** Er hängt an derselben Multicast-Gruppe wie die Karten,
+hat die Adresse 10.0.0.254, beantwortet ARP und PING und leitet UDP nach
+draußen weiter (NAT). Das schummelt nicht: der TB-32 baut ARP, IP-Kopf,
+Prüfsumme, UDP und die DNS-Frage **komplett selbst**; der Router liest sie
+nur und gibt sie weiter. Auf dem Pi fällt er ersatzlos weg, dort steht ein
+richtiger Router im Netz. `--dns <adresse[:port]>` schickt Namensfragen an
+einen anderen Server -- der Selbsttest nutzt das für einen eigenen kleinen
+Namensdienst und kommt damit **ohne Internet** aus.
+
+**Ein Fehler beim Bauen, der zum Nachdenken zwingt:** im Router hieß sowohl
+die eigene Adresse als auch die Methode für IP-Pakete `ip`. Python
+überschreibt dabei stillschweigend die eine mit der anderen -- `self.ip(...)`
+warf „'int' object is not callable". In einer Sprache mit getrennten
+Namensräumen wäre das nie passiert.
+
+Nachgewiesen: `PING 10.0.0.254` antwortet, `HOST example.com` nennt die
+echte Adresse. Zwei neue Prüfungen, 70/70.
+
+Als Nächstes: **TCP** -- das dicke Stück. Danach HTTP und der Browser.
+
+---
+
 ## Netzwerk, Stufe 2: ARP, IP und ICMP -- PING antwortet
 
 Die Karte kennt nur Hardware-Adressen, das Internet nur IP-Adressen. Was

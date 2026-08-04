@@ -191,6 +191,32 @@ void cmd_net(char* option, char* rest) {
         return;
     }
 
+    if (stricmp(option, "gw") == 0) {
+        if (rest[0] != 0) {
+            n = ip_lesen(rest);
+            if (n == 0) { printc("Syntax: NET GW 10.0.0.254\n", RED); return; }
+            ip_gateway = n;
+        }
+        ip_text(ip_gateway, text);
+        print("  Gateway                    ");
+        printc(text, BRIGHT);
+        nl();
+        return;
+    }
+
+    if (stricmp(option, "dns") == 0) {
+        if (rest[0] != 0) {
+            n = ip_lesen(rest);
+            if (n == 0) { printc("Syntax: NET DNS 1.1.1.1\n", RED); return; }
+            ip_dns = n;
+        }
+        ip_text(ip_dns, text);
+        print("  Name server                ");
+        printc(text, BRIGHT);
+        nl();
+        return;
+    }
+
     if (stricmp(option, "arp") == 0) {
         printc("\n  Address table\n", BRIGHT);
         n = 0;
@@ -238,9 +264,19 @@ void cmd_net(char* option, char* rest) {
     print("  IP address                 ");
     printc(text, BRIGHT);
     nl();
-    print("\n  NET IP <addr>     set the address    NET ARP    who is known\n");
-    print("  NET SEND <text>   send to everyone   NET WATCH  show arrivals\n");
+    ip_text(ip_gateway, text);
+    print("  Gateway                    ");
+    print(text);
+    nl();
+    ip_text(ip_dns, text);
+    print("  Name server                ");
+    print(text);
+    nl();
+    print("\n  NET IP <addr>     our address       NET ARP    who is known\n");
+    print("  NET GW <addr>     way out           NET DNS <addr>  name server\n");
+    print("  NET SEND <text>   send to everyone  NET WATCH  show arrivals\n");
     print("  PING <addr>       is somebody there\n");
+    print("  HOST <name>       what is the address of a name\n");
 }
 
 
@@ -278,6 +314,38 @@ void cmd_ping(char* ziel) {
     print("\n  ");
     printn(gut);
     print(" of 4 answered\n");
+}
+
+
+/* --- HOST: aus einem Namen eine Adresse machen ---------------------------
+   Das ist DNS. Eine Frage an den Namensdienst, eine Antwort zurueck -- und
+   in der Antwort steht die Adresse. Ohne diesen Dienst muesste man sich
+   Zahlen merken statt Namen. */
+void cmd_host(char* name) {
+    int ip;
+    char text[24];
+
+    if (net_da() == 0) { printc("No network card.\n", RED); return; }
+    if (name[0] == 0) { printc("Syntax: HOST example.com\n", RED); return; }
+    if (ip_meine == 0) { printc("No address of our own. Use NET IP.\n", RED); return; }
+
+    print("\nAsking ");
+    ip_text(ip_dns, text);
+    print(text);
+    print(" for ");
+    print(name);
+    print("\n");
+    ip = dns_aufloesen(name);
+    if (ip == 0) {
+        printc("  no answer -- is the router running?\n", YELLOW);
+        return;
+    }
+    ip_text(ip, text);
+    print("  ");
+    print(name);
+    print("  is  ");
+    printc(text, BRIGHT);
+    nl();
 }
 
 void cmd_ver() {
@@ -986,6 +1054,7 @@ void shell() {
         else if (stricmp(cmd, "color") == 0)      cmd_color(arg1);
         else if (stricmp(cmd, "net") == 0)        cmd_net(arg1, cmdline + 4 + strlen(arg1) + 1);
         else if (stricmp(cmd, "ping") == 0)       cmd_ping(arg1);
+        else if (stricmp(cmd, "host") == 0)       cmd_host(arg1);
 
         else if (stricmp(cmd, "dir") == 0)        cmd_dir(arg1);
         else if (stricmp(cmd, "type") == 0)       cmd_type(arg1);

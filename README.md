@@ -21,6 +21,27 @@ nicht. Das Konto liegt als versteckte Datei `\USER.DAT` auf der virtuellen
 Platte -- gelöscht wird es über *Start ▸ Settings ▸ Reset this machine* oder
 auf dem Mac mit `python3 reset.py`.
 
+## Netzwerk
+
+Der TB-32 hat eine Netzwerkkarte und einen eigenen Netzwerk-Stapel — ARP, IP,
+ICMP, UDP und DNS sind **TB-32-Code**, kein Python. Zwei laufende Rechner
+sehen sich sofort:
+
+```bash
+python3 pc.py        # im einen Fenster:  NET   zeigt die eigene Adresse
+python3 pc.py        # im anderen:        PING 10.0.0.1
+```
+
+Für den Weg nach draußen kommt der Router dazu — er tut das, was der Kasten
+an der Wand auch tut:
+
+```bash
+python3 router.py    # in einem dritten Fenster; Strg+C beendet ihn
+```
+
+Dann geht `HOST example.com` und nennt die Adresse. Befehle: `NET`, `NET IP`,
+`NET GW`, `NET DNS`, `NET ARP`, `NET SEND`, `NET WATCH`, `PING`, `HOST`.
+
 ## Tasten am Gehäuse
 
 Diese Tasten gehören dem Fenster, nicht dem virtuellen Rechner — sie

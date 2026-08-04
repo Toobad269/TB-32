@@ -373,6 +373,51 @@ def main():
     pruefe("Der andere hat uns in seiner Adresstabelle", meine in P.bild(), P.bild())
     fremd.close()
 
+    # --- Der Router und DNS ------------------------------------------------
+    # Der Router ist das, was den TB-32 mit der Welt verbindet. Damit die
+    # Pruefung ohne Internet auskommt, bekommt er hier einen winzigen
+    # Namensdienst vorgesetzt, der auf jede Frage dieselbe Adresse nennt.
+    import socket as _socket
+    import subprocess as _sub
+    import threading as _threading
+
+    stub = _socket.socket(_socket.AF_INET, _socket.SOCK_DGRAM)
+    stub.bind(("127.0.0.1", 0))
+    stub_port = stub.getsockname()[1]
+    stub.settimeout(20.0)
+
+    def _namensdienst():
+        """Antwortet auf jede A-Frage mit 93.184.216.34."""
+        try:
+            frage, absender = stub.recvfrom(512)
+        except OSError:
+            return
+        # Kopf spiegeln, Antwortbit setzen, eine Antwort ankuendigen
+        antwort = bytearray(frage[:2]) + bytes([0x81, 0x80, 0, 1, 0, 1, 0, 0, 0, 0])
+        antwort += frage[12:]                       # dieselbe Frage zurueck
+        antwort += bytes([0xC0, 0x0C,               # Verweis auf den Namen
+                          0, 1, 0, 1,               # Art A, Klasse IN
+                          0, 0, 0, 60,              # Haltbarkeit
+                          0, 4, 93, 184, 216, 34])
+        stub.sendto(bytes(antwort), absender)
+
+    _threading.Thread(target=_namensdienst, daemon=True).start()
+    router = _sub.Popen([sys.executable, "-u", os.path.join(ROOT, "router.py"),
+                         "--dns", f"127.0.0.1:{stub_port}"],
+                        cwd=ROOT, stdout=_sub.DEVNULL, stderr=_sub.DEVNULL)
+    try:
+        L.warte(1.0)
+        L.eingabe("ping 10.0.0.254|ENTER", 6.0)
+        pruefe("Der Router antwortet auf PING", "answered" in L.bild()
+               and "0 of 4" not in L.bild(), L.bild())
+        L.eingabe("host test.example|ENTER", 6.0)
+        pruefe("DNS: aus einem Namen wird eine Adresse",
+               "93.184.216.34" in L.bild(), L.bild())
+    finally:
+        router.terminate()
+        router.wait(timeout=5)
+        stub.close()
+
     print("\n--- Programme von der Platte -----------------------------------")
     L.eingabe("cls|ENTER", 0.3)
     L.eingabe("START MEMTEST.TBX|ENTER", 7.0)
