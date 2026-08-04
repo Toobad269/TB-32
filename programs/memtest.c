@@ -3,6 +3,7 @@
    Genau wie ein echtes Speichertestprogramm findet es damit defekte
    Speicherzellen und Adressleitungsfehler. */
 #include "proglib.c"
+#include "gfxlib.c"
 
 #define TEST_START 0x00300000        /* 3 MB -- oberhalb aller Systempuffer */
 #define TEST_END   0x00900000        /* 9 MB */
@@ -10,9 +11,9 @@
 
 int lauf(char* name, int muster, int adressmuster) {
     int addr; int fehler; int erwartet; int gelesen; int gezeigt;
-    print("  ");
-    print(name);
-    print(" ");
+    tf_text("  ");
+    tf_text(name);
+    tf_text(" ");
     fehler = 0;
     gezeigt = 0;
 
@@ -32,14 +33,14 @@ int lauf(char* name, int muster, int adressmuster) {
         addr = addr + SCHRITT;
         if ((addr - TEST_START) / SCHRITT > gezeigt * 128) {
             gezeigt++;
-            putch('.');
+            tf_zeichen('.');
         }
     }
-    if (fehler == 0) printc("  ok\n", GREEN);
+    if (fehler == 0) tf_text("  ok\n");
     else {
-        printc("  FAILED, errors: ", RED);
-        printn(fehler);
-        nl();
+        tf_text("  FAILED, errors: ");
+        tf_zahl(fehler);
+        tf_zeichen(10);
     }
     return fehler;
 }
@@ -47,12 +48,17 @@ int lauf(char* name, int muster, int adressmuster) {
 int main() {
     int fehler; int start; int dauer; int kb;
 
-    cls();
-    printc("TOOBAD Memory Test 1.0\n\n", CYAN);
+    /* Frueher schrieb dieses Programm in die Textkonsole -- im
+       Schreibtisch sah man davon nichts. Jetzt bekommt es ein
+       Fenster mit Textausgabe. */
+    if (tf_neu("MEMTEST") < 0) return 1;
+
+    tf_leeren();
+    tf_text("TOOBAD Memory Test 1.0\n\n");
     kb = (TEST_END - TEST_START) / 1024;
-    print("Testing ");
-    printnc(kb, BRIGHT);
-    print(" KB from 0x00300000 to 0x00900000\n\n");
+    tf_text("Testing ");
+    tf_zahl(kb);
+    tf_text(" KB from 0x00300000 to 0x00900000\n\n");
 
     start = ticks();
     fehler = 0;
@@ -63,20 +69,21 @@ int main() {
     fehler = fehler + lauf("Pass 5  address pattern ", 0, 1);
     dauer = ticks() - start;
 
-    nl();
-    print("Elapsed time: ");
-    printnc(dauer / 100, BRIGHT);
-    print(".");
-    printn((dauer % 100) / 10);
-    print(" seconds\n");
-    if (fehler == 0) printc("\nResult: PASS -- no memory errors detected.\n", GREEN);
+    tf_zeichen(10);
+    tf_text("Elapsed time: ");
+    tf_zahl(dauer / 100);
+    tf_text(".");
+    tf_zahl((dauer % 100) / 10);
+    tf_text(" seconds\n");
+    if (fehler == 0) tf_text("\nResult: PASS -- no memory errors detected.\n");
     else {
-        printc("\nResult: FAIL -- total errors: ", RED);
-        printn(fehler);
-        nl();
+        tf_text("\nResult: FAIL -- total errors: ");
+        tf_zahl(fehler);
+        tf_zeichen(10);
     }
-    print("\nPress any key to return to the command prompt.\n");
+    tf_text("\nPress any key to return to the command prompt.\n");
     getkey();
-    cls();
+    tf_leeren();
+    tf_warten();
     return 0;
 }

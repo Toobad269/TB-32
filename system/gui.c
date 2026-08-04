@@ -2639,7 +2639,14 @@ void gui_main() {
                                     zieh_von = i;
                                 }
                             }
-                                                } else if (win_type[i] == APP_FREMD) {
+                                                } else if (win_type[i] == APP_POWER) {
+                            /* Beim Ausraeumen der ausgezogenen Fenster ist
+                               dieser Zweig mit verschwunden -- das Fenster
+                               ging auf, die Knoepfe taten aber nichts. */
+                            k = power_klick(i, mx, my);
+                            if (k == 2) { alt_btn = btn; break; }
+                            if (k) neu = 1;
+                        } else if (win_type[i] == APP_FREMD) {
                             fw_melden(i, FE_KLICK,
                                       mx - win_x[i] - 1,
                                       my - win_y[i] - TITLE_H);

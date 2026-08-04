@@ -34,6 +34,11 @@
 int  st_schritt = ST_MENUE;
 int  st_feld = 0;
 int  st_fehler = 0;
+/* Wohin es nach dem alten Passwort weitergeht: 0 = neues Passwort setzen,
+   1 = Rechner zuruecksetzen. Der Kernel laesst beides erst zu, wenn das
+   Passwort in diesem Lauf einmal richtig genannt wurde -- also muss auch
+   das Zuruecksetzen danach fragen. Vorher tat der Knopf schlicht nichts. */
+int  st_ziel = 0;
 char st_alt[32];
 char st_neu[32];
 char st_neu2[32];
@@ -83,7 +88,8 @@ void app_settings(int i) {
     }
     if (st_schritt == ST_ALT) {
         gx_text(x, y, "Change password", C_ACCENT, 256);
-        gx_text(x, y + 22, "Enter your current password.", C_TEXT, 256);
+        gx_text(x, y + 22, st_ziel ? "Enter your password to reset this machine."
+                                   : "Enter your current password.", C_TEXT, 256);
         st_feldkasten(x, y + 48, "Current password", st_alt, 1);
         if (st_fehler) gx_text(x, y + 72, "Wrong password.", C_WARN, 256);
         p_knopf(x + b - 190, y + 96, 80, 20, "OK", 0);
@@ -125,18 +131,34 @@ int st_klick(int i, int mx, int my) {
 
     if (st_schritt == ST_MENUE) {
         if (treffer(mx, my, x, y + 26, 200, 20)) {
+            st_ziel = 0;
             st_schritt = ST_ALT;
             memset(st_alt, 0, 32); st_fehler = 0; st_meldung[0] = 0;
             return 1;
         }
         if (treffer(mx, my, x, y + 54, 200, 20)) {
-            st_schritt = ST_RESET; st_fehler = 0; return 1;
+            /* Hat der Rechner ein Passwort, wird es zuerst verlangt. */
+            st_fehler = 0;
+            if (konto_offen()) {
+                st_schritt = ST_RESET;
+            } else {
+                st_ziel = 1;
+                st_schritt = ST_ALT;
+                memset(st_alt, 0, 32);
+                st_meldung[0] = 0;
+            }
+            return 1;
         }
         return 0;
     }
     if (st_schritt == ST_ALT) {
         if (treffer(mx, my, x + b - 190, y + 96, 80, 20)) {
             if (passwort_pruefen(st_alt)) {
+                if (st_ziel == 1) {
+                    st_schritt = ST_RESET;
+                    st_fehler = 0;
+                    return 1;
+                }
                 st_schritt = ST_NEU;
                 memset(st_neu, 0, 32); memset(st_neu2, 0, 32);
                 st_feld = 0; st_fehler = 0;

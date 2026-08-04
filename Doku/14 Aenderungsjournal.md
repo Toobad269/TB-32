@@ -9,6 +9,43 @@ Die tiefer liegenden Fallen haben zusätzlich einen ausführlichen Eintrag in
 
 ---
 
+## Jedes Programm läuft jetzt im Fenster
+
+Systematisch durchgetestet: **alle dreizehn** Programme aus dem Startmenü
+öffnen ein Fenster. Drei taten es vorher nicht -- BENCH, MEMTEST und
+KELLERTEST sind **Textprogramme**: sie schreiben mit `print()` in die
+Textkonsole, und die sieht man im Schreibtisch nicht. Das Programm lief,
+aber es blieb schwarz.
+
+**Neu dafür: Textausgabe im Fenster** (`tf_*` in `gfxlib.c`). Ein Rechteck
+aus Zeichen wie bei einer Textkarte, mit Umbruch und Rollen; `tf_warten()`
+hält das Fenster offen, bis man es schließt. Damit kann jedes künftige
+Textprogramm ein Fenster haben, ohne dass jemand etwas umschreibt.
+
+**Beim Umstellen bin ich in eine alte Falle getreten.** Ich habe die Aufrufe
+mit einem regulären Ausdruck ersetzt -- und der hielt das Komma **in einer
+Zeichenkette** für ein Argumenttrennzeichen:
+
+```c
+printc("  FAILED, errors: ", RED);   ->   tf_text("  FAILED);
+```
+
+Dieselbe Sorte Fehler wie damals das Semikolon in Assembler-Zeichenketten.
+Jetzt sucht der Ersetzer die schließende Klammer und weiß dabei, wann er in
+einer Zeichenkette steht.
+
+**Power options taten nichts.** Das Fenster ging auf, die Knöpfe waren tot:
+beim Ausräumen der ausgezogenen Fenster ist der Klick-Zweig für `APP_POWER`
+mit verschwunden. Ein Fenster, dessen Klicks niemand annimmt, sieht aus wie
+ein Fenster -- man merkt es erst beim Drücken.
+
+**Zurücksetzen ging nicht, wenn ein Passwort gesetzt ist.** Der Kernel lässt
+es erst zu, wenn das Passwort in diesem Lauf einmal richtig genannt wurde --
+der Reset-Knopf fragte aber nie danach. Jetzt fragt er: *„Enter your
+password to reset this machine."*
+
+---
+
 ## Vier Fehler aus dem Betrieb
 
 **Programme aus dem Dateifenster gaben einen schwarzen Bildschirm.** Der

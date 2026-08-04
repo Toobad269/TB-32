@@ -407,3 +407,121 @@ void fenster_zu() {
     sc(44, fn_nr, 0, 0, 0);
     fn_nr = 0 - 1;
 }
+
+
+/* ===========================================================================
+   Textausgabe im Fenster.
+
+   Textprogramme (BENCH, MEMTEST, ...) schreiben mit print() in die
+   Textkonsole. Im Schreibtisch sieht man die nicht -- das Programm lief,
+   aber es blieb schwarz. Diese paar Funktionen geben so einem Programm ein
+   Fenster mit Textausgabe: schreiben, umbrechen, rollen.
+
+   Der Puffer ist ein Rechteck aus Zeichen, wie bei einer Textkarte. Gemalt
+   wird er als Ganzes -- einzelne Zeichen nachzufuehren waere schneller,
+   aber ein Textprogramm schreibt selten und viel auf einmal.
+
+   Ablauf:
+       tf_neu("BENCH");
+       tf_text("Hallo\n");
+       tf_malen();
+       tf_warten();          bis der Benutzer das Fenster schliesst
+   =========================================================================== */
+
+#define TF_SPALTEN  72
+#define TF_ZEILEN   24
+#define TF_PUFFER   0x001A0000      /* TF_SPALTEN * TF_ZEILEN Zeichen */
+
+int tf_zeile = 0;
+int tf_spalte = 0;
+int tf_farbe = 0;
+
+int tf_adr(int z, int s) { return TF_PUFFER + z * TF_SPALTEN + s; }
+
+void tf_leeren() {
+    int i;
+    for (i = 0; i < TF_SPALTEN * TF_ZEILEN; i++) byte_put(TF_PUFFER + i, 32);
+    tf_zeile = 0;
+    tf_spalte = 0;
+}
+
+/* Eine Zeile nach oben schieben, wenn unten kein Platz mehr ist. */
+void tf_rollen() {
+    int i;
+    for (i = 0; i < TF_SPALTEN * (TF_ZEILEN - 1); i++)
+        byte_put(TF_PUFFER + i, byte_get(TF_PUFFER + i + TF_SPALTEN));
+    for (i = 0; i < TF_SPALTEN; i++)
+        byte_put(TF_PUFFER + TF_SPALTEN * (TF_ZEILEN - 1) + i, 32);
+}
+
+void tf_zeichen(int c) {
+    if (c == 10) {
+        tf_spalte = 0;
+        tf_zeile = tf_zeile + 1;
+    } else if (c == 13) {
+        tf_spalte = 0;
+    } else if (c >= 32 && c < 127) {
+        if (tf_spalte >= TF_SPALTEN) { tf_spalte = 0; tf_zeile = tf_zeile + 1; }
+        if (tf_zeile >= TF_ZEILEN) { tf_rollen(); tf_zeile = TF_ZEILEN - 1; }
+        byte_put(tf_adr(tf_zeile, tf_spalte), c);
+        tf_spalte = tf_spalte + 1;
+    }
+    if (tf_zeile >= TF_ZEILEN) { tf_rollen(); tf_zeile = TF_ZEILEN - 1; }
+}
+
+void tf_text(char* s) {
+    int i;
+    for (i = 0; s[i] != 0; i++) tf_zeichen(s[i]);
+}
+
+void tf_zahl(int n) {
+    char puffer[14];
+    int i; int stelle; int minus;
+    minus = 0;
+    if (n < 0) { minus = 1; n = 0 - n; }
+    i = 0;
+    stelle = 1000000000;
+    while (stelle > 1 && n < stelle) stelle = stelle / 10;
+    if (minus) { puffer[i] = '-'; i++; }
+    while (stelle > 0) {
+        puffer[i] = '0' + (n / stelle) % 10;
+        i++;
+        stelle = stelle / 10;
+    }
+    puffer[i] = 0;
+    tf_text(puffer);
+}
+
+void tf_malen() {
+    int z; int s; int c;
+    fenster_malziel();
+    gx_fill(0, 0, fn_breite, fn_hoehe, 0);        /* schwarz wie ein Terminal */
+    for (z = 0; z < TF_ZEILEN; z++) {
+        for (s = 0; s < TF_SPALTEN; s++) {
+            c = byte_get(tf_adr(z, s));
+            if (c == 32) continue;
+            gx_char(4 + s * 8, 4 + z * 9, c, 10, 256);
+        }
+    }
+    fenster_fertig();
+}
+
+int tf_neu(char* titel) {
+    tf_leeren();
+    return fenster_neu(titel, TF_SPALTEN * 8 + 10, TF_ZEILEN * 9 + 24);
+}
+
+/* Warten, bis der Benutzer das Fenster schliesst oder ESC drueckt. */
+void tf_warten() {
+    int e[4];
+    int art;
+    tf_malen();
+    while (1) {
+        art = fenster_ereignis(e);
+        if (art == FE_SCHLIESS) break;
+        if (art == FE_TASTE && e[2] == K_ESC) break;
+        if (art == FE_MALEN) tf_malen();
+        if (art == FE_NICHTS) sleep(3);
+    }
+    fenster_zu();
+}
