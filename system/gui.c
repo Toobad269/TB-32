@@ -2637,7 +2637,7 @@ void gl_malen(int neu_anlegen) {
         gl_kasten(196, "Password",  gl_pw,   1, gl_feld == 1);
         gl_kasten(218, "Repeat",    gl_pw2,  1, gl_feld == 2);
         if (gl_fehler) g_text(160, 244, "The two entries differ.", C_WARN, 256);
-        else g_text(160, 244, "TAB switches fields, ENTER confirms", C_WINDARK, 256);
+        else g_text(160, 244, "Click a field or press TAB, ENTER confirms", C_WINDARK, 256);
     } else {
         g_text(160, 150, "User", C_WINDARK, 256);
         g_text(200, 150, gl_name, C_ACCENT, 256);
@@ -2673,6 +2673,12 @@ int gui_anmelden(int neu_anlegen) {
         sys_out(P_MCUR_Y, my);
         sys_out(P_MCUR_ON, 1);
         if ((btn & 1) && alt_btn == 0) {
+            /* In ein Feld geklickt? Dann dorthin wechseln. */
+            if (neu_anlegen) {
+                if (treffer(mx, my, 180, 166, 276, 20)) gl_feld = 0;
+                else if (treffer(mx, my, 180, 188, 276, 20)) gl_feld = 1;
+                else if (treffer(mx, my, 180, 210, 276, 20)) gl_feld = 2;
+            }
             n = gl_power_klick(mx, my);
             if (n == 0) gl_menue = 1 - gl_menue;
             else if (n == 1) sys_out(P_POWER, 2);
@@ -2786,7 +2792,7 @@ void app_settings(int i) {
         st_feldkasten(x, y + 32, "New password", st_neu, st_feld == 0);
         st_feldkasten(x, y + 58, "Repeat", st_neu2, st_feld == 1);
         if (st_fehler) g_text(x, y + 80, "The two entries differ.", C_WARN, 256);
-        else g_text(x, y + 80, "TAB switches fields.", C_WINDARK, 256);
+        else g_text(x, y + 80, "Click a field or press TAB.", C_WINDARK, 256);
         g_button(x + b - 190, y + 100, 80, 20, "Save", 0);
         g_button(x + b - 100, y + 100, 80, 20, "Cancel", 0);
         return;
@@ -2853,6 +2859,12 @@ int st_klick(int i, int mx, int my) {
         return 0;
     }
     if (st_schritt == ST_NEU) {
+        /* Die Felder anklickbar machen. TAB allein reicht nicht -- wer mit
+           der Maus arbeitet, klickt in das Feld, das er meint. Der Kasten ist
+           nur 14 Punkte hoch; getroffen wird die ganze Zeile samt Beschriftung,
+           sonst klickt man daneben, ohne zu merken warum. */
+        if (treffer(mx, my, x, y + 24, 280, 24)) { st_feld = 0; return 1; }
+        if (treffer(mx, my, x, y + 50, 280, 24)) { st_feld = 1; return 1; }
         if (treffer(mx, my, x + b - 190, y + 100, 80, 20)) {
             if (strcmp(st_neu, st_neu2) == 0) {
                 benutzer_anlegen(benutzer_name(), st_neu);

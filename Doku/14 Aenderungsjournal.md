@@ -9,6 +9,27 @@ Die tiefer liegenden Fallen haben zusätzlich einen ausführlichen Eintrag in
 
 ---
 
+## Passwortfelder lassen sich anklicken
+
+Beim Passwort-Ändern kam man **nur mit TAB** von einem Feld zum anderen. Wer
+mit der Maus arbeitet, klickt aber in das Feld, das er meint -- und nichts
+geschah. Die Eingabe landete stillschweigend im falschen Feld.
+
+Betroffen waren beide Stellen mit mehreren Feldern: der zweistufige
+Passwortwechsel in den **Einstellungen** und der **Ersteinrichtungs-Schirm**
+beim allerersten Start.
+
+**Der Trefferbereich ist absichtlich größer als der Kasten.** Der gezeichnete
+Kasten ist nur 14 Punkte hoch; ein Klick neun Punkte darunter ging beim
+ersten Versuch daneben, ohne dass man den Grund sehen konnte. Getroffen wird
+jetzt die ganze Zeile samt Beschriftung -- 24 Punkte hoch bei einem Abstand
+von 26, also ohne Überschneidung mit der Nachbarzeile. Nachgemessen und mit
+Klicks auf Kastenmitte, Kastenrand und Beschriftung geprüft.
+
+Die Hinweiszeilen sagen es jetzt auch: *"Click a field or press TAB."*
+
+---
+
 ## TOOBAD-OS 2.5.2
 
 Aus 1.0 wird **2.5.2** -- System und BIOS gemeinsam, an allen sechs Stellen
