@@ -1678,6 +1678,8 @@ char* speed_name(int i) {
     return "8 MHz";
 }
 
+int ctrl_gesichert = 0;              /* wann zuletzt ins CMOS geschrieben */
+
 void app_control(int w) {
     int x; int y; int attr; int i; int k;
     x = win_x[w] + 8;
@@ -1722,6 +1724,15 @@ void app_control(int w) {
 
     g_text(x, y + 92, "Click a row to change the value.", C_WINDARK, 256);
     g_button(x, y + 104, 96, 16, "Save to CMOS", 0);
+    /* Ohne Rueckmeldung weiss niemand, ob der Klick angekommen ist -- die
+       Werte sehen vorher und nachher gleich aus. Die Meldung verschwindet
+       von selbst, weil das Fenster sich jede Sekunde auffrischt. */
+    if (ctrl_gesichert > 0) {
+        if (sys_ticks() - ctrl_gesichert < 300)
+            g_text(x + 104, y + 108, "Saved", C_GOOD, 256);
+        else
+            ctrl_gesichert = 0;
+    }
     g_text(x + 110, y + 108, "Temperature:", C_WINDARK, 256);
     g_num(x + 210, y + 108, sys_in(P_TEMP) / 10, C_ACCENT, 256);
     g_text(x + 234, y + 108, "C", C_WINDARK, 256);
@@ -1735,7 +1746,10 @@ void control_click(int w, int mx, int my) {
        Klick irgendwo daneben -- etwa auf die Temperaturanzeige rechts --
        schrieb das CMOS. */
     if (my >= y + 104 && my < y + 120) {
-        if (mx >= win_x[w] + 8 && mx < win_x[w] + 8 + 96) cmos_set(0x3F, 1);
+        if (mx >= win_x[w] + 8 && mx < win_x[w] + 8 + 96) {
+            cmos_set(0x3F, 1);
+            ctrl_gesichert = sys_ticks();
+        }
         return;
     }
     zeile = (my - (y + 16)) / 14;
@@ -2999,7 +3013,11 @@ void gui_main() {
                Inhalt ueber jedes Fenster legen, das vor ihnen liegt --
                die Uhrzeit stand mitten im Control Panel. Stattdessen malt
                der Schreibtisch neu, und der kennt die Reihenfolge. */
-            if (win_find(APP_CLOCK) >= 0 || win_find(APP_MONITOR) >= 0)
+            /* Das Control Panel gehoert dazu: es zeigt die Temperatur, und
+               die stand bisher still, bis irgendetwas anderes ein
+               Neuzeichnen ausloeste. */
+            if (win_find(APP_CLOCK) >= 0 || win_find(APP_MONITOR) >= 0
+                || win_find(APP_CONTROL) >= 0)
                 neu = 1;
             else
                 draw_taskbar();

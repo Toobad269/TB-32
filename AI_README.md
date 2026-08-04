@@ -621,7 +621,11 @@ Fünf Zeilen, ein Klick auf eine Zeile ändert den Wert (er läuft im Kreis):
 | Fan Control | automatisch / leise / volle Drehzahl |
 
 Darunter der Knopf **Save to CMOS** (96 × 16) — erst er macht die
-Einstellungen dauerhaft. Rechts daneben die aktuelle Temperatur.
+Einstellungen dauerhaft. Nach dem Klick steht rechts daneben für drei
+Sekunden **`Saved`** in Grün. Rechts die aktuelle Temperatur, die sich
+**einmal je Sekunde auffrischt** — das Fenster löst dafür wie Uhr und
+Monitor ein Neuzeichnen des ganzen Schreibtischs aus, weil nur der die
+Fensterreihenfolge kennt.
 
 ## 11.9 Clock, About
 
