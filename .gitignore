@@ -1,0 +1,23 @@
+# --- Was build.py erzeugt --------------------------------------------------
+# Nichts davon gehoert versioniert: es entsteht bei jedem Bau neu, und
+# system/kernel.asm allein ist ein Megabyte. Ein Klon plus `python3 build.py`
+# ergibt einen vollstaendig funktionierenden Rechner.
+firmware/*.bin
+system/kernel.asm
+system/kernel.bin
+system/kernel.sym
+system/boot.bin
+emu/tb32
+emu/*.o
+*.TBX
+
+# --- Die virtuelle Festplatte ----------------------------------------------
+# 8 MB, und sie aendert sich bei jedem Speichern im laufenden System.
+# ACHTUNG: was du IM TB-32 erstellst, lebt nur hier. Soll es gesichert sein,
+# gehoert es nach diskfiles/ -- das wird bei jedem Bau aufs Laufwerk kopiert.
+disk/
+
+# --- Kram ------------------------------------------------------------------
+__pycache__/
+*.pyc
+.DS_Store
