@@ -89,10 +89,16 @@ wenn `term_aktiv` gesetzt ist. Programme merken davon nichts.
 | `Cmd`+`C` | Auswahl aus TOOBAD-OS zum Mac |
 | `Strg`+`A/C/X/V` | im Gast: alles / kopieren / ausschneiden / einfügen |
 | `ü` | **Einschaltknopf** — wirkt nur, wenn der Rechner aus ist |
+| `Strg`+`K` / `Cmd`+`K` | **alles kopieren**, still: im Textmodus der ganze Bildschirm (auch im BIOS und im Setup), im Grafikmodus der vollständige Text des Coders |
 | beim Einschalten | **5 s Bedenkzeit** (`EINSCHALT_HALT_S` in `pc.py`), Tasten daraus werden aufgehoben |
 
 `Strg`+*Buchstabe* wird in `pc.py` allgemein als Steuerzeichen 1–26 an den
 Gast durchgereicht — die Abfrage steht **nach** Strg+Q und Strg+R.
+
+`Strg`+`K` sitzt im **Gehäuse** (`pc.py`, `alles_kopieren`) und nicht im
+System. Im BIOS und im Setup läuft gar kein Betriebssystem, das eine Taste
+auswerten könnte — von dort aus geht es überall. Es meldet bewusst nichts:
+wer die Taste drückt, weiß, was er wollte.
 
 Das `ü` steht bewusst **nicht** bei den Tastendrücken, sondern beim
 Text-Ereignis (`TEXTINPUT`). Bei `KEYDOWN` ist `event.unicode` je nach

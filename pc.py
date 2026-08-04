@@ -368,6 +368,49 @@ def kernel_symbol(name):
     return _symbole.get(name)
 
 
+ED_BUF = 0x000D0000              # Textpuffer des Coders (siehe system/edit.c)
+APP_EDITOR = 8                   # Fensterart des Coders (siehe system/gui.c)
+
+
+def alles_kopieren(m):
+    """Strg+K: alles Sichtbare in die Zwischenablage des Macs -- still.
+
+    Das gehört ins GEHÄUSE und nicht ins System. Im BIOS und im Setup läuft
+    gar kein Betriebssystem, das eine Taste auswerten könnte; von hier aus
+    geht es überall, egal welche Software gerade auf der CPU liegt.
+
+    Im Textmodus der ganze Bildschirm, Zeile für Zeile. Im Grafikmodus, wenn
+    oben der Coder liegt, sein VOLLSTÄNDIGER Text -- nicht nur der sichtbare
+    Ausschnitt, denn genau darum geht es beim Kopieren.
+
+    Ohne Rückmeldung: keine Meldung im Gast, kein Blinken. Wer die Taste
+    drückt, weiß, was er wollte."""
+    if m.vga.mode != VGA.MODE_TEXT:
+        oben = kernel_symbol("win_top")
+        typen = kernel_symbol("win_type")
+        laenge = kernel_symbol("ed_len")
+        if oben is not None and typen is not None and laenge is not None:
+            try:
+                i = struct.unpack_from("<i", m.bus.ram, oben)[0]
+                if i >= 0 and struct.unpack_from("<i", m.bus.ram, typen + i * 4)[0] == APP_EDITOR:
+                    n = struct.unpack_from("<i", m.bus.ram, laenge)[0]
+                    if 0 < n <= 60000:
+                        return bytes(m.bus.ram[ED_BUF:ED_BUF + n]).decode("latin-1")
+            except Exception:
+                pass
+        return ""
+
+    t = m.vga.text
+    zeilen = []
+    for y in range(SCR_ROWS):
+        z = "".join(CP437[t[(y * SCR_COLS + x) * 2]] if t[(y * SCR_COLS + x) * 2] < len(CP437)
+                    else " " for x in range(SCR_COLS))
+        zeilen.append(z.rstrip())
+    while zeilen and zeilen[-1] == "":
+        zeilen.pop()
+    return "\n".join(zeilen)
+
+
 def gast_clipboard(m):
     """Liest die Zwischenablage von TOOBAD-OS aus dem Arbeitsspeicher."""
     a = kernel_symbol("clip_len")
@@ -646,6 +689,15 @@ def main():
                 # wir es gleich mit herueber, sobald der Gast fertig ist.
                 if e.key == pygame.K_c and (mods & pygame.KMOD_META):
                     text = gast_clipboard(m)
+                    if text:
+                        mac_clipboard_set(text)
+                    continue
+                # Strg+K -- alles kopieren, ohne ein Wort darüber zu
+                # verlieren. Steht VOR der allgemeinen Strg+Buchstabe-Regel,
+                # sonst ginge es als Steuerzeichen an den Gast.
+                if e.key == pygame.K_k and (mods & pygame.KMOD_CTRL
+                                            or mods & pygame.KMOD_META):
+                    text = alles_kopieren(m)
                     if text:
                         mac_clipboard_set(text)
                     continue
