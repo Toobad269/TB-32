@@ -56,6 +56,11 @@ void portout(int p, int v);
 int  portin(int p);
 void ende()                       { sc(4, 0, 0, 0, 0); }
 int  fontaddr()                   { return sc(30, 0, 0, 0, 0); }
+/* Zwischenablage: der Puffer liegt fest, die Laenge holt man sich. */
+#define CLIP_BUF  0x00130000
+#define CLIP_MAX  8192
+int  clip_holen()                 { return sc(45, 0, 0, 0, 0); }
+void clip_setzen(int n)           { sc(46, n, 0, 0, 0); }
 
 int keychar(int k) { return k & 255; }
 int keycode(int k) { return (k >> 8) & 255; }

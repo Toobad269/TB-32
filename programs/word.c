@@ -1,30 +1,84 @@
 /* ==========================================================================
-   WORD -- Textverarbeitung als Fenster im Schreibtisch
+   WORD  --  Textverarbeitung fuer TOOBAD-OS, jetzt als eigenes Programm
 
-   Der Unterschied zum Editor ist nicht die Bedienung, sondern das Modell:
-   Der Editor kennt Zeilen, so wie sie in der Datei stehen. Eine
-   Textverarbeitung kennt **Absaetze**. Wo eine Zeile umbricht, entscheidet
-   nicht der Schreibende, sondern die Seitenbreite -- und das aendert sich,
-   sobald man die Schrift groesser stellt oder das Fenster zieht.
+   Frueher im Kernel, jetzt eine Datei auf der Platte. Es malt in seinen
+   eigenen Fensterpuffer; der Schreibtisch setzt ihn an die richtige Stelle.
+   Der Umbau folgt demselben Muster wie bei Paint: aus win_x[i] wird 0, aus
+   den g_-Funktionen die gx_-Funktionen, aus fs_read/fs_write und der
+   Zwischenablage Systemaufrufe.
 
-   Drei Ebenen liegen uebereinander:
-
-     * Der Text: ein durchgehender Puffer, Absaetze durch Zeilenumbruch
-       getrennt. Ein Byte je Zeichen.
-     * Die Farbe: ein zweiter Puffer, ebenfalls ein Byte je Zeichen. Nur so
-       kann man eine Markierung einfaerben und nicht bloss ganze Absaetze.
-     * Die Form: je Absatz ein Byte mit Groesse, Fett, Unterstrichen,
-       Ausrichtung -- und der Marke "das hier ist ein Bild".
-
-   Daraus wird bei jeder Aenderung ein **Umbruch** gerechnet: eine Liste von
-   Bildschirmzeilen mit Anfang, Laenge und zugehoerigem Absatz. Das ist
-   genau das, was jede echte Textverarbeitung tut.
-
-   Der Zeichensatz hat feste Breite und laesst sich nur ganzzahlig
-   vergroessern. Groessen gibt es deshalb drei: 8, 16 und 24 Punkte. Fett
-   wird durch zweimal versetztes Malen gemacht -- derselbe Trick, mit dem
-   Nadeldrucker frueher fett gedruckt haben.
+   Uebersetzen auf dem Geraet selbst:  CC WORD.C
    ========================================================================== */
+
+#include "proglib.c"
+#include "gfxlib.c"
+
+#define C_BLACK    0
+#define C_WHITE   15
+#define C_TEXT     0
+#define C_WINDARK  8
+#define C_ACCENT   9
+#define C_WARN     4
+#define C_GOOD     2
+#define C_WIN      7
+#define C_TITLEBAR 1
+
+#define K_BACKSPACE 14
+#define K_TAB       15
+#define K_HOME      71
+#define K_END       79
+#define K_PGUP      73
+#define K_PGDN      81
+#define K_DEL       83
+
+#define P_DMA_SRC  0x56
+#define P_DMA_DST  0x57
+#define P_DMA_LEN  0x58
+#define P_DMA_CMD  0x5A
+
+/* Endet der Name auf <endung>? (ohne Gross-/Kleinschreibung) */
+int endet_auf(char* name, char* endung) {
+    int n; int e; int i;
+    n = strlen(name);
+    e = strlen(endung);
+    if (n < e) return 0;
+    for (i = 0; i < e; i++)
+        if (toupper(name[n - e + i]) != toupper(endung[i])) return 0;
+    return 1;
+}
+
+int treffer(int mx, int my, int x, int y, int w, int h) {
+    return mx >= x && mx < x + w && my >= y && my < y + h;
+}
+
+void p_knopf(int x, int y, int w, int h, char* text, int gedrueckt) {
+    gx_panel(x, y, w, h, gedrueckt);
+    if (text[0])
+        gx_text_mitte(x + gedrueckt, y + (h - 8) / 2 + gedrueckt, w, text,
+                      C_TEXT);
+}
+
+void gx_str(int x, int y, int adr, int n, int farbe, int bg) {
+    int i;
+    for (i = 0; i < n; i++)
+        gx_char(x + i * 8, y, byte_get(adr + i), farbe, bg);
+}
+
+void gx_num(int x, int y, int n, int farbe, int bg) { gx_zahl(x, y, n, farbe); }
+
+void gx_bild(int x, int y, int w, int h, int quelle) {
+    portout(P_BLT_SRC, quelle);
+    portout(P_BLT_X, x);
+    portout(P_BLT_Y, y);
+    portout(P_BLT_W, w);
+    portout(P_BLT_H, h);
+    portout(P_BLT_CMD, 4);
+    portout(P_BLT_SRC, gx_font);
+}
+
+/* Die Laenge der Zwischenablage steht im Kernel; hier eine Kopie, die vor
+   jedem Zugriff geholt und danach zurueckgeschrieben wird. */
+int clip_len = 0;
 
 #define WD_TEXT      0x00720000      /* der Text selbst, ein Byte je Zeichen */
 #define WD_MAX       30000
@@ -372,7 +426,7 @@ int wd_bild_holen(int absatz, int start, int laenge) {
     if (laenge <= 0 || laenge > 20) return 0;
     for (i = 0; i < laenge; i++) nm[i] = byte_get(WD_TEXT + start + i);
     nm[laenge] = 0;
-    n = fs_read(nm, WD_DATEI, WD_BILD_MAX);
+    n = fileread(nm, WD_DATEI, WD_BILD_MAX);
     if (n < 8) { wd_bild_geladen = absatz; wd_bild_qb = 0; return 0; }
     wd_bild_qb = mem_get(WD_DATEI);
     wd_bild_qh = mem_get(WD_DATEI + 4);
@@ -390,10 +444,10 @@ int wd_bild_holen(int absatz, int start, int laenge) {
 #define P_DMA_DST  0x57
 #define P_DMA_LEN  0x58
 #define P_DMA_CMD  0x5A
-    sys_out(P_DMA_SRC, WD_DATEI + 8);
-    sys_out(P_DMA_DST, WD_BILD);
-    sys_out(P_DMA_LEN, wd_bild_qb * wd_bild_qh);
-    sys_out(P_DMA_CMD, 1);
+    portout(P_DMA_SRC, WD_DATEI + 8);
+    portout(P_DMA_DST, WD_BILD);
+    portout(P_DMA_LEN, wd_bild_qb * wd_bild_qh);
+    portout(P_DMA_CMD, 1);
     wd_bild_geladen = absatz;
     return 1;
 }
@@ -472,14 +526,14 @@ void wd_speichern() {
     /* Die Listen kommen ganz ans Ende. Aeltere Dateien haben dort nichts --
        die werden dann einfach ohne Listen geladen, statt kaputtzugehen. */
     for (i = 0; i < a; i++) { byte_put(WD_DATEI + p, wd_liste(i)); p++; }
-    if (fs_write(wd_name, WD_DATEI, p) < 0) wd_meldung = 3;
+    if (filewrite(wd_name, WD_DATEI, p) < 0) wd_meldung = 3;
     else wd_meldung = 1;
 }
 
 void wd_laden() {
     int n; int i; int a; int p;
     if (wd_name[0] == 0) { wd_meldung = 3; return; }
-    n = fs_read(wd_name, WD_DATEI, WD_MAX * 2 + 12000);
+    n = fileread(wd_name, WD_DATEI, WD_MAX * 2 + 12000);
     if (n < 8) { wd_meldung = 3; return; }
     wd_len = mem_get(WD_DATEI);
     a = mem_get(WD_DATEI + 4);
@@ -556,7 +610,7 @@ void wd_als_text() {
         if (byte_get(WD_TEXT + i) == 10) a++;
         i++;
     }
-    if (fs_write(nm, WD_DATEI, p) < 0) wd_meldung = 3;
+    if (filewrite(nm, WD_DATEI, p) < 0) wd_meldung = 3;
     else wd_meldung = 4;
 }
 
@@ -581,16 +635,16 @@ void wd_marke_malen(int px, int py, int absatz, int zoom) {
     int l; int n; char txt[8];
     l = wd_liste(absatz);
     if (l & WL_PUNKT) {
-        g_fill(px + 2 * zoom, py + 3 * zoom, 3 * zoom, 3 * zoom, C_BLACK);
+        gx_fill(px + 2 * zoom, py + 3 * zoom, 3 * zoom, 3 * zoom, C_BLACK);
         return;
     }
     if (l & WL_ZAHL) {
         n = wd_listennummer(absatz);
         itoa(n, txt);
         strcat(txt, ".");
-        sys_out(P_BLT_ZOOM, zoom);
-        g_str(px, py, (int)txt, strlen(txt), C_BLACK, 256);
-        sys_out(P_BLT_ZOOM, 1);
+        portout(P_BLT_ZOOM, zoom);
+        gx_str(px, py, (int)txt, strlen(txt), C_BLACK, 256);
+        portout(P_BLT_ZOOM, 1);
     }
 }
 
@@ -605,7 +659,7 @@ void wd_zeile_malen(int px, int py, int zeile, int f) {
     start = wd_u_start(zeile);
     zoom = wd_groesse(f);
     x = wd_zeilen_x(px, zeile, f);
-    sys_out(P_BLT_ZOOM, zoom);
+    portout(P_BLT_ZOOM, zoom);
 
     lauf = 0;
     lauf_farbe = C_BLACK;
@@ -617,33 +671,33 @@ void wd_zeile_malen(int px, int py, int zeile, int f) {
             markiert = 1;
         if (markiert) {
             if (lauf > 0) {
-                g_str(lauf_x, py, WD_TEXT + start + i - lauf, lauf, lauf_farbe, 256);
+                gx_str(lauf_x, py, WD_TEXT + start + i - lauf, lauf, lauf_farbe, 256);
                 lauf = 0;
             }
-            g_fill(x + i * 8 * zoom, py, 8 * zoom, 9 * zoom, C_TITLEBAR);
-            g_str(x + i * 8 * zoom, py, WD_TEXT + start + i, 1, C_WHITE, 256);
+            gx_fill(x + i * 8 * zoom, py, 8 * zoom, 9 * zoom, C_TITLEBAR);
+            gx_str(x + i * 8 * zoom, py, WD_TEXT + start + i, 1, C_WHITE, 256);
             lauf_x = x + (i + 1) * 8 * zoom;
         } else if (lauf > 0 && c == lauf_farbe) {
             lauf++;
         } else {
             if (lauf > 0)
-                g_str(lauf_x, py, WD_TEXT + start + i - lauf, lauf, lauf_farbe, 256);
+                gx_str(lauf_x, py, WD_TEXT + start + i - lauf, lauf, lauf_farbe, 256);
             lauf_x = x + i * 8 * zoom;
             lauf_farbe = c;
             lauf = 1;
         }
     }
     if (lauf > 0)
-        g_str(lauf_x, py, WD_TEXT + start + n - lauf, lauf, lauf_farbe, 256);
+        gx_str(lauf_x, py, WD_TEXT + start + n - lauf, lauf, lauf_farbe, 256);
 
     if (f & WF_FETT) {
         /* Fett: dasselbe noch einmal einen Punkt versetzt. Genau so haben es
            Nadeldrucker gemacht. */
-        g_str(x + 1, py, WD_TEXT + start, n, lauf_farbe, 256);
+        gx_str(x + 1, py, WD_TEXT + start, n, lauf_farbe, 256);
     }
-    sys_out(P_BLT_ZOOM, 1);
+    portout(P_BLT_ZOOM, 1);
     if (f & WF_UNTER)
-        g_fill(x, py + 8 * zoom, n * 8 * zoom, 1, C_BLACK);
+        gx_fill(x, py + 8 * zoom, n * 8 * zoom, 1, C_BLACK);
 }
 
 void wd_bild_malen(int px, int py, int zeile, int a) {
@@ -656,25 +710,25 @@ void wd_bild_malen(int px, int py, int zeile, int a) {
     if (x < px) x = px;
 
     if (wd_bild_holen(a, wd_u_start(zeile), wd_u_laenge(zeile))) {
-        sys_out(P_BLT_SRC, WD_BILD);
-        sys_out(P_BLT_CHR, (wd_bild_qb & 65535) | ((wd_bild_qh & 65535) << 16));
-        sys_out(P_BLT_X, x & 65535);
-        sys_out(P_BLT_Y, py & 65535);
-        sys_out(P_BLT_W, bw);
-        sys_out(P_BLT_H, bh);
-        sys_out(P_BLT_CMD, 7);
-        sys_out(P_BLT_SRC, (int)font8);      /* Zeichensatz zurueckstellen */
-        sys_out(P_BLT_CHR, 32);
+        portout(P_BLT_SRC, WD_BILD);
+        portout(P_BLT_CHR, (wd_bild_qb & 65535) | ((wd_bild_qh & 65535) << 16));
+        portout(P_BLT_X, x & 65535);
+        portout(P_BLT_Y, py & 65535);
+        portout(P_BLT_W, bw);
+        portout(P_BLT_H, bh);
+        portout(P_BLT_CMD, 7);
+        portout(P_BLT_SRC, gx_font);      /* Zeichensatz zurueckstellen */
+        portout(P_BLT_CHR, 32);
     } else {
-        g_fill(x, py, bw, bh, C_WIN);
-        g_text(x + 4, py + 4, "Picture missing:", C_WARN, 256);
-        g_str(x + 4, py + 16, WD_TEXT + wd_u_start(zeile), wd_u_laenge(zeile),
+        gx_fill(x, py, bw, bh, C_WIN);
+        gx_text(x + 4, py + 4, "Picture missing:", C_WARN, 256);
+        gx_str(x + 4, py + 16, WD_TEXT + wd_u_start(zeile), wd_u_laenge(zeile),
               C_TEXT, 256);
     }
-    g_frame(x, py, bw, bh, C_WINDARK);
+    gx_frame(x, py, bw, bh, C_WINDARK);
     if (wd_bild_sel == a) {
-        g_frame(x - 1, py - 1, bw + 2, bh + 2, C_ACCENT);
-        g_fill(x + bw - 6, py + bh - 6, 8, 8, C_ACCENT);   /* Anfasser */
+        gx_frame(x - 1, py - 1, bw + 2, bh + 2, C_ACCENT);
+        gx_fill(x + bw - 6, py + bh - 6, 8, 8, C_ACCENT);   /* Anfasser */
     }
 }
 
@@ -714,13 +768,13 @@ int wdm_farbe(int i) {
 void wd_menue_malen() {
     int i; int hoehe;
     hoehe = WDM_ANZ * WDM_ZH + 6;
-    g_panel(wd_menue_x, wd_menue_y, WDM_B, hoehe, 0);
+    gx_panel(wd_menue_x, wd_menue_y, WDM_B, hoehe, 0);
     for (i = 0; i < WDM_ANZ; i++) {
-        if (i < 6) g_fill(wd_menue_x + 5, wd_menue_y + 5 + i * WDM_ZH, 9, 9,
+        if (i < 6) gx_fill(wd_menue_x + 5, wd_menue_y + 5 + i * WDM_ZH, 9, 9,
                           wdm_farbe(i));
-        if (i == 6 || i == 9) g_fill(wd_menue_x + 4, wd_menue_y + 3 + i * WDM_ZH - 1,
+        if (i == 6 || i == 9) gx_fill(wd_menue_x + 4, wd_menue_y + 3 + i * WDM_ZH - 1,
                                      WDM_B - 8, 1, C_WINDARK);
-        g_text(wd_menue_x + 18, wd_menue_y + 5 + i * WDM_ZH, wdm_text(i),
+        gx_text(wd_menue_x + 18, wd_menue_y + 5 + i * WDM_ZH, wdm_text(i),
                C_TEXT, 256);
     }
 }
@@ -736,7 +790,7 @@ int wd_menue_klick(int mx, int my) {
     if (i == 8) wd_clip_einfuegen();
     if (i == 9) { wd_sel_von = 0; wd_sel_bis = wd_len; }
     if (i == 10) wd_auswahl_weg();
-    if (i == 11) dlg_oeffne(APP_WORD, DLG_BILD, ".TBI", "BILD.TBI");
+    if (i == 11) wd_namemode = 3;      /* 3 = Name eines Bildes */
     if (i == 12) wd_bild_loeschen(wd_bild_sel);
     if (i == 13) wd_als_text();
     wd_menue = 0;
@@ -745,48 +799,48 @@ int wd_menue_klick(int mx, int my) {
 
 /* --- Das Fenster ---------------------------------------------------------- */
 
-int wd_seite_x(int i) { return win_x[i] + (win_w[i] - WD_SEITE_B) / 2; }
-int wd_seite_y(int i) { return win_y[i] + TITLE_H + 24; }
+int wd_seite_x(int i) { return (fn_breite - WD_SEITE_B) / 2; }
+int wd_seite_y(int i) { return 24; }
 
 void app_word(int i) {
     int x; int y; int px; int py; int z; int f; int hoehe; int k;
     int cz; int breite; int a;
 
-    x = win_x[i];
-    y = win_y[i] + TITLE_H;
-    breite = win_w[i];
-    hoehe = win_h[i] - TITLE_H;
+    x = 0;
+    y = 0;
+    breite = fn_breite;
+    hoehe = fn_hoehe;
 
     wd_pruefen();
 
-    g_button(x + 4, y + 3, 22, 16, "A", wd_groesse(wd_form) == 1);
-    g_button(x + 28, y + 3, 22, 16, "A+", wd_groesse(wd_form) == 2);
-    g_button(x + 52, y + 3, 22, 16, "A*", wd_groesse(wd_form) == 3);
-    g_button(x + 82, y + 3, 22, 16, "B", wd_form & WF_FETT);
-    g_button(x + 106, y + 3, 22, 16, "U", wd_form & WF_UNTER);
-    g_button(x + 136, y + 3, 26, 16, "|<", (wd_form & (WF_MITTE | WF_RECHTS)) == 0);
-    g_button(x + 164, y + 3, 26, 16, "><", wd_form & WF_MITTE);
-    g_button(x + 192, y + 3, 26, 16, ">|", wd_form & WF_RECHTS);
-    g_button(x + 222, y + 3, 24, 16, "*", wd_liste(wd_absatz_bei(wd_pos)) & WL_PUNKT);
-    g_button(x + 248, y + 3, 24, 16, "1.", wd_liste(wd_absatz_bei(wd_pos)) & WL_ZAHL);
-    g_fill(x + 278, y + 6, 12, 10, wd_stift);
-    g_frame(x + 278, y + 6, 12, 10, C_WINDARK);
-    g_button(x + 294, y + 3, 40, 16, "New", 0);
-    g_button(x + 336, y + 3, 46, 16, "Save", 0);
-    g_button(x + 384, y + 3, 46, 16, "Open", 0);
-    g_fill(x + 432, y + 5, 92, 12, C_WHITE);
-    g_frame(x + 432, y + 5, 92, 12, C_WINDARK);
-    g_text(x + 435, y + 7, wd_name, C_TEXT, 256);
-    if (wd_namemode) g_fill(x + 435 + strlen(wd_name) * 8, y + 7, 7, 8, C_ACCENT);
-    if (wd_meldung == 1) g_text(x + 530, y + 7, "saved", C_GOOD, 256);
-    if (wd_meldung == 2) g_text(x + 530, y + 7, "loaded", C_GOOD, 256);
-    if (wd_meldung == 3) g_text(x + 530, y + 7, "no file", C_WARN, 256);
-    if (wd_meldung == 4) g_text(x + 530, y + 7, "text", C_GOOD, 256);
+    p_knopf(x + 4, y + 3, 22, 16, "A", wd_groesse(wd_form) == 1);
+    p_knopf(x + 28, y + 3, 22, 16, "A+", wd_groesse(wd_form) == 2);
+    p_knopf(x + 52, y + 3, 22, 16, "A*", wd_groesse(wd_form) == 3);
+    p_knopf(x + 82, y + 3, 22, 16, "B", wd_form & WF_FETT);
+    p_knopf(x + 106, y + 3, 22, 16, "U", wd_form & WF_UNTER);
+    p_knopf(x + 136, y + 3, 26, 16, "|<", (wd_form & (WF_MITTE | WF_RECHTS)) == 0);
+    p_knopf(x + 164, y + 3, 26, 16, "><", wd_form & WF_MITTE);
+    p_knopf(x + 192, y + 3, 26, 16, ">|", wd_form & WF_RECHTS);
+    p_knopf(x + 222, y + 3, 24, 16, "*", wd_liste(wd_absatz_bei(wd_pos)) & WL_PUNKT);
+    p_knopf(x + 248, y + 3, 24, 16, "1.", wd_liste(wd_absatz_bei(wd_pos)) & WL_ZAHL);
+    gx_fill(x + 278, y + 6, 12, 10, wd_stift);
+    gx_frame(x + 278, y + 6, 12, 10, C_WINDARK);
+    p_knopf(x + 294, y + 3, 40, 16, "New", 0);
+    p_knopf(x + 336, y + 3, 46, 16, "Save", 0);
+    p_knopf(x + 384, y + 3, 46, 16, "Open", 0);
+    gx_fill(x + 432, y + 5, 92, 12, C_WHITE);
+    gx_frame(x + 432, y + 5, 92, 12, C_WINDARK);
+    gx_text(x + 435, y + 7, wd_name, C_TEXT, 256);
+    if (wd_namemode) gx_fill(x + 435 + strlen(wd_name) * 8, y + 7, 7, 8, C_ACCENT);
+    if (wd_meldung == 1) gx_text(x + 530, y + 7, "saved", C_GOOD, 256);
+    if (wd_meldung == 2) gx_text(x + 530, y + 7, "loaded", C_GOOD, 256);
+    if (wd_meldung == 3) gx_text(x + 530, y + 7, "no file", C_WARN, 256);
+    if (wd_meldung == 4) gx_text(x + 530, y + 7, "text", C_GOOD, 256);
 
     px = wd_seite_x(i);
     py = wd_seite_y(i);
-    g_fill(px - 8, py - 4, WD_SEITE_B + 16, hoehe - 30, C_WHITE);
-    g_frame(px - 8, py - 4, WD_SEITE_B + 16, hoehe - 30, C_WINDARK);
+    gx_fill(px - 8, py - 4, WD_SEITE_B + 16, hoehe - 30, C_WHITE);
+    gx_frame(px - 8, py - 4, WD_SEITE_B + 16, hoehe - 30, C_WINDARK);
 
     cz = wd_zeile_von_pos();
     wd_hoehe = hoehe - 34;
@@ -804,9 +858,9 @@ void app_word(int i) {
            ausgerechnet -- hier wird es nur noch sichtbar gemacht. */
         if (z > wd_top && wd_u_seite(z) != wd_u_seite(z - 1)) {
             if (k + WD_RAND > y + hoehe - 8) break;
-            g_fill(px - 8, k + 4, WD_SEITE_B + 16, 1, C_WINDARK);
-            g_text(px + WD_SEITE_B - 60, k + 7, "Page", C_WINDARK, 256);
-            g_num(px + WD_SEITE_B - 16, k + 7, wd_u_seite(z), C_WINDARK, 256);
+            gx_fill(px - 8, k + 4, WD_SEITE_B + 16, 1, C_WINDARK);
+            gx_text(px + WD_SEITE_B - 60, k + 7, "Page", C_WINDARK, 256);
+            gx_num(px + WD_SEITE_B - 16, k + 7, wd_u_seite(z), C_WINDARK, 256);
             k = k + WD_RAND;
         }
 
@@ -824,7 +878,7 @@ void app_word(int i) {
                 sp = wd_pos - wd_u_start(z);
                 if (sp < 0) sp = 0;
                 if (sp > wd_u_laenge(z)) sp = wd_u_laenge(z);
-                g_fill(wd_zeilen_x(px, z, f) + sp * 8 * wd_groesse(f), k, 1,
+                gx_fill(wd_zeilen_x(px, z, f) + sp * 8 * wd_groesse(f), k, 1,
                        8 * wd_groesse(f), C_ACCENT);
             }
         }
@@ -951,8 +1005,8 @@ int wd_auf_griff(int i, int mx, int my) {
 
 int wd_klick(int i, int mx, int my) {
     int x; int y; int p; int a;
-    x = win_x[i];
-    y = win_y[i] + TITLE_H;
+    x = 0;
+    y = 0;
 
     if (wd_menue) return wd_menue_klick(mx, my);
     wd_meldung = 0;
@@ -976,31 +1030,35 @@ int wd_klick(int i, int mx, int my) {
     if (treffer(mx, my, x + 222, y + 3, 24, 16)) { wd_liste_umschalten(WL_PUNKT); return 1; }
     if (treffer(mx, my, x + 248, y + 3, 24, 16)) { wd_liste_umschalten(WL_ZAHL);  return 1; }
     if (treffer(mx, my, x + 294, y + 3, 40, 16)) {
+        /* "Neu": leeren Text anlegen und nach dem Namen fragen. Der
+           Dateidialog gehoerte dem Kernel -- ein eigenstaendiges Programm
+           fragt in seinem eigenen Fenster. */
         wd_ort = 0;
-        dlg_oeffne(APP_WORD, DLG_SPEICHERN, ".TBW",
-                   wd_name[0] ? wd_name : "DOCUMENT.TBW");
-        dlg_neu = 1;
+        wd_neu_anlegen();
+        wd_namemode = 1;
         return 1;
     }
     if (treffer(mx, my, x + 336, y + 3, 46, 16)) {
         if (wd_ort && wd_name[0]) wd_speichern();
-        else dlg_oeffne(APP_WORD, DLG_SPEICHERN, ".TBW", wd_name);
+        else wd_namemode = 1;
         return 1;
     }
     if (treffer(mx, my, x + 384, y + 3, 46, 16)) {
-        dlg_oeffne(APP_WORD, DLG_OEFFNEN, ".TBW", wd_name);
+        wd_namemode = 2;              /* 2 = Name zum Oeffnen */
         return 1;
     }
     if (treffer(mx, my, x + 432, y + 5, 92, 12)) { wd_namemode = 1; return 1; }
     wd_namemode = 0;
 
-    /* Rechte Maustaste: Menue an der Zeigerspitze */
-    if (gui_taste & 4) {
+    /* Rechte Maustaste: Menue an der Zeigerspitze. Welche Taste es war,
+       steht in der Maus-Hardware -- der Kernel reichte es frueher als
+       gui_taste durch. */
+    if (portin(P_MAUS_BTN) & 4) {
         wd_menue_x = mx;
         wd_menue_y = my;
-        if (wd_menue_x + WDM_B > G_W) wd_menue_x = G_W - WDM_B - 2;
-        if (wd_menue_y + WDM_ANZ * WDM_ZH + 6 > BAR_Y)
-            wd_menue_y = BAR_Y - WDM_ANZ * WDM_ZH - 8;
+        if (wd_menue_x + WDM_B > fn_breite) wd_menue_x = fn_breite - WDM_B - 2;
+        if (wd_menue_y + WDM_ANZ * WDM_ZH + 6 > fn_hoehe)
+            wd_menue_y = fn_hoehe - WDM_ANZ * WDM_ZH - 8;
         wd_menue = 1;
         return 1;
     }
@@ -1173,4 +1231,66 @@ void wd_init() {
     wd_bild_geladen = 0 - 2;
     wd_auswahl_weg();
     wd_umbr_gueltig = 0;
+}
+
+
+/* ==========================================================================
+   Hauptschleife
+   ========================================================================== */
+
+int main() {
+    int e[4];
+    int art; int laufen;
+
+    wd_init();
+    if (fenster_neu("Word", 600, 340) < 0) {
+        print("Word braucht den Schreibtisch -- erst WIN eingeben.\n");
+        return 1;
+    }
+    fenster_malziel();
+    app_word(0);
+    fenster_fertig();
+
+    laufen = 1;
+    while (laufen) {
+        art = fenster_ereignis(e);
+
+        if (art == FE_SCHLIESS) {
+            laufen = 0;
+        } else if (art == FE_TASTE) {
+            clip_len = clip_holen();
+            wd_taste((e[2] << 8) | e[1]);
+            clip_setzen(clip_len);
+            fenster_malziel();
+            app_word(0);
+            fenster_fertig();
+        } else if (art == FE_KLICK) {
+            clip_len = clip_holen();
+            wd_klick(0, e[1], e[2]);
+            clip_setzen(clip_len);
+            fenster_malziel();
+            app_word(0);
+            fenster_fertig();
+        } else if (art == FE_MALEN) {
+            fenster_malziel();
+            app_word(0);
+            fenster_fertig();
+        } else {
+            /* Zieht gerade jemand einen Rahmen oder markiert Text? Dann die
+               Maus selbst verfolgen -- Ereignisse kommen nur beim Druecken. */
+            if (wd_zieht || wd_griff) {
+                gx_maus_lesen();
+                if (gx_btn & 1) wd_ziehen(gx_mx - fn_x, gx_my - fn_y);
+                else wd_loslassen();
+                fenster_malziel();
+                app_word(0);
+                fenster_fertig();
+            } else {
+                sleep(2);
+            }
+        }
+    }
+
+    fenster_zu();
+    return 0;
 }

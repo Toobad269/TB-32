@@ -9,6 +9,32 @@ Die tiefer liegenden Fallen haben zusätzlich einen ausführlichen Eintrag in
 
 ---
 
+## Word ist ausgezogen
+
+`system/word.c` gibt es nicht mehr -- Word liegt als `\PROGS\WORD.TBX` auf
+der Platte. 1200 Zeilen, und der Umbau folgte demselben Muster wie bei Paint.
+Drei Stellen brauchten etwas mehr:
+
+**Die Zwischenablage.** Ihr Puffer liegt fest bei `0x00130000` und steht
+jedem offen -- nur ihre *Länge* war eine Zahl im Kernel. Dafür gibt es jetzt
+zwei Systemaufrufe (45 lesen, 46 setzen). Word holt sie vor jedem Tastendruck
+und schreibt sie danach zurück; damit wandert Text weiterhin zwischen Word,
+Coder und dem Wirtsrechner hin und her.
+
+**Die rechte Maustaste.** Word öffnet damit sein Menü. Welche Taste gedrückt
+war, reichte der Kernel früher als `gui_taste` durch -- ein Programm fragt
+die Maus einfach selbst (`portin(0x62)`).
+
+**Der Blockkopierer.** Word kopierte Bilder mit einer Funktion aus Paint.
+Beide sind ausgezogen; jetzt spricht Word die DMA-Ports direkt an.
+
+Der Dateidialog des Kernels fällt weg -- der Name wird im eigenen Fenster
+getippt, so wie es Word für „Save as" ohnehin schon konnte.
+
+85/85. Geprüft: Fenster steht, Werkzeugleiste vollständig, Tippen kommt an.
+
+---
+
 ## Paint, Calc und Flappy sind ausgezogen
 
 Drei Programme liegen jetzt als Dateien auf der Platte statt im Kernel oder

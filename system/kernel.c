@@ -21,7 +21,6 @@
 #include "syscall.c"
 #include "gui.c"
 #include "coder.c"
-#include "word.c"
 #include "dialog.c"
 
 #define CMDMAX 128

@@ -151,6 +151,12 @@ int syscall(int fn, int a1, int a2, int a3, int a4) {
     if (fn == 42) return fw_groesse(a1, a2);
     if (fn == 43) return fw_fertig(a1);
     if (fn == 44) return fw_zu(a1);
+    /* Die Zwischenablage. Der Puffer liegt fest bei 0x00130000 und steht
+       jedem offen -- nur seine Laenge ist eine Zahl im Kernel, und die
+       muessen Programme lesen und setzen koennen, sonst wuesste niemand,
+       wie viel drinsteht. */
+    if (fn == 45) return clip_len;
+    if (fn == 46) { clip_len = a1; return 0; }
     return 0 - 1;
 }
 

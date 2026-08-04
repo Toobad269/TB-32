@@ -19,7 +19,7 @@
 #define DLG_BILD      2              /* Word holt ein Bild zum Einfuegen */
 
 int dlg_modus = DLG_OEFFNEN;
-int dlg_ziel = 0;                    /* APP_EDITOR, APP_WORD */
+int dlg_ziel = 0;                    /* nur noch APP_EDITOR */
 int dlg_sel = 0;                     /* markierte Zeile */
 int dlg_top = 0;                     /* erste sichtbare Zeile */
 int dlg_zeilen = 12;
@@ -157,7 +157,6 @@ void dlg_fertig() {
     if (dlg_neu) {
         dlg_neu = 0;
         if (dlg_ziel == APP_EDITOR) edg_neu_anlegen();
-        if (dlg_ziel == APP_WORD)   wd_neu_anlegen();
     }
 
     if (dlg_ziel == APP_EDITOR) {
@@ -172,15 +171,6 @@ void dlg_fertig() {
                speichert "Save" ohne Nachfrage dorthin zurueck. */
             edg_ort = 1;
             edg_oeffnen(dlg_name);
-        }
-    } else if (dlg_ziel == APP_WORD) {
-        if (dlg_modus == DLG_BILD) {
-            wd_bild_einfuegen_name(dlg_name);
-        } else {
-            memset(wd_name, 0, 20);
-            strncpy(wd_name, dlg_name, 20);
-            if (dlg_modus == DLG_SPEICHERN) { wd_ort = 1; wd_speichern(); }
-            else                            { wd_ort = 1; wd_laden(); }
         }
     }
     dlg_schliessen();
