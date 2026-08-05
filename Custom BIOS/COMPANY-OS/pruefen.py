@@ -203,6 +203,54 @@ def main():
     pruefe("Das System bekommt den gesperrten Namen",
            Q.text_bei(BDA_BLOCK, 16) == "CODER.TBX", Q.text_bei(BDA_BLOCK, 16))
 
+    # === 3b. Und zwar wirklich: ein Startversuch muss scheitern =========
+    #
+    # Der erste Anlauf hat nur geprueft, dass der Name im Speicher ankommt
+    # und der Menueeintrag grau wird. Das ist NICHT dasselbe wie gesperrt:
+    # der Start lief trotzdem durch, weil die Pruefung nur in
+    # gui_prog_starten() stand -- an der Dateiverwaltung, am Coder und an
+    # START auf der Kommandozeile ging sie vorbei. Diese Pruefung hier ist
+    # die, auf die es ankommt.
+    print("\n--- ... und der Start scheitert auch wirklich ------------------")
+    blkcmos = os.path.join(tmp, "cmos_blk.bin")
+    BL = Lauf(chip, blkcmos, platte)
+    BL.ins_setup()
+    BL.reiter(5)
+    for _ in range(6):
+        BL.eingabe("DOWN", 0.0)
+    BL.warte(0.3)
+    BL.eingabe("ENTER", 0.6)                 # Blocked Programs
+    for _ in range(9):
+        BL.eingabe("DOWN", 0.0)
+    BL.warte(0.3)
+    BL.eingabe("ENTER", 0.4)                 # CALC.TBX abhaken
+    pruefe("CALC.TBX ist abgehakt", "[X] CALC.TBX" in BL.bild(), BL.bild())
+    BL.eingabe("ESC", 0.5)
+    BL.eingabe("F10", 1.0)
+    BL.m.cmos.data[0x1D] = 1                 # in die Textkonsole starten
+    BL.m.cmos.save()
+
+    BS = Lauf(chip, blkcmos, platte)
+    BS.warte(7.0)
+    BS.eingabe("START CALC.TBX", 0.3)
+    BS.eingabe("ENTER", 2.5)
+    pruefe("START CALC.TBX wird abgewiesen",
+           "Blocked by system policy" in BS.gesehen, BS.bild())
+    pruefe("... und meldet NICHT 'nicht gefunden'",
+           "not found" not in BS.bild(), BS.bild())
+
+    BS.eingabe("CALC", 0.3)                  # auch ohne START davor
+    BS.eingabe("ENTER", 2.0)
+    pruefe("Auch der Aufruf ohne START wird abgewiesen",
+           BS.bild().count("Blocked by system policy") >= 1
+           or "Blocked by system policy" in BS.gesehen, BS.bild())
+
+    # Gegenprobe: ein nicht gesperrtes Programm laeuft weiterhin
+    BS.eingabe("VER", 0.3)
+    BS.eingabe("ENTER", 1.5)
+    pruefe("Ein nicht gesperrtes Programm laeuft weiter",
+           "TOOBAD-OS" in BS.bild(), BS.bild())
+
     # === 4. Die groben Schalter =========================================
     print("\n--- Compiler und Netz ------------------------------------------")
     R = Lauf(chip, cmos, platte)

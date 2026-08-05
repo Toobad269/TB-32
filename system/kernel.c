@@ -1206,6 +1206,10 @@ void cmd_start(char* name, char* option) {
     prog_setargs(args);
 
     r = prog_run(name, hg);
+    if (r == 0 - 2) {
+        printc("Blocked by system policy.\n", RED);
+        return;
+    }
     if (r == 0 - 1) {
         printc("Program not found: ", RED);
         printc(name, BRIGHT);
@@ -1232,7 +1236,7 @@ void boot_screen() {
 }
 
 void shell() {
-    int n; int i;
+    int n; int i; int r;
     char pfad[40];
     while (1) {
         color(NORMAL);
@@ -1359,7 +1363,10 @@ void shell() {
                 }
                 prog_setargs(cmdline + i);
             }
-            if (prog_run(progname, 0) == 0 - 1) {
+            r = prog_run(progname, 0);
+            if (r == 0 - 2) {
+                printc("Blocked by system policy.\n", RED);
+            } else if (r == 0 - 1) {
                 printc("'", RED);
                 printc(cmd, BRIGHT);
                 printc("' is not recognized as a command or program.\n", RED);

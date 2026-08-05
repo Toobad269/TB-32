@@ -318,6 +318,63 @@ void prog_setargs(char* args) {
     strncpy((char*)PROG_ARGS, args, 200);
 }
 
+#define BDA_FIRMA   0x00000500
+#define BDA_POLICY  0x00000524
+#define BDA_BLOCK   0x00000528       /* 16 Namen a 16 Byte, leer = Ende */
+#define BDA_BLOCKN  16
+#define BDA_INVENT  0x00000628       /* Seriennummer(16), Starts(4), Minuten(4) */
+
+/* Bits im Schalterwort -- dieselbe Belegung wie CM_POLICY in der Firmware */
+#define POL_OWNER    1
+#define POL_NOCC     2
+#define POL_NONET    4
+#define POL_NEEDPW   8
+#define POL_INTDISK 16
+
+char* firma_text() { return (char*)BDA_FIRMA; }
+
+int firma_da() {
+    int c;
+    c = byte_get(BDA_FIRMA);
+    return c >= 32 && c < 127;
+}
+
+int firma_policy() { return mem_get(BDA_POLICY); }
+
+int firma_bit(int maske) { return (firma_policy() & maske) != 0; }
+
+/* --- Sperrt die Firmware dieses Programm? --------------------------------
+
+   Zwei Quellen. Erstens die Liste, die das BIOS beim Start in den Speicher
+   gelegt hat -- ein Name je Platz, leerer Name heisst Ende. Zweitens die
+   beiden groben Schalter fuer Compiler und Netz: die haengen nicht an der
+   Liste, weil sie ganze Gruppen meinen.
+
+   Der Compiler ist dabei kein Schikanepunkt, sondern der wichtigste: Der
+   TB-32 hat keinen Speicherschutz. Wer den Coder hat, schreibt sich ein
+   Programm, das die Ports selbst anspricht -- und dann waere jede andere
+   Sperre nur noch Zierde. */
+int gesperrt(char* name) {
+    int i; char* eintrag;
+
+    if (firma_bit(POL_NOCC)) {
+        if (strcmp(name, "CODER.TBX") == 0) return 1;
+        if (strcmp(name, "CC.TBX") == 0)    return 1;
+        if (strcmp(name, "ASM.TBX") == 0)   return 1;
+    }
+    if (firma_bit(POL_NONET)) {
+        if (strcmp(name, "BROWSER.TBX") == 0) return 1;
+    }
+
+    for (i = 0; i < BDA_BLOCKN; i++) {
+        eintrag = (char*)(BDA_BLOCK + i * 16);
+        if (*eintrag == 0) return 0;         /* leerer Name = Ende der Liste */
+        if (strcmp(eintrag, name) == 0) return 1;
+    }
+    return 0;
+}
+
+
 /* Laedt ein Programm von der Platte und startet es.
    Rueckgabe: 0 = gelaufen, -1 = nicht gefunden */
 /* Ein Programm laden und starten.
@@ -333,6 +390,17 @@ void prog_setargs(char* args) {
    selbst uebersetzte -- landen wie frueher an der ersten Stelle. */
 int prog_run(char* name, int hintergrund) {
     int n; int adr; int start; int i; int pid;
+
+    /* Die Firmensperre sitzt HIER und nicht in der Oberflaeche.
+       Das Pflichtenheft sagte, durch gui_prog_starten() laufe jeder Start --
+       das stimmt nicht: die Dateiverwaltung geht ueber gui_ausfuehren(), ein
+       Doppelklick auf eine Quelldatei startet den Coder direkt, der Coder
+       startet den Assembler direkt, und START auf der Kommandozeile kommt an
+       der Oberflaeche ohnehin komplett vorbei. Vier Loecher.
+       prog_run ist der einzige Punkt, durch den WIRKLICH jedes Programm
+       muss -- aus dem Startmenue, aus der Dateiverwaltung und aus der
+       Shell. Eine Zeile hier schliesst alle vier auf einmal. */
+    if (gesperrt(name)) return 0 - 2;
 
     n = fs_read_prog(name, PROG_LADE, PROG_MAX);
     if (n < 0) return 0 - 1;
