@@ -620,6 +620,12 @@ post:
     movi r1, 0
     movi r2, 2
     call vid_setcursor
+
+    ; TB-HACK: bevor irgendetwas aus der Knopfzelle benutzt wird, nachsehen,
+    ; ob sie ueberhaupt von uns beschrieben wurde. Das muss VOR boot stehen
+    ; -- dort wird der Startsektor gelesen -- und vor hk_patch_anwenden.
+    call hk_cmos_pruefen
+
     call post_pause
 
     ; --- Prozessor -----------------------------------------------------

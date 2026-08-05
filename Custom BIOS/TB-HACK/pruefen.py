@@ -569,7 +569,65 @@ def main():
     pruefe("Eine zu grosse Datei wird abgelehnt",
            "larger than 512 KB" in G.gesehen, G.bild())
 
-    # === 11. Der Chip nennt sich beim Namen ==============================
+    # === 11. Eine Knopfzelle von einem anderen BIOS ======================
+    #     Der Fall aus dem Betrieb: vorher sass TB-LOCK im Sockel und hat auf
+    #     0x20..0x24 die Pruefsumme seines Passworts hinterlassen. TB-HACK
+    #     liest dort Startsektor und zwei Schalter. Ungeprueft gab das einen
+    #     Reiter, der sich beim Zeichnen aus dem Bild scrollte -- und einen
+    #     Rechner, der von einem zufaelligen Sektor starten wollte.
+    print("\n--- Eine Knopfzelle von einem anderen BIOS ---------------------")
+    fremd = bytearray(64)
+    fremd[0x10:0x1E] = bytes([0, 0, 1, 2, 16, 1, 0, 85, 0, 0, 0, 0, 0, 0])
+    fremd[0x2F] = 0x5A                        # Kennbyte, sonst setzt der Baustein zurueck
+    fremd[0x20] = 1                           # CM_PWFLAG von TB-LOCK
+    fremd[0x21:0x25] = bytes([0x9C, 0xA7, 0x3E, 0x51])   # dessen Pruefsumme
+    fremd_cmos = os.path.join(tmp, "cmos_fremd.bin")
+    with open(fremd_cmos, "wb") as f:
+        f.write(bytes(fremd))
+
+    X = Lauf(chip, fremd_cmos, platte)
+    X.ins_setup()
+    scrolls_vor = X.m.bus.read32(0x000004AC)   # BDA_SBCOUNT
+    X.zum_reiter_hack()
+    scrolls_nach = X.m.bus.read32(0x000004AC)
+    b = X.bild()
+    pruefe("Der Reiter Hack scrollt das Bild nicht weg",
+           scrolls_nach == scrolls_vor, b)
+    pruefe("... und zeigt die zwei Schalter als Disabled",
+           b.count("Disabled") == 2, b)
+    pruefe("... und den Startsektor auf 0000", "0000" in b, b)
+    pruefe("Der POST sagt, dass er die Knopfzelle geraeumt hat",
+           "another BIOS" in X.gesehen, X.bild())
+
+    with open(fremd_cmos, "rb") as f:
+        danach = f.read(64)
+    pruefe("Der fremde Block steht wirklich nicht mehr in der Datei",
+           danach[0x20:0x2E] == bytes(14))
+    pruefe("... und die eigenen Einstellungen des Rechners blieben stehen",
+           danach[0x10:0x1E] == fremd[0x10:0x1E])
+
+    # Und die Schranke selbst: einen unmoeglichen Wert mit dem eigenen
+    # CMOS-Editor hineinschreiben, waehrend die Maschine laeuft. Die
+    # Plausibilitaetspruefung laeuft nur beim Einschalten, hier greift also
+    # allein die Schranke in setup_value.
+    X.zur_zeile(Z_CMOS)
+    X.eingabe("ENTER", 0.6)
+    for _ in range(0x22):
+        X.eingabe("RIGHT", 0.0)
+    X.warte(0.3)
+    X.eingabe("ENTER", 0.4)
+    X.hex_eingeben("A7")                      # CM_HKNOSIG, weit ausserhalb
+    X.eingabe("ESC", 0.6)
+    scrolls_vor = X.m.bus.read32(0x000004AC)
+    X.zur_zeile(0)
+    b = X.bild()
+    scrolls_nach = X.m.bus.read32(0x000004AC)
+    pruefe("Ein unmoeglicher Wert scrollt das Bild trotzdem nicht weg",
+           scrolls_nach == scrolls_vor, b)
+    pruefe("... sondern wird als blanke Zahl gezeigt",
+           "Ignore Boot Signature" in b and " 167" in b, b)
+
+    # === 12. Der Chip nennt sich beim Namen ==============================
     print("\n--- Das Abbild selbst ------------------------------------------")
     pruefe("Der POST nennt TB-HACK", "TB-HACK BIOS" in Z.gesehen, Z.bild())
     with open(rom, "rb") as f:

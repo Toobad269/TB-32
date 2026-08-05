@@ -1090,6 +1090,18 @@ setup_value:
     ldw r6, [r7+12]                   ; Tabelle mit Klartexten?
     cmpi r6, 0
     jz .number
+    ; Der Wert kommt aus der Knopfzelle, und dort steht, was zuletzt jemand
+    ; hineingeschrieben hat -- nicht zwangslaeufig einer der erlaubten. Ohne
+    ; diese Schranke wird er trotzdem als Index benutzt: bei einer 0xA7 in
+    ; einer Tabelle mit zwei Eintraegen liest ldw ein Wort weit dahinter,
+    ; haelt es fuer einen Textzeiger und vid_puts gibt aus, bis zufaellig
+    ; eine Null kommt. Der Bildschirm scrollt dann weg, und das Setup ist
+    ; nicht mehr bedienbar. Genau so ist es passiert, nachdem vorher TB-LOCK
+    ; im Sockel sass und auf denselben Plaetzen eine Passwortpruefsumme
+    ; hinterlassen hatte.
+    ldw r10, [r7+8]                   ; Anzahl der moeglichen Werte
+    cmp r0, r10
+    jae .number                       ; ausserhalb: die Zahl zeigen, nicht raten
     shli r10, r0, 2
     add r6, r6, r10
     ldw r1, [r6]

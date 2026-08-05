@@ -979,6 +979,89 @@ hk_bootsektor:
     ret
 
 ; ===========================================================================
+;  Beim Einschalten: gehoert die Knopfzelle ueberhaupt uns?
+;
+;  Die Knopfzelle gehoert dem RECHNER, nicht dem BIOS. Auf demselben TB-32
+;  koennen nacheinander TB-LOCK, COMPANY-OS und dieses hier im Sockel sitzen,
+;  und alle drei benutzen die Plaetze ab 0x20 -- nur mit voellig anderer
+;  Bedeutung. Wo TB-HACK seinen Startsektor liest, legt TB-LOCK die
+;  Pruefsumme seines Passworts ab, und eine Pruefsumme ist praktisch Zufall.
+;
+;  Ungeprueft heisst das: ein Rechner, der von einem zufaelligen Sektor
+;  starten will und vorher zwei Bytes an zufaellige Adressen schreibt. Das
+;  ist schlimmer als eine kaputte Anzeige, und es faellt niemandem auf, weil
+;  alles davon "eingestellt" aussieht.
+;
+;  Also wird beim Start nachgesehen, ob dort ueberhaupt etwas stehen kann,
+;  das von uns stammt. Wenn nicht, ist der ganze Block fremd und wird
+;  geleert -- nicht einzelne Felder zurechtgebogen, denn dann bliebe der
+;  Rest der fremden Werte stehen. Dasselbe Vorgehen wie bei CM_TEMPLIMIT in
+;  kuehlung_anwenden, nur konsequenter.
+; ===========================================================================
+hk_cmos_pruefen:
+    push r6
+    call hk_cmos_plausibel
+    cmpi r0, 1
+    jz .fertig
+    movi r6, CM_HKBSEC0
+.loeschen:
+    cmpi r6, CM_HKP2V+1
+    jae .gesichert
+    mov r10, r6
+    movi r11, 0
+    call cmos_write
+    addi r6, r6, 1
+    jmp .loeschen
+.gesichert:
+    movi r10, CM_SAVE                 ; sofort festschreiben, sonst steht beim
+    movi r11, 1                       ; naechsten Start wieder das Fremde da
+    call cmos_write
+    li r1, s_hk_fremd
+    movi r2, ATTR_ERR
+    call print
+.fertig:
+    pop r6
+    ret
+
+; -> r0 = 1, wenn die eigenen Plaetze aussehen, als haetten wir sie
+;    beschrieben. Ein zufaelliger Block faellt an einer der vier Huerden:
+;    die zwei Schalter sind 0 oder 1, der Startsektor liegt auf der Platte,
+;    und eine Patchadresse passt in den Arbeitsspeicher.
+hk_cmos_plausibel:
+    push r6
+    movi r10, CM_HKNOSIG
+    call cmos_read
+    cmpi r0, 1
+    ja .nein
+    movi r10, CM_HKPATCHON
+    call cmos_read
+    cmpi r0, 1
+    ja .nein
+    call hk_bootsek_lesen
+    in r10, P_DISK_SIZE
+    cmp r0, r10
+    jae .nein
+    movi r6, 0
+.patch:
+    cmpi r6, 2
+    jae .ja
+    mov r1, r6
+    call hk_padr
+    li r10, 0x01000000                ; 16 MB, mehr Speicher hat der TB-32 nicht
+    cmp r0, r10
+    jae .nein
+    addi r6, r6, 1
+    jmp .patch
+.ja:
+    movi r0, 1
+    pop r6
+    ret
+.nein:
+    movi r0, 0
+    pop r6
+    ret
+
+; ===========================================================================
 ;  Die zwei Startpatches
 ;
 ;  Ein Patch ist eine Adresse und ein Byte. Kurz bevor das BIOS in den
@@ -1318,6 +1401,7 @@ s_hk_pat1v:     .db "Patch 1  Value", 0
 s_hk_pat2a:     .db "Patch 2  Address", 0
 s_hk_pat2v:     .db "Patch 2  Value", 0
 s_hk_patched:   .db "Boot patches applied: ", 0
+s_hk_fremd:     .db "CMOS held another BIOS's settings -- Hack tab reset to defaults.", 0
 
 ; Auf vier Byte, bevor die Zeigertabelle kommt -- .dw will ausgerichtet sein.
 .align 4

@@ -171,6 +171,41 @@ needs `F10` like the rest of Setup — except the CMOS editor, which has its
 own `F10` because you are already editing the coin cell there. ESC does not
 undo Hack settings; they sit above the range Setup restores.
 
+## The coin cell belongs to the machine, not to the BIOS
+
+The same TB-32 can have TB-LOCK, COMPANY-OS and this one in its socket one
+after another — and all three use the slots from `0x20` up, with completely
+different meanings. Where TB-HACK reads its boot sector, TB-LOCK keeps the
+**checksum of its password**, and a checksum is effectively random.
+
+Unchecked, that gives you a machine that wants to boot from a random sector
+and writes two bytes to random addresses first. It also gave a *Hack* tab
+that scrolled itself off the screen: the plain-text tables have two entries,
+and a leftover `0xA7` was used as an index into them regardless — `vid_puts`
+then printed from whatever word it found until it happened to hit a zero.
+
+Both are fixed, in two places:
+
+- **`setup_value` bounds-checks the index.** A value outside the table is
+  shown as a bare number instead of being used to guess a pointer. This was
+  a latent hole in the stock BIOS too; any out-of-range CMOS byte would do it.
+- **`hk_cmos_pruefen` runs at power-on**, before `boot` reads the boot sector
+  and before any patch is applied. It checks four things: both switches are
+  0 or 1, the boot sector exists on the disk, and each patch address fits in
+  16 MB. If any of them fails, the whole block `0x20`–`0x2D` is cleared and
+  the POST says so in red — not individual fields nudged into range, because
+  then the rest of the foreign values would stay.
+
+A random block passes all four hurdles with a probability of about one in
+sixteen million, so this is not a heuristic that will quietly guess wrong.
+
+**The reverse direction is not fixed.** A coin cell written by TB-HACK is
+read by TB-LOCK as a password: if the boot sector's low byte happens to be
+`1`, TB-LOCK believes a supervisor password is set and no one can get into
+Setup. Pulling the battery — deleting `disk/cmos.bin` — is the way out, the
+same as on a real board. Fixing it properly would mean giving each BIOS its
+own signature byte, and there is no free CMOS space left below `0x2E`.
+
 ## Three honest limitations
 
 **Nothing here is checked.** No address range is refused, no port is
