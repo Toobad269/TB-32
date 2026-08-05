@@ -622,3 +622,327 @@ s_pw_abort:   .db "Cancelled. Nothing was changed.", 0
 s_pw_none:    .db "No password is set.", 0
 s_pw_inst:    .db "Installed", 0
 s_pw_notinst: .db "Not Installed", 0
+
+; ===========================================================================
+;  A1 / A2  --  das Power-On-Passwort und der Zaehler in der Knopfzelle
+;
+;  Das Supervisor-Passwort oben bewacht nur das Setup. Wer den Rechner
+;  einfach einschaltet und benutzt, kommt daran vorbei -- fuer einen
+;  Firmenrechner ist das zu wenig. Das Power-On-Passwort wird VOR dem
+;  Bootversuch verlangt; ohne es startet gar nichts.
+;
+;  Zwei Dinge daran sind wichtiger, als sie aussehen:
+;
+;  Erstens kommt das Supervisor-Passwort hier ebenfalls durch. Sonst sperrt
+;  sich der Administrator selbst aus, sobald er das Benutzerpasswort
+;  vergisst -- und der einzige Weg zurueck waere die Knopfzelle.
+;
+;  Zweitens zaehlt der Fehlversuchszaehler in der KNOPFZELLE und nicht in
+;  einem Register. Vorher fing ein Druck auf Reset wieder bei drei an: man
+;  konnte in Ruhe raten, beliebig oft. Jetzt ueberlebt der Zaehler den
+;  Neustart, und erst die richtige Eingabe setzt ihn zurueck.
+; ===========================================================================
+
+.align 4
+
+pwu_gesetzt:                          ; -> r0 = 1, wenn eines eingerichtet ist
+    movi r10, CM_PWUFLAG
+    call cmos_read
+    cmpi r0, 1
+    jz .ja
+    movi r0, 0
+    ret
+.ja:
+    movi r0, 1
+    ret
+
+pwu_sum_lesen:                        ; -> r0
+    push r6
+    movi r10, CM_PWUSUM3
+    call cmos_read
+    mov r6, r0
+    shli r6, r6, 8
+    movi r10, CM_PWUSUM2
+    call cmos_read
+    or r6, r6, r0
+    shli r6, r6, 8
+    movi r10, CM_PWUSUM1
+    call cmos_read
+    or r6, r6, r0
+    shli r6, r6, 8
+    movi r10, CM_PWUSUM0
+    call cmos_read
+    or r6, r6, r0
+    mov r0, r6
+    pop r6
+    ret
+
+pwu_sum_schreiben:                    ; r1 = Summe
+    push r6
+    mov r6, r1
+    movi r10, CM_PWUSUM0
+    andi r11, r6, 0xFF
+    call cmos_write
+    shri r6, r6, 8
+    movi r10, CM_PWUSUM1
+    andi r11, r6, 0xFF
+    call cmos_write
+    shri r6, r6, 8
+    movi r10, CM_PWUSUM2
+    andi r11, r6, 0xFF
+    call cmos_write
+    shri r6, r6, 8
+    movi r10, CM_PWUSUM3
+    andi r11, r6, 0xFF
+    call cmos_write
+    pop r6
+    ret
+
+; --- Der Fehlversuchszaehler ----------------------------------------------
+pw_fehler_lesen:                      ; -> r0
+    movi r10, CM_PWTRIES
+    call cmos_read
+    ret
+
+pw_fehler_plus:                       ; -> r0 = neuer Stand
+    push r6
+    movi r10, CM_PWTRIES
+    call cmos_read
+    addi r6, r0, 1
+    movi r10, CM_PWTRIES
+    mov r11, r6
+    call cmos_write
+    call pw_sichern                   ; sofort in die Knopfzelle, nicht erst bei F10
+    mov r0, r6
+    pop r6
+    ret
+
+pw_fehler_null:
+    movi r10, CM_PWTRIES
+    movi r11, 0
+    call cmos_write
+    call pw_sichern
+    ret
+
+; ---------------------------------------------------------------------------
+;  pw_passt(r1 = Puffer) -> r0 = 1, wenn es eines der beiden Passwoerter ist
+; ---------------------------------------------------------------------------
+pw_passt:
+    push r6
+    push r7
+    call pw_hash
+    mov r6, r0
+
+    call pwu_gesetzt                  ; erst das Power-On-Passwort
+    cmpi r0, 0
+    jz .kein_user
+    call pwu_sum_lesen
+    cmp r6, r0
+    jz .ja
+.kein_user:
+    call pw_gesetzt                   ; dann das des Administrators
+    cmpi r0, 0
+    jz .nein
+    call pw_sum_lesen
+    cmp r6, r0
+    jz .ja
+.nein:
+    movi r0, 0
+    pop r7
+    pop r6
+    ret
+.ja:
+    movi r0, 1
+    pop r7
+    pop r6
+    ret
+
+; ===========================================================================
+;  Das Tor vor dem Bootvorgang
+;
+;  Es gibt hier kein ESC. Wer den Rechner einschaltet, kommt entweder mit dem
+;  Passwort weiter oder gar nicht -- genau das unterscheidet es vom Tor vor
+;  dem Setup.
+; ===========================================================================
+pwu_tor:
+    push r6
+    call pwu_gesetzt
+    cmpi r0, 0
+    jz .frei
+
+    call pw_fehler_lesen              ; schon verbraucht? Dann gar nicht fragen
+    cmpi r0, PW_MAXTRIES
+    jge .gesperrt
+
+.versuch:
+    movi r1, ATTR_NORMAL
+    call vid_clear
+    li r1, s_pwu_locked
+    call pw_fenster
+    li r1, PW_BUF1
+    li r2, s_pw_current
+    call pw_eingabe
+    cmpi r0, 0
+    jl .versuch                       ; ESC hilft hier nicht weiter
+
+    li r1, PW_BUF1
+    call pw_passt
+    mov r6, r0
+    call pw_puffer_loeschen
+    cmpi r6, 1
+    jz .richtig
+
+    movi r1, EV_BADPW
+    call ev_log
+    call pw_fehler_plus
+    cmpi r0, PW_MAXTRIES
+    jge .gesperrt
+    li r1, s_pw_wrong
+    call pw_melden
+    jmp .versuch
+
+.richtig:
+    call pw_fehler_null               ; erst die richtige Eingabe raeumt auf
+    movi r1, ATTR_NORMAL
+    call vid_clear
+    pop r6
+    ret
+.frei:
+    pop r6
+    ret
+
+.gesperrt:
+    movi r1, EV_LOCKOUT
+    call ev_log
+    li r1, s_pwu_halt
+    call panic                        ; kommt nicht zurueck
+
+; ===========================================================================
+;  Die Knoepfe im Reiter Password
+; ===========================================================================
+pwu_setzen:
+    push r6
+    call pwu_gesetzt
+    cmpi r0, 0
+    jz .neu
+    li r1, s_pwu_change               ; erst das alte -- oder das des Chefs
+    call pwu_alt_pruefen
+    cmpi r0, 1
+    jz .neu
+    li r1, s_pw_wrong
+    jmp .melden
+.neu:
+    li r1, PW_BUF1
+    li r2, s_pw_new
+    li r3, s_pwu_change
+    call pw_fragen
+    cmpi r0, 0
+    jl .abbruch
+    cmpi r0, 0
+    jz .leer
+    li r1, PW_BUF2
+    li r2, s_pw_again
+    li r3, s_pwu_change
+    call pw_fragen
+    cmpi r0, 0
+    jl .abbruch
+    li r1, PW_BUF1
+    li r2, PW_BUF2
+    call pw_gleich
+    cmpi r0, 1
+    jnz .ungleich
+    li r1, PW_BUF1
+    call pw_hash
+    mov r1, r0
+    call pwu_sum_schreiben
+    movi r10, CM_PWUFLAG
+    movi r11, 1
+    call cmos_write
+    call pw_fehler_null
+    call pw_sichern
+    call pw_puffer_loeschen
+    li r1, s_pwu_set
+    jmp .melden
+.ungleich:
+    call pw_puffer_loeschen
+    li r1, s_pw_nomatch
+    jmp .melden
+.leer:
+    call pw_puffer_loeschen
+    li r1, s_pw_empty
+    jmp .melden
+.abbruch:
+    call pw_puffer_loeschen
+    li r1, s_pw_abort
+.melden:
+    push r1
+    call setup_frame
+    pop r1
+    call setup_message
+    pop r6
+    ret
+
+; --- Wie pw_pruefen, aber es gelten BEIDE Passwoerter ---------------------
+pwu_alt_pruefen:                      ; r1 = Ueberschrift -> r0 = 0/1
+    push r6
+    push r7
+    mov r7, r1
+    li r1, PW_BUF1
+    li r2, s_pw_current
+    mov r3, r7
+    call pw_fragen
+    cmpi r0, 0
+    jl .nein
+    li r1, PW_BUF1
+    call pw_passt
+    mov r6, r0
+    call pw_puffer_loeschen
+    mov r0, r6
+    pop r7
+    pop r6
+    ret
+.nein:
+    call pw_puffer_loeschen
+    movi r0, 0
+    pop r7
+    pop r6
+    ret
+
+pwu_loeschen:
+    push r6
+    call pwu_gesetzt
+    cmpi r0, 0
+    jz .keins
+    li r1, s_pwu_clear
+    call pwu_alt_pruefen
+    cmpi r0, 1
+    jnz .falsch
+    movi r10, CM_PWUFLAG
+    movi r11, 0
+    call cmos_write
+    movi r1, 0
+    call pwu_sum_schreiben
+    call pw_fehler_null
+    call pw_sichern
+    li r1, s_pwu_cleared
+    jmp .melden
+.falsch:
+    li r1, s_pw_wrong
+    jmp .melden
+.keins:
+    li r1, s_pw_none
+.melden:
+    push r1
+    call setup_frame
+    pop r1
+    call setup_message
+    pop r6
+    ret
+
+s_pwu_locked:  .db " This computer is locked ", 0
+s_pwu_change:  .db " Power-On Password ", 0
+s_pwu_clear:   .db " Clear Power-On Password ", 0
+s_pwu_set:     .db "Power-On password installed. It is asked at every start.", 0
+s_pwu_cleared: .db "Power-On password cleared.", 0
+s_pwu_halt:    .db "Too many failed attempts", 0
+.align 4

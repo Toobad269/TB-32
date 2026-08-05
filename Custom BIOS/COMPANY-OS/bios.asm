@@ -57,6 +57,11 @@ bios_start:                           ; 0x30  ab hier der Code
     ; im Bauteil und nicht im Setup, und es loest ausschliesslich der
     ; naechste Neustart. Genau so macht es das Lock-Bit eines echten
     ; Chipsatzes.
+    ; --- A1: das Power-On-Passwort, VOR dem Bootversuch -------------------
+    ; Erst hier, nicht frueher: bis zum Ende des POST soll der Administrator
+    ; noch mit DEL ins Setup kommen, ohne das Benutzerpasswort zu kennen.
+    call pwu_tor
+
     movi r10, FLASH_LOCK
     out P_FLASH_CMD, r10
     movi r1, EV_BOOT

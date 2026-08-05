@@ -37,6 +37,9 @@
 .equ REG_COTEXT,   0xEC            ; Knopf: Firmentext tippen
 .equ REG_COBLK,    0xED            ; Knopf: Programme abhaken
 .equ REG_COCLR,    0xEE            ; nur Anzeige: war das CMOS geleert?
+.equ REG_PWUSTATE, 0xEF            ; nur Anzeige: Power-On-Passwort da?
+.equ REG_PWUSET,   0xFE            ; Knopf: Power-On-Passwort setzen/aendern
+.equ REG_PWUCLR,   0xFF            ; Knopf: Power-On-Passwort loeschen
 .equ REG_TIME,     0xF0            ; Uhrzeit, mit ENTER editierbar
 .equ REG_DATE,     0xF1            ; Datum, mit ENTER editierbar
 .equ REG_DEFAULTS, 0xF2            ; Knopf: Standardwerte laden
@@ -306,6 +309,10 @@ setup_change:
     jz .cotext
     cmpi r7, REG_COBLK
     jz .coblk
+    cmpi r7, REG_PWUSET
+    jz .pwuset
+    cmpi r7, REG_PWUCLR
+    jz .pwuclr
     cmpi r7, REG_POL0
     jl .kein_pol
     cmpi r7, REG_POL4
@@ -350,6 +357,12 @@ setup_change:
     jmp .done
 .coblk:
     call firma_sperrliste
+    jmp .done
+.pwuset:
+    call pwu_setzen
+    jmp .done
+.pwuclr:
+    call pwu_loeschen
     jmp .done
 .polbit:
     subi r7, r7, REG_POL0             ; Registernummer -> Bitnummer
@@ -999,6 +1012,12 @@ setup_value:
     jz .action
     cmpi r6, REG_COCLR
     jz .coclr
+    cmpi r6, REG_PWUSET
+    jz .action
+    cmpi r6, REG_PWUCLR
+    jz .action
+    cmpi r6, REG_PWUSTATE
+    jz .pwustate
     cmpi r6, REG_POL0
     jl .kein_polv
     cmpi r6, REG_POL4
@@ -1061,6 +1080,22 @@ setup_value:
     call vid_puts
     jmp .done
 .pw_nein:
+    li r1, s_pw_notinst
+    mov r2, r4
+    call vid_puts
+    jmp .done
+
+.pwustate:
+    push r4
+    call pwu_gesetzt
+    pop r4
+    cmpi r0, 0
+    jz .pwu_nein
+    li r1, s_pw_inst
+    mov r2, r4
+    call vid_puts
+    jmp .done
+.pwu_nein:
     li r1, s_pw_notinst
     mov r2, r4
     call vid_puts
@@ -1464,7 +1499,7 @@ setup_tabs:
     .dw tab_hardware, 5
     .dw tab_cooling,  6
     .dw tab_security, 4
-    .dw tab_password, 4
+    .dw tab_password, 8
     .dw tab_company,  9
     .dw tab_firmware, 5
 
@@ -1506,7 +1541,11 @@ tab_password:
     .dw s_e_pwstate, REG_PWSTATE, 0, 0
     .dw s_e_pwset,   REG_PWSET,   0, 0
     .dw s_e_pwclr,   REG_PWCLR,   0, 0
+    .dw s_e_pwustate, REG_PWUSTATE, 0, 0
+    .dw s_e_pwuset,  REG_PWUSET,  0, 0
+    .dw s_e_pwuclr,  REG_PWUCLR,  0, 0
     .dw s_e_pwinfo,  REG_INFO,    0, 0
+    .dw s_e_pwuinfo, REG_INFO,    0, 0
 
 tab_company:
     .dw s_e_cotag,  REG_POL0,   0, 0
@@ -1593,6 +1632,10 @@ s_e_pwstate: .db "Supervisor Password", 0
 s_e_pwset:   .db "Set / Change Password", 0
 s_e_pwclr:   .db "Clear Password", 0
 s_e_pwinfo:  .db "Guards this setup. Removing the CMOS battery clears it", 0
+s_e_pwustate:.db "Power-On Password", 0
+s_e_pwuset:  .db "Set / Change Power-On Password", 0
+s_e_pwuclr:  .db "Clear Power-On Password", 0
+s_e_pwuinfo: .db "Power-On is asked before booting. Three tries, counted in CMOS", 0
 s_e_blen:    .db "BIOS Image Size", 0
 s_e_bsum:    .db "BIOS Image Checksum", 0
 s_e_flash:   .db "Flash BIOS from File", 0

@@ -222,6 +222,88 @@ def main():
     pruefe("Bit 1 (kein Compiler) kommt beim System an", pol & 2 == 2, hex(pol))
     pruefe("Bit 2 (kein Netz) kommt beim System an", pol & 4 == 4, hex(pol))
 
+    # === A1/A2: das Power-On-Passwort ===================================
+    print("\n--- A1/A2: Power-On-Passwort -----------------------------------")
+    pwcmos = os.path.join(tmp, "cmos_pw.bin")
+    V = Lauf(chip, pwcmos, platte)
+    V.ins_setup()
+    V.reiter(4)                              # Reiter Password
+    # Zeile 0 Supervisor (Anzeige), 1 setzen, 2 loeschen, 3 Power-On
+    # (Anzeige), 4 setzen. Die Anzeigezeilen zaehlen mit -- ENTER auf einer
+    # von ihnen tut nichts, und genau darauf bin ich beim ersten Anlauf
+    # hereingefallen.
+    for _ in range(4):
+        V.eingabe("DOWN", 0.0)
+    V.warte(0.3)
+    V.eingabe("ENTER", 0.5)                  # Set / Change Power-On Password
+    pruefe("Der Dialog fragt nach einem Power-On-Passwort",
+           "Enter New Password" in V.bild(), V.bild())
+    V.eingabe("start123", 0.2)
+    V.eingabe("ENTER", 0.4)
+    V.eingabe("start123", 0.2)
+    V.eingabe("ENTER", 0.8)
+    pruefe("Es ist eingerichtet", "Power-On password installed" in V.gesehen,
+           V.bild())
+    V.eingabe("F10", 1.0)
+
+    W = Lauf(chip, pwcmos, platte)
+    W.warte(6.0)
+    pruefe("Der Rechner fragt VOR dem Booten",
+           "This computer is locked" in W.gesehen, W.bild())
+    pruefe("... und bootet nicht von allein durch",
+           "A:\\>" not in W.bild() and "Mounting" not in W.bild(), W.bild())
+    W.eingabe("start123", 0.2)
+    W.eingabe("ENTER", 3.0)
+    pruefe("Mit dem Passwort geht es weiter",
+           "Mounting" in W.gesehen or "A:\\>" in W.gesehen, W.bild())
+
+    # Zwei Fehlversuche, dann Reset -- der Zaehler darf NICHT von vorn
+    # anfangen. Genau daran scheitert ein Zaehler im Register.
+    X = Lauf(chip, pwcmos, platte)
+    X.warte(5.0)
+    for _ in range(2):
+        X.eingabe("falsch", 0.2)
+        X.eingabe("ENTER", 1.2)
+    pruefe("Zwei Fehlversuche werden abgewiesen", "Wrong password" in X.gesehen,
+           X.bild())
+    Y = Lauf(chip, pwcmos, platte)           # Reset -- das ist der Prueffall
+    Y.warte(5.0)
+    Y.eingabe("nochmalfalsch", 0.2)
+    Y.eingabe("ENTER", 2.0)
+    pruefe("Der dritte Fehlversuch NACH einem Reset sperrt den Rechner",
+           "Too many failed attempts" in Y.gesehen, Y.bild())
+
+    # Das Supervisor-Passwort muss durchkommen, sonst sperrt sich der
+    # Administrator selbst aus. Vorher den Zaehler zuruecksetzen -- der
+    # Rechner ist gerade dicht.
+    os.remove(pwcmos)
+    Z2 = Lauf(chip, pwcmos, platte)
+    Z2.ins_setup()
+    Z2.reiter(4)
+    Z2.eingabe("DOWN", 0.0)
+    Z2.warte(0.2)
+    Z2.eingabe("ENTER", 0.5)                 # Supervisor setzen
+    Z2.eingabe("chef", 0.2)
+    Z2.eingabe("ENTER", 0.4)
+    Z2.eingabe("chef", 0.2)
+    Z2.eingabe("ENTER", 0.8)
+    for _ in range(3):
+        Z2.eingabe("DOWN", 0.0)
+    Z2.warte(0.2)
+    Z2.eingabe("ENTER", 0.5)                 # Power-On setzen (Zeile 4)
+    Z2.eingabe("benutzer", 0.2)
+    Z2.eingabe("ENTER", 0.4)
+    Z2.eingabe("benutzer", 0.2)
+    Z2.eingabe("ENTER", 0.8)
+    Z2.eingabe("F10", 1.0)
+
+    Z3 = Lauf(chip, pwcmos, platte)
+    Z3.warte(5.0)
+    Z3.eingabe("chef", 0.2)                  # das des Administrators
+    Z3.eingabe("ENTER", 3.0)
+    pruefe("Das Supervisor-Passwort kommt durch das Power-On-Tor",
+           "Mounting" in Z3.gesehen or "A:\\>" in Z3.gesehen, Z3.bild())
+
     # === 5. A7: die Flash-Sperre ========================================
     print("\n--- A7: der Chip laesst sich aus dem System nicht brennen -------")
     T = Lauf(chip, cmos, platte)
@@ -266,8 +348,7 @@ def main():
     shutil.rmtree(tmp, ignore_errors=True)
 
     print("\n--- Noch nicht gebaut, deshalb hier nicht geprueft -------------")
-    for offen in ("A1/A2  Power-On-Passwort und Fehlversuchszaehler",
-                  "B1     Reiter Event Log (die Ablage im NVRAM steht)",
+    for offen in ("B1     Reiter Event Log (die Ablage im NVRAM steht)",
                   "B2     Secure Boot dreistufig (Enforce/Audit/Off)",
                   "B3     Inventar im Systemmonitor anzeigen",
                   "B4/B6  F12-Startmenue, Firmen-Startbild",

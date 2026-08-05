@@ -57,15 +57,30 @@ from File* macht es richtig (Befehl 3).
 | Was | Wo |
 |---|---|
 | Setup mit Supervisor-Passwort gesperrt, eigener Reiter *Password* | `passwort.asm`, `tab_password` |
-| Drei Fehlversuche, dann abgewiesen | `pw_tor` |
 | F5 „Load Defaults" lässt das Passwort in Ruhe | `setup_load_defaults` |
 | Secure Boot (Prüfsumme über Bootsektor, Kernel und ROM) | `secure_summe` |
 | BIOS aus einer Datei flashen, Sicherung zurückspielen | `flash_bios`, `flash_restore` |
-| Eigentümer-Eintrag im Speicher (`BDA_FIRMA`) | `bios.asm`, `s_firma:` |
-| Anzeige oben rechts und im Anmeldeschirm | `system/gui.c`, `firma_da()` |
+| **A1** Power-On-Passwort, vor dem Booten verlangt | `pwu_tor` |
+| **A2** Fehlversuche in der Knopfzelle, überleben den Reset | `pw_fehler_plus`, `CM_PWTRIES` |
+| **A3** Eigentümer-Eintrag, einstellbar im Setup | `firma_text_setzen`, NVRAM |
+| **A4** Programme sperren, 16 zum Abhaken | `firma_sperrliste`, `blk_*` |
+| **A5** Compiler und Netz sperren | `POL_NOCC`, `POL_NONET`, `gesperrt()` |
+| **A6** Schalter „nur von der eigenen Platte" | `POL_INTDISK` — Schalter da, Wirkung fehlt |
+| **A7** Flash-Sperre im Bauteil | `hardware/devices.py`, `FLASH_LOCK` |
+| **A8** Chassis Intrusion | `intrusion_pruefen` |
+| NVRAM, 256 Byte, eigener Baustein | `hardware/devices.py`, `nv_*` |
+| Ereignisspeicher (Ablage, noch ohne Reiter) | `ev_log`, `NV_LOG` |
+| Inventar: Seriennummer, Startzähler | `inv_start_zaehlen`, `BDA_INVENT` |
+| `build.py` lässt ein fremdes BIOS in Ruhe | `fremdes_bios()` |
+| `pc.py --bios <datei>` | `pc.py` |
+| Systemseite: Sperren durchsetzen, grau im Startmenü | `system/gui.c`, `gesperrt()` |
 
-Der Reiter *Password* ist damit schon das, was du wolltest: eigener Reiter,
-nichts anderes darin.
+**37 Prüfungen** laufen auf der echten Maschine: `python3 "Custom BIOS/COMPANY-OS/pruefen.py"`
+
+Was noch offen ist: **A6** (der Schalter steht, die Startquelle wird noch
+nicht wirklich verweigert), **B1** Reiter *Event Log*, **B2** Secure Boot
+dreistufig, **B3** Inventar im Systemmonitor, **B4** F12-Startmenü, **B6**
+Startbild, die **C**-Punkte und **B5** Netzwerkstart.
 
 ---
 
