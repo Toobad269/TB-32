@@ -41,9 +41,8 @@ an den Flash-Chip kommt. Bei uns liegt beides im selben Ordner.
 2. **Ein Startschalter `--bios <datei>`** in `pc.py`. `Machine(ROOT, rom=...)`
    kann das schon, `pc.py` reicht es nur nicht durch. Dann testest du
    COMPANY-OS, ohne überhaupt zu flashen.
-3. **Nur Weg 1 und 2 zusammen** sind wirklich bequem: bauen, mit `--bios`
-   ausprobieren, und wenn es gefällt, im Setup flashen — wo es dann auch
-   liegen bleibt.
+3. **Beides zusammen** ist der bequeme Weg: bauen, mit `--bios` ausprobieren,
+   und wenn es gefällt, im Setup flashen — wo es dann auch liegen bleibt.
 
 Prüf danach auch die zweite Stelle: `flash.einmal` (Flash-Befehl 6) ist ein
 Abbild für **genau einen Start** und wird in `Machine.power_on()` verbraucht.
@@ -57,24 +56,226 @@ from File* macht es richtig (Befehl 3).
 
 | Was | Wo |
 |---|---|
-| Setup mit Passwort gesperrt, eigener Reiter *Password* | `passwort.asm`, `tab_password` |
-| Eigentümer-Eintrag im Speicher (`BDA_FIRMA`) | `bios.asm`, Zeile `s_firma:` |
-| Anzeige oben rechts auf dem Schreibtisch und im Anmeldeschirm | `system/gui.c`, `firma_da()` / `firma_text()` |
-| Serien-BIOS leert die Felder beim Start | `firmware/bios.asm` |
+| Setup mit Supervisor-Passwort gesperrt, eigener Reiter *Password* | `passwort.asm`, `tab_password` |
+| Drei Fehlversuche, dann abgewiesen | `pw_tor` |
+| F5 „Load Defaults" lässt das Passwort in Ruhe | `setup_load_defaults` |
+| Secure Boot (Prüfsumme über Bootsektor, Kernel und ROM) | `secure_summe` |
+| BIOS aus einer Datei flashen, Sicherung zurückspielen | `flash_bios`, `flash_restore` |
+| Eigentümer-Eintrag im Speicher (`BDA_FIRMA`) | `bios.asm`, `s_firma:` |
+| Anzeige oben rechts und im Anmeldeschirm | `system/gui.c`, `firma_da()` |
 
 Der Reiter *Password* ist damit schon das, was du wolltest: eigener Reiter,
 nichts anderes darin.
 
-**Noch nicht einstellbar** ist alles andere: Der Text steht fest im Abbild,
-die Schalter in `BDA_POLICY` schreibt das BIOS blind auf 1, und blockieren
-kann man gar nichts.
+---
+
+# Die Funktionsliste
+
+Sortiert nach Wichtigkeit, nicht nach Aufwand. Jede Zeile sagt, wo sie
+hingehört und wo die Einstellung liegt.
+
+## A — Pflicht: das macht ein Firmen-BIOS aus
+
+### A1 Zwei Passwörter statt einem
+*Reiter: Password · CMOS 0x27–0x2B*
+
+Heute gibt es nur das **Supervisor**-Passwort, und das bewacht nur das Setup.
+Ein Firmenrechner braucht zwei:
+
+* **Supervisor** — öffnet das Setup. Gibt es.
+* **Power-On (User)** — wird **vor dem Booten** verlangt. Ohne das startet
+  der Rechner überhaupt nicht.
+
+Das ist der Kern der ganzen Sache. Ein BIOS-Passwort, das nur das Setup
+schützt, hält niemanden davon ab, den Rechner einzuschalten und zu benutzen.
+
+Zu bauen ist wenig: `pw_tor` gibt es schon, es braucht nur eine zweite
+Prüfsumme (Flag + 4 Byte) und einen Aufruf in `bios.asm` vor dem Bootversuch.
+Das Supervisor-Passwort muss dabei **auch** durchs Power-On-Tor kommen — der
+Chef sperrt sich sonst selbst aus, wenn er das User-Passwort vergisst.
+
+### A2 Fehlversuche im CMOS zählen
+*Reiter: Password · CMOS 0x2C*
+
+`pw_tor` zählt heute in einem Register: drei Versuche, dann abgewiesen — aber
+ein Druck auf Reset fängt bei drei wieder an. Also raten in Ruhe, beliebig
+oft.
+
+Echte BIOSe zählen deshalb **in der Knopfzelle**. Nach drei Fehlversuchen
+bleibt der Rechner stehen, und der Zähler überlebt den Neustart; erst die
+richtige Eingabe setzt ihn zurück. Ein Byte, und es ändert alles.
+
+### A3 Der Eigentümer-Eintrag, einstellbar
+*Reiter: Company · siehe „Wo die Einstellungen liegen"*
+
+Text bis 31 Zeichen und ein Schalter An/Aus. Steht heute fest im Abbild.
+
+### A4 Programme sperren
+*Reiter: Company · CMOS 0x25/0x26*
+
+Ein BIOS kennt keine Dateien. Es kennt eine **feste Liste** von Programmen,
+so wie ein echtes BIOS eine feste Liste von Anschlüssen kennt („USB Ports:
+Enabled/Disabled"):
+
+```asm
+sperr_namen:  .dw s_p_coder, s_p_prompt, s_p_browser, s_p_monitor, ...
+```
+
+Ein Bit je Programm, sechzehn Programme in zwei CMOS-Plätzen. Weil das BIOS
+die Namen kennt, legt es sie beim Start im Klartext in den Speicher — das
+System muss dann keine Bits deuten und keine Tabelle mitführen. Kommt später
+ein Programm dazu, ändert sich nur das BIOS.
+
+### A5 Compiler und Netz sperren
+*Reiter: Company · Schalterwort Bit 1 und 2*
+
+Der Compiler gehört zwingend dazu, und zwar nicht aus Schikane: Der TB-32 hat
+keinen Speicherschutz. Wer den Coder hat, schreibt sich ein Programm, das die
+Ports selbst anspricht — und dann ist jede andere Sperre nur noch Zierde.
+
+### A6 Nur von der eigenen Platte starten
+*Reiter: Company oder Hardware · Schalterwort Bit 4*
+
+Der klassische erste Angriff auf einen fremden Rechner ist: ein eigenes
+System von woanders starten und die Platte in Ruhe auslesen. Sperrt man das
+nicht, waren alle anderen Sperren umsonst — sie stehen ja im System, das gar
+nicht erst hochkommt.
+
+Bei uns heißt das: Boot-Reihenfolge festnageln und `Network`/`Floppy` als
+Startquelle verweigern, solange das Bit gesetzt ist.
+
+### A7 Schreibschutz für den Chip — und der ist eine echte Lücke
+*Reiter: Firmware · Baustein, nicht CMOS*
+
+`P_FLASH_CMD` ist ein ganz normaler Port. Der TB-32 kennt keine Portrechte —
+**jedes Programm im laufenden System kann den BIOS-Chip überschreiben.**
+Deine ganze Firmware-Sperre hängt an einem `portout`.
+
+Ein Schalter im Setup allein hilft dagegen nicht, denn den liest ja nur das
+Setup. Die Sperre muss im **Baustein** sitzen, in `hardware/devices.py`:
+
+* `Flash` bekommt ein Sperr-Latch, etwa `self.gesperrt = False`.
+* Ein neuer Befehl (z. B. 10) setzt es. Löschen kann es **nur ein Neustart**.
+* Ist es gesetzt, verweigern Befehl 3 (brennen) und 4 (Sicherung) den Dienst.
+* Das BIOS setzt es als **letzten Schritt vor dem Booten** — bis dahin kann
+  es selbst noch flashen, danach niemand mehr.
+
+Genau so machen es echte Chipsätze: ein Lock-Bit, das die Firmware setzt und
+das nur ein Reset wieder löst. Das ist die einzige Stelle in dieser Liste, an
+der du am Bauteil arbeiten musst — und die wichtigste.
+
+### A8 Merken, dass die Knopfzelle gezogen wurde
+*Reiter: Company (Anzeige) · CMOS-Kennung 0x2F*
+
+Wer an `disk/cmos.bin` kommt, löscht alle Sperren. Das kannst du nicht
+verhindern — bei einem echten Mainboard genauso wenig. Aber du kannst es
+**sichtbar** machen: Ist die Kennung beim Start ungültig, meldet das BIOS in
+Rot *„Configuration was cleared — contact your administrator"* und schreibt
+es in den Ereignisspeicher.
+
+Echte Firmenrechner nennen das *Chassis Intrusion*. Der Gedanke dahinter ist
+wichtiger als die Technik: Wo man nicht verhindern kann, sorgt man dafür,
+dass es auffällt.
+
+## B — Sehr sinnvoll
+
+### B1 Ereignisspeicher
+*Eigener Reiter „Event Log" · braucht NVRAM*
+
+Die letzten acht Ereignisse mit Datum und Uhrzeit: falsches Passwort, CMOS
+geleert, BIOS geflasht, Secure Boot hat angehalten, Standardwerte geladen.
+Acht Einträge à 8 Byte reichen.
+
+Für einen Firmenrechner ist das oft nützlicher als jede Sperre — Sperren
+sagen dir, was nicht passieren darf, das Protokoll sagt dir, was passiert
+ist. Echte BIOSe haben das als *SMBIOS Type 15 Event Log*.
+
+### B2 Secure Boot: anhalten oder nur warnen
+*Reiter: Security · CMOS 0x18 auf drei Werte erweitern*
+
+Heute nur An/Aus. Echte Firmware kennt drei Stufen: *Enforce* (anhalten),
+*Audit* (starten, aber melden und protokollieren), *Off*. Die mittlere
+brauchst du selbst am meisten — beim Entwickeln willst du gewarnt werden,
+nicht ausgesperrt.
+
+### B3 Inventarangaben, die das System auslesen kann
+*Reiter: Company (nur Anzeige) · NVRAM*
+
+Modell, Seriennummer, BIOS-Fassung, Datum der Inbetriebnahme, Anzahl der
+Starts, Betriebsstunden. Im Setup nur lesbar, im Speicher für das System
+abgelegt — der Systemmonitor zeigt sie dann an.
+
+Das ist genau, wofür SMBIOS bei echten PCs da ist, und es ist wenig Arbeit:
+zwei Zähler hochzählen und ein paar Texte hinlegen.
+
+### B4 Startmenü mit F12
+*kein Reiter, ein Tastendruck beim Start*
+
+Einmal von woanders starten, **ohne** die Einstellung zu ändern. Steht bei
+A6 die Sperre, verlangt F12 das Supervisor-Passwort — dann ist es das
+Werkzeug des Administrators und nicht das Schlupfloch.
+
+### B5 Netzwerkstart
+*Reiter: Hardware · groß*
+
+Im Setup steht heute „Network (not installed)". Das stimmt nicht mehr — die
+Karte gibt es, mit ARP, IP, UDP und TCP darüber. Ein Firmenrechner holt sein
+System vom Server, das ist bei echten Firmen der Normalfall (PXE).
+
+Das ist das größte Stück auf dieser Liste und es passt zum Pi-Ziel: Ein
+Rechner, der sein System übers Netz holt, braucht auf der Platte gar nichts
+mehr.
+
+### B6 Startbild der Firma
+*Reiter: Company*
+
+Den BIOS-Namen malt das Mainboard schon in die Bildmitte. Drei Zeilen
+Firmentext darunter, aus demselben Speicher wie der Eigentümer-Eintrag —
+kleine Arbeit, große Wirkung.
+
+## C — Nett, wenn Zeit ist
+
+* **Numlock beim Start**, **Startton an/aus** (halb da), **POST-Zeit
+  anzeigen**.
+* **Automatisch wieder an nach Stromausfall** — bei echten Servern *AC Power
+  Recovery*. Bei uns eher Zierde, aber leicht.
+* **Startverzögerung** — Sekunden warten, bevor gebootet wird, damit man DEL
+  sicher trifft. Auf langsamen Anzeigen hilft das wirklich.
+* **Eigener Reiter „Exit"** mit *Save & Exit*, *Discard & Exit*, *Load
+  Defaults*. Rein kosmetisch, aber echte BIOSe haben ihn, und er macht die
+  F-Tasten für Ungeübte sichtbar.
+
+## D — Was ich weglassen würde, und warum
+
+* **Verschlüsselte Platte / TPM.** Ohne Speicherschutz und ohne echte
+  Schlüssel wäre das eine Behauptung, keine Sicherheit — und eine
+  Sicherheitsanzeige, die lügt, ist schlimmer als gar keine.
+* **Master- oder Wiederherstellungspasswort.** Ein zweiter Schlüssel ist ein
+  zweites Loch. Wer sich aussperrt, zieht die Knopfzelle; das ist bei echten
+  Rechnern derselbe Weg.
+* **Fernwartung (wie vPro/AMT).** Das ist ein eigener kleiner Rechner im
+  Rechner — ein Projekt für sich, kein Reiter.
+* **Fingerabdruck, Smartcard.** Keine Hardware da, und nachgebaut wäre es
+  nur ein zweites Passwortfeld mit hübscherem Namen.
+
+## Reihenfolge zum Bauen
+
+1. **A7 Flash-Sperre** und der `build.py`-Schutz von ganz oben. Solange der
+   Chip von außen überschreibbar ist, testest du im Sand.
+2. **A3 Company-Reiter mit Owner Tag** — die kleinste Sache, an der der ganze
+   neue Reiter einmal durchläuft.
+3. **A1/A2 Power-On-Passwort und Zähler.**
+4. **A6 Startquelle sperren.**
+5. **A4/A5 Programme, Compiler, Netz** — zusammen mit der Systemseite unten.
+6. **A8 und B1** — erst merken, dann protokollieren.
+7. Alles Weitere nach Lust.
 
 ---
 
-## Der neue Reiter *Company*
+## Der Reiter *Company*
 
-Sechs Zeilen, aufgebaut wie jeder andere Reiter (`setup_tabs` erweitern,
-`SET_TABS` auf 7, Tabelle `tab_company`, Name `s_tab_comp`):
+Aufgebaut wie jeder andere Reiter: `setup_tabs` erweitern, `SET_TABS` auf 7,
+Tabelle `tab_company`, Name `s_tab_comp`.
 
 | Zeile | Verhalten | Speicher |
 |---|---|---|
@@ -83,7 +284,9 @@ Sechs Zeilen, aufgebaut wie jeder andere Reiter (`setup_tabs` erweitern,
 | `Block Compiler` | On / Off | `CM_POLICY` Bit 1 |
 | `Block Network` | On / Off | `CM_POLICY` Bit 2 |
 | `Require Login Password` | On / Off | `CM_POLICY` Bit 3 |
+| `Boot From Internal Disk Only` | On / Off | `CM_POLICY` Bit 4 |
 | `Blocked Programs` | ENTER öffnet eine Liste zum Abhaken | `CM_BLOCK0/1` |
+| `Configuration Cleared` | nur Anzeige: Yes / No | Kennung 0x2F |
 | `Item Help` | reine Erklärzeile | `REG_INFO` |
 
 Die On/Off-Zeilen brauchen **keinen** Sonderfall: ein CMOS-Platz mit zwei
@@ -93,34 +296,15 @@ Sprungverteiler von `setup_change` eintragen — genau wie `REG_PWSET`).
 
 Ein Bit pro Schalter ist umständlicher als ein Byte pro Schalter. Wenn dir
 das lieber ist, nimm für jeden Schalter einen eigenen CMOS-Platz — Platz ist
-knapp, aber für drei bis vier reicht er (siehe Tabelle unten).
+knapp, aber für vier reicht er (siehe Tabelle unten).
 
 ### Owner Text — der Editor
 
-`passwort.asm` hat den Editor schon fast: `pw_eingabe` liest eine Zeile,
-zeichnet aber Sterne statt der Buchstaben (`pw_sterne`). Für den Firmentext
-brauchst du dieselbe Schleife mit sichtbarer Ausgabe. Am saubersten wäre eine
-gemeinsame Routine `text_eingabe` mit einem Schalter „sichtbar / Sterne",
-dann gibt es die Tipp-Logik nur einmal.
-
-### Blocked Programs — die Liste
-
-Ein BIOS kennt keine Dateien. Es kennt eine **feste Liste** von Programmen,
-so wie ein echtes BIOS eine feste Liste von Anschlüssen kennt („USB Ports:
-Enabled/Disabled"). Also im BIOS eine Tabelle:
-
-```asm
-sperr_namen:  .dw s_p_coder, s_p_prompt, s_p_browser, s_p_monitor, ...
-```
-
-Pro Programm ein Bit in `CM_BLOCK0` / `CM_BLOCK1` — sechzehn Programme in
-zwei CMOS-Plätzen. Der Reiter zeigt die Liste, Hoch/Runter wählt, ENTER
-hakt ab.
-
-**Das Wichtige daran:** Weil das BIOS die Namen kennt, kann es sie beim Start
-im Klartext in den Speicher legen. Das System muss die Tabelle dann nicht
-kennen und keine Bits deuten — es liest einfach eine Liste von Namen. Wenn
-später ein Programm dazukommt, ändert sich nur das BIOS.
+`passwort.asm` hat ihn fast: `pw_eingabe` liest eine Zeile, zeichnet aber
+Sterne statt Buchstaben (`pw_sterne`). Für den Firmentext brauchst du
+dieselbe Schleife mit sichtbarer Ausgabe. Am saubersten: eine gemeinsame
+Routine `text_eingabe` mit einem Schalter „sichtbar / Sterne", dann gibt es
+die Tipp-Logik nur einmal.
 
 ---
 
@@ -135,15 +319,16 @@ Das ist die eigentliche Entscheidung, und sie fällt beim Text.
 | `0x00`–`0x09` | Uhr |
 | `0x10`–`0x1D` | Einstellungen |
 | **`0x1E`–`0x1F`** | **frei, in der Prüfsumme** |
-| `0x20`–`0x24` | Passwort (TB-LOCK) |
+| `0x20`–`0x24` | Supervisor-Passwort (TB-LOCK) |
 | **`0x25`–`0x2D`** | **frei, in der Prüfsumme** |
 | `0x2E` / `0x2F` | Prüfsumme über `0x10`–`0x2D`, Kennung |
 | `0x30`–`0x33` | Gangunterschied der Uhr |
 | `0x34`–`0x3E` | frei, **außerhalb** der Prüfsumme |
 | `0x3F` | Schreiben sichert die Knopfzelle |
 
-Elf freie Bytes unter der Prüfsumme. **Die Schalter und die Sperrliste passen
-da bequem hinein** (`CM_POLICY` = `0x1E`, `CM_BLOCK0/1` = `0x25`/`0x26`).
+Elf freie Bytes unter der Prüfsumme, und die Liste oben braucht genau elf:
+Schalterwort (1), Sperrliste (2), Power-On-Passwort (5), Fehlversuche (1) —
+bleiben zwei übrig. Es passt, aber ohne Reserve.
 
 **Die 32 Byte Firmentext passen nicht.** Dafür zwei Wege:
 
@@ -152,7 +337,8 @@ zweiten kleinen Speicher anlegen, 256 Byte, eigene Datei `disk/nvram.bin`,
 eigenes Portpaar (0x72 Index, 0x73 Daten — direkt neben dem CMOS). Echte
 Mainboards machen genau das: die Uhr-CMOS blieb bei 64 Byte, alles Weitere
 zog in einen extra Baustein um. Kostet dich zwanzig Zeilen Python und im BIOS
-nur eine Lese- und eine Schreibschleife.
+je eine Lese- und Schreibschleife. Der Ereignisspeicher (B1) und die
+Inventarangaben (B3) hätten damit auch gleich ein Zuhause.
 
 **B — das BIOS beschreibt seinen eigenen Chip.** Ist reiner: Der Text liegt
 dann wirklich in der Firmware und überlebt sogar das Ziehen der Knopfzelle.
@@ -175,7 +361,9 @@ Bei B sind zwei Dinge lebenswichtig:
 
 Nimm A, wenn du es diese Woche fertig haben willst. Nimm B, wenn dir wichtig
 ist, dass der Eintrag auch das Ziehen der Knopfzelle übersteht — das ist die
-Sorte Aufgabe, an der man wirklich versteht, was Firmware ist.
+Sorte Aufgabe, an der man wirklich versteht, was Firmware ist. Und wenn du
+B nimmst: **A7 zuerst**, sonst schreibt dir jedes Programm im System den
+Chip wieder um.
 
 ---
 
@@ -188,9 +376,11 @@ Wie bisher über den BIOS-Datenbereich — das ist unser SMBIOS:
 | `0x00000500` | 32 Byte Eigentümer-Eintrag, mit Null abgeschlossen | da |
 | `0x00000524` | Schalterwort | da, aber blind auf 1 |
 | `0x00000528` | **neu:** 8 gesperrte Programme à 16 Byte, leerer Name = Ende | fehlt |
+| `0x000005A8` | **neu:** Inventar — Seriennummer, Starts, Betriebsstunden | fehlt |
 
-Die Sperrliste endet bei `0x5A8`, das Setup fängt erst bei `0x600` an — es
-passt, aber knapp. Wer mehr will, geht nach `0x580` und verschiebt `SETUP_TAB`.
+Die Sperrliste endet bei `0x5A8`, das Setup fängt erst bei `0x600` an. Für
+das Inventar bleiben also 88 Byte; wer mehr braucht, verschiebt `SETUP_TAB`
+nach oben.
 
 Schalterwort, wie in `firmware/const.inc` schon festgeschrieben:
 
@@ -202,8 +392,8 @@ Schalterwort, wie in `firmware/const.inc` schon festgeschrieben:
 | 3 | Passwort verlangt |
 | 4 | nur von der eigenen Platte starten |
 
-**Wichtig:** Das Serien-BIOS muss **alle drei** Bereiche beim Start leeren,
-auch den neuen. Es leert heute nur die ersten beiden (`bios.asm`, Zeile 584).
+**Wichtig:** Das Serien-BIOS muss **alle** diese Bereiche beim Start leeren,
+auch die neuen. Es leert heute nur die ersten beiden (`bios.asm`, Zeile 584).
 Sonst bliebe nach dem Zurückflashen die Sperrliste eines Firmen-BIOS stehen,
 und das System sperrte Programme, für die es längst keine Firmware mehr gibt.
 
@@ -225,6 +415,9 @@ Das ist die andere Hälfte, und ohne sie ist das BIOS wirkungslos. Alles in
     unsichtbar ist, sieht nach einem Fehler aus; ein graues sieht nach einer
     Regel aus. Beim Klick eine Meldung: *„Blocked by system policy."*
 4. **Compiler und Netz** an denselben Punkt hängen (Bit 1 und 2).
+5. **Bit 3 „Passwort verlangt"** — die Anmeldung darf dann kein Konto ohne
+    Passwort mehr durchlassen.
+6. **Inventar anzeigen** im Systemmonitor, sobald B3 steht.
 
 ---
 
@@ -241,6 +434,8 @@ Das ist die andere Hälfte, und ohne sie ist das BIOS wirkungslos. Alles in
 * **Neue Zeile im Reiter, aber `setup_tabs` nicht mitgezählt** — dann malt
   das Setup die Zeile, aber Hoch/Runter kommt nicht hin. Die Zahl hinter dem
   Tabellenzeiger ist die Zeilenzahl.
+* **Neue CMOS-Plätze über `0x2D` hinaus** fallen aus der Prüfsumme heraus.
+  Sie überleben zwar den Neustart, aber ein leergeräumtes CMOS merkt niemand.
 
 ---
 
@@ -248,17 +443,20 @@ Das ist die andere Hälfte, und ohne sie ist das BIOS wirkungslos. Alles in
 
 Nimm dir `Custom BIOS/TB-LOCK/pruefen.py` als Vorlage — dort läuft der
 Rechner wirklich, mit einer eigenen Knopfzelle im Temp-Ordner, und der Test
-drückt dieselben Tasten wie ein Mensch. Fertig ist der Reiter, wenn das
-durchläuft:
+drückt dieselben Tasten wie ein Mensch. Fertig ist es, wenn das durchläuft:
 
 1. Setup öffnen, auf *Company*, Text auf etwas Eigenes setzen, F10.
 2. Neu starten → der neue Text steht oben rechts auf dem Schreibtisch.
 3. *Owner Tag* auf Off, F10, neu starten → nichts steht mehr da.
-4. Ein Programm sperren, neu starten → es ist im Startmenü grau und lässt
+4. Power-On-Passwort setzen, neu starten → der Rechner fragt, **bevor** er
+   bootet. Dreimal falsch → er bleibt stehen. Reset → er zählt nicht von
+   vorn.
+5. Ein Programm sperren, neu starten → es ist im Startmenü grau und lässt
    sich nicht starten.
-5. `build.py` laufen lassen → COMPANY-OS ist **immer noch da** (das ist der
-   Punkt aus dem ersten Kapitel).
-6. Serien-BIOS zurückflashen → Text weg, Sperren weg.
+6. Im System ein Programm schreiben, das `portout` auf `P_FLASH_CMD` macht →
+   der Chip bleibt heil (A7).
+7. `build.py` laufen lassen → COMPANY-OS ist **immer noch da**.
+8. Serien-BIOS zurückflashen → Text weg, Sperren weg.
 
 ---
 
@@ -266,10 +464,12 @@ durchläuft:
 
 Der TB-32 hat **keinen Speicherschutz**. Eine Richtlinie ist damit eine
 Regel, keine Mauer: wer den Coder hat, schreibt sich ein Programm, das die
-Ports selbst anspricht, und die Sperre ist ihm egal. Deshalb gehört „Compiler
-sperren" in so ein BIOS zwingend dazu — nicht als Schikane, sondern weil ohne
-das alles andere nur Zierde wäre.
+Ports selbst anspricht, und die Sperre ist ihm egal. Deshalb steht „Compiler
+sperren" so weit oben, und deshalb muss die Flash-Sperre im Bauteil sitzen
+und nicht im Setup.
 
 Und wer an `disk/cmos.bin` kommt, hat die Knopfzelle gezogen. Bei einem
 echten Mainboard ist das derselbe Handgriff, und deshalb steht in jedem
-Handbuch derselbe Satz: physischer Zugang schlägt jede Firmware-Sperre.
+Handbuch derselbe Satz: physischer Zugang schlägt jede Firmware-Sperre. Was
+man dagegen tun kann, ist nicht verhindern, sondern **sichtbar machen** —
+darum A8.

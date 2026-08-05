@@ -36,6 +36,27 @@ Anfasspunkte in `system/gui.c`, und zwei Fallen, die man nur einmal erlebt:
 die Kopfpruefsumme nach dem Patchen neu rechnen, und den Firmenblock hinter
 die ersten 16 KB legen, weil Secure Boot genau die misst.
 
+**Nachgetragen: die volle Funktionsliste.** Colin wollte wissen, was so ein
+BIOS ueberhaupt alles koennen sollte. Jetzt stehen sie in vier Gruppen in der
+README -- Pflicht, sehr sinnvoll, nett, weglassen -- jede mit Reiter,
+Speicherplatz und Aufwand, dazu eine Reihenfolge zum Bauen.
+
+Zwei Funde beim Durchgehen:
+
+* **Das BIOS-Passwort schuetzt heute nur das Setup.** Ein Firmenrechner
+  braucht ein zweites, das VOR dem Booten gefragt wird -- sonst schaltet man
+  den Rechner einfach ein und benutzt ihn.
+* **`pw_tor` zaehlt die Fehlversuche in einem Register.** Drei Versuche, dann
+  abgewiesen -- aber ein Druck auf Reset faengt bei drei wieder an. Man kann
+  also in Ruhe raten. Echte BIOSe zaehlen in der Knopfzelle; ein Byte, und es
+  aendert alles.
+* **`P_FLASH_CMD` ist ein normaler Port, und der TB-32 kennt keine
+  Portrechte.** Jedes Programm im laufenden System kann den BIOS-Chip
+  ueberschreiben. Ein Schalter im Setup hilft dagegen nicht -- die Sperre
+  muss ins Bauteil: ein Latch in `Flash`, gesetzt von der Firmware kurz vor
+  dem Booten, geloescht nur durch einen Neustart. Genau so machen es echte
+  Chipsaetze mit ihrem Lock-Bit.
+
 Programme sperrt das BIOS ueber eine feste Namenstabelle mit einem Bit pro
 Programm -- so wie ein echtes BIOS „USB Ports: Enabled/Disabled" kennt. Weil
 das BIOS die Namen hat, legt es sie im Klartext in den Speicher; das System
