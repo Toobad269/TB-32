@@ -1,151 +1,151 @@
-# BIOS-Dienste und was fehlt
+# BIOS Services and What's Missing
 
-Alles in `firmware/bios.asm`. Aufrufweg immer gleich: **Funktionsnummer in
-`r0`, Argumente in `r1`–`r5`, Ergebnis in `r0`** — genau wie beim echten PC,
-nur dass der `ah` statt `r0` benutzt.
+Everything in `firmware/bios.asm`. Calling convention always the same:
+**function number in `r0`, arguments in `r1`–`r5`, result in `r0`** — exactly
+like on a real PC, except it uses `r0` instead of `ah`.
 
-## Was das BIOS heute kann
+## What the BIOS can do today
 
-| Interrupt | Funktionen | |
+| Interrupt | Functions | |
 |---|---|---|
-| `INT 0x10` Bildschirm | 17 | 0 putc, 1 puts, 2 setcursor, 3 cls, 4 getcursor, 5 putat, 6 putn, 7 puthex, 8 setmode, 9 box, 10 fillrect, 11 hline, 12 scroll, 13 clearrow, 14 putsat, 15 sbcount, 16 sbline |
-| `INT 0x13` Platte | 3 | 0 lesen, 1 schreiben, 2 Größe in Sektoren |
-| `INT 0x16` Tastatur | 3 | 0 auf Taste warten, 1 nachsehen, 2 Puffer leeren |
-| `INT 0x1A` Zeit | 3 | 0 Ticks seit Start, 1 Uhrzeit, 2 Datum |
-| `IRQ 0x08` | — | Timer, zählt `BDA_TICKS` hoch |
-| `IRQ 0x09` | — | Tastatur, füllt den Ringpuffer im BDA |
-| `INT 0x00` / `INT 0x06` | — | Division durch Null und ungültiger Befehl → Panik-Bildschirm |
+| `INT 0x10` screen | 17 | 0 putc, 1 puts, 2 setcursor, 3 cls, 4 getcursor, 5 putat, 6 putn, 7 puthex, 8 setmode, 9 box, 10 fillrect, 11 hline, 12 scroll, 13 clearrow, 14 putsat, 15 sbcount, 16 sbline |
+| `INT 0x13` disk | 3 | 0 read, 1 write, 2 size in sectors |
+| `INT 0x16` keyboard | 3 | 0 wait for key, 1 peek, 2 flush buffer |
+| `INT 0x1A` time | 3 | 0 ticks since start, 1 time of day, 2 date |
+| `IRQ 0x08` | — | Timer, counts up `BDA_TICKS` |
+| `IRQ 0x09` | — | Keyboard, fills the ring buffer in the BDA |
+| `INT 0x00` / `INT 0x06` | — | Division by zero and invalid instruction → panic screen |
 
-Dazu: POST, Bootvorgang, Panik-Bildschirm — und das **Setup mit vier
-Reitern** (siehe unten).
+Plus: POST, boot process, panic screen — and the **setup with four
+tabs** (see below).
 
-## Das Setup
+## The Setup
 
-Mit `DEL` oder `F2` beim Start. **Links/Rechts wechselt den Reiter**,
-Hoch/Runter die Zeile, ENTER oder `+`/`-` ändert den Wert, `F10` speichert,
-`F5` lädt Standardwerte, `ESC` verwirft.
+With `DEL` or `F2` at startup. **Left/Right switches the tab**,
+Up/Down the line, ENTER or `+`/`-` changes the value, `F10` saves,
+`F5` loads default values, `ESC` discards.
 
-| Reiter | Inhalt |
+| Tab | Content |
 |---|---|
-| **Main** | Uhrzeit, Datum, Quick Boot, POST-Piepser, POST-Meldungen, Standardwerte laden |
-| **Hardware** | Takt, Bootgerät, Speichergröße, Platte, Grafikkarte (die letzten drei nur zur Anzeige) |
-| **Cooling** | Lüftersteuerung, Drosselgrenze, dazu Temperatur, Lüfter, Drosselung und Höchstwert **live vom Chipsatz** |
-| **Security** | Secure Boot, Prüfsumme, „Trust Current Boot Image" |
+| **Main** | Time, date, Quick Boot, POST beeper, POST messages, load defaults |
+| **Hardware** | Clock speed, boot device, memory size, disk, graphics card (the last three display-only) |
+| **Cooling** | Fan control, throttling limit, plus temperature, fan, throttling and peak value **live from the chipset** |
+| **Security** | Secure Boot, checksum, "Trust Current Boot Image" |
 
-**Uhrzeit und Datum stellen:** ENTER auf der Zeile öffnet einen kleinen
-Feldeditor — Hoch/Runter ändert, Links/Rechts wechselt zwischen
-Stunde/Minute/Sekunde bzw. Tag/Monat/Jahr, ENTER beendet. Welches Feld dran
-ist, steht unten im Hilfekasten.
+**Setting time and date:** ENTER on the line opens a small field editor —
+Up/Down changes the value, Left/Right switches between
+hour/minute/second or day/month/year, ENTER ends it. Which field is
+active is shown in the help box below.
 
-Damit das überhaupt möglich wurde, brauchte der **Uhrenbaustein eine eigene
-Zeit**: vorher las `CMOS._refresh_clock()` einfach die Uhr des Macs, jeder
-Schreibversuch war beim nächsten Lesen wieder weg. Jetzt merkt sich das CMOS
-einen **Versatz in Sekunden** (vier Byte ab Register `0x30`), und Schreiben
-auf ein Uhrenregister rechnet den Versatz neu aus — genau wie das Drehen an
-einem echten RTC-Baustein.
+For this to be possible at all, the **clock chip needed a time of its
+own**: previously `CMOS._refresh_clock()` simply read the Mac's clock,
+and every write attempt was gone again on the next read. Now the CMOS
+remembers an **offset in seconds** (four bytes starting at register
+`0x30`), and writing to a clock register recalculates the offset —
+exactly like turning a knob on a real RTC chip.
 
-## Ein eigenes BIOS
+## A BIOS of Your Own
 
-Das BIOS ist austauschbar: **DEL → Firmware → Flash BIOS from File** nimmt
-eine `.bin` vom Mac und brennt sie in den Chip. Was ein BIOS dafür liefern
-muss — Kopf, Interruptvektoren, alle vier Dienste mit Registern — steht
-vollständig in [[16 Eigenes BIOS schreiben]]. Fertige Vorlage:
-`firmware/minimal.asm`, 3324 Byte.
+The BIOS is replaceable: **DEL → Firmware → Flash BIOS from File** takes
+a `.bin` from the Mac and burns it into the chip. What a BIOS has to
+provide for that — header, interrupt vectors, all four services with
+their registers — is fully documented in [[16 Eigenes BIOS schreiben]].
+Ready-made template: `firmware/minimal.asm`, 3324 bytes.
 
 ## Secure Boot
 
-Der Gedanke ist derselbe wie beim echten PC: Vor dem Start wird nachgerechnet,
-ob das Startabbild noch das bekannte ist. Nur ist die Rechnung hier eine
-**Prüfsumme über Bootsektor, Kernel und die ersten 16 KB des ROM** — keine
-Unterschrift mit Schlüssel. Das Prinzip „erst prüfen, dann starten" ist
-dasselbe, die Fälschungssicherheit nicht.
+The idea is the same as on a real PC: before starting, it's recomputed
+whether the boot image is still the known one. Only here the computation
+is a **checksum over the boot sector, kernel, and the first 16 KB of the
+ROM** — no signature with a key. The principle "check first, then boot"
+is the same, the tamper-resistance is not.
 
-Den Kernel sucht die Firmware dabei **als Datei** `\SYSTEM\KERNEL.BIN`,
-über `kernel_finden` in `firmware/setup.asm` — dieselbe Suche, die auch der
-Bootsektor macht. Sie muss messen, was wirklich startet, sonst wäre die
-Prüfung eine Attrappe; siehe [[07 Fallstricke]].
+The firmware looks for the kernel **as a file**, `\SYSTEM\KERNEL.BIN`,
+via `kernel_finden` in `firmware/setup.asm` — the same search the boot
+sector also does. It has to measure what actually starts, otherwise the
+check would be a sham; see [[07 Fallstricke]].
 
-- Die gemerkte Summe liegt in vier CMOS-Plätzen (`CM_SUM0`–`CM_SUM3`), also
-  in der Knopfzelle
-- Stimmt sie nicht, **bootet der Rechner nicht** — es kommt ein roter
-  Bildschirm mit dem Hinweis, dass `DEL` ins Setup führt
-- Dort merkt *Trust Current Boot Image* die aktuelle Summe
+- The remembered checksum lives in four CMOS slots (`CM_SUM0`–`CM_SUM3`),
+  so in the button cell
+- If it doesn't match, **the computer won't boot** — a red screen appears
+  with the note that `DEL` leads into setup
+- There, *Trust Current Boot Image* remembers the current checksum
 
-**Wichtig:** Secure Boot ist ab Werk **aus**, und das aus gutem Grund — jedes
-`python3 build.py` ändert Kernel oder BIOS und macht die gemerkte Summe
-ungültig. Wer es einschaltet, muss nach jedem Neubauen einmal ins Setup und
-neu vertrauen. Genau das ist der Sinn der Sache.
+**Important:** Secure Boot is **off** by default, and for good reason —
+every `python3 build.py` changes the kernel or BIOS and invalidates the
+remembered checksum. Whoever turns it on has to go into setup and
+re-trust once after every rebuild. That's exactly the point.
 
-## Was fehlt — und ob es sich lohnt
+## What's Missing — And Whether It's Worth It
 
-### Lohnt sich, ist wenig Arbeit
+### Worth it, little work
 
-**Speichergröße als Dienst** (beim PC `INT 0x12`). Der Wert steht im BDA bei
-`0x4A0`, und das OS **liest ihn direkt aus dem Speicher** (`syscall.c`,
-Funktion 22). Das ist eine Abkürzung an der Firmware vorbei: Ein Programm
-sollte nicht wissen müssen, wo das BIOS seine Notizen macht. Dasselbe gilt
-für die Plattengröße bei `0x4A4`.
+**Memory size as a service** (on the PC `INT 0x12`). The value sits in
+the BDA at `0x4A0`, and the OS **reads it directly from memory**
+(`syscall.c`, function 22). That's a shortcut past the firmware: a
+program shouldn't need to know where the BIOS keeps its notes. The same
+applies to the disk size at `0x4A4`.
 
-**Ausstattungsliste** (beim PC `INT 0x11`). Eine Bitmaske: Ist eine Maus da?
-Ein Lautsprecher? Wie viele Platten? Heute muss das OS die Ports einzeln
-abfragen und raten.
+**Equipment list** (on the PC `INT 0x11`). A bitmask: is there a mouse?
+A speaker? How many disks? Today the OS has to poll the ports one by one
+and guess.
 
-**Warten** (beim PC `INT 0x15`, Funktion `86h`). Die Routine `delay` gibt es
-im BIOS längst — sie ist nur nicht nach außen gelegt. Das OS baut sich in
-`lib.c` seine eigene Warteschleife.
+**Wait** (on the PC `INT 0x15`, function `86h`). The `delay` routine has
+long existed in the BIOS — it's just not exposed. The OS builds its own
+wait loop in `lib.c`.
 
-**Piepser.** Der Lautsprecher hängt an den Ports `0x50`/`0x51`, das OS
-schreibt direkt hinein. Ein BIOS-Dienst dafür wäre die saubere Ebene.
+**Beeper.** The speaker hangs off ports `0x50`/`0x51`, and the OS writes
+directly to them. A BIOS service for this would be the clean layer.
 
-### Lohnt sich, ist mehr Arbeit
+### Worth it, more work
 
-**Maus.** Der TB-32 *hat* eine Maus mit Hardware-Zeiger (Ports `0x60`–`0x63`,
-`IRQ 12`), aber **das BIOS kennt sie überhaupt nicht.** Der Desktop spricht
-die Ports direkt an. Beim echten PC macht das ein Treiber über `INT 0x33` —
-hier wäre ein BIOS-Dienst der natürliche Ort.
+**Mouse.** The TB-32 *has* a mouse with a hardware cursor (ports
+`0x60`–`0x63`, `IRQ 12`), but **the BIOS doesn't know about it at all.**
+The desktop talks to the ports directly. On a real PC a driver does this
+via `INT 0x33` — here a BIOS service would be the natural place.
 
-**Zeichensatz-Adresse.** Ein Programm im Grafikmodus braucht sie für den
-Blitter. Gelöst ist das über **Systemaufruf 30 des Kernels** — der gibt die
-Adresse einer Tabelle im *Kernel* zurück. Sauberer wäre ein Zeichensatz im
-ROM und ein BIOS-Dienst dafür (beim PC: `INT 0x10`, `AX=1130h`). Dann könnte
-ein Programm auch ohne TOOBAD-OS malen.
+**Font address.** A program in graphics mode needs it for the blitter.
+This is currently solved via **kernel system call 30** — which returns
+the address of a table in the *kernel*. Cleaner would be a font in ROM
+and a BIOS service for it (on the PC: `INT 0x10`, `AX=1130h`). Then a
+program could draw even without TOOBAD-OS.
 
-**Zeichen vom Bildschirm lesen** (beim PC `INT 0x10`, Funktion `08h`). Wir
-können schreiben, aber nicht zurücklesen. Für Dinge wie „was steht da
-eigentlich" muss das OS seinen eigenen Bildspeicher mitführen.
+**Reading characters off the screen** (on the PC `INT 0x10`, function
+`08h`). We can write, but not read back. For things like "what's
+actually there," the OS has to keep its own copy of the screen buffer.
 
-**Tastenzustand** (beim PC `INT 0x16`, Funktion `02h`): Ist gerade Shift,
-Strg oder Alt gedrückt? In `hardware/devices.py` gibt es dafür sogar schon
-die Felder `self.ctrl` und `self.alt` — **sie werden aber nirgends gesetzt
-und nirgends gelesen.** Tote Anschlüsse: Die Hardware müsste sie beim
-Tastendruck füllen und über den Statusport melden, dann könnte das BIOS sie
-weiterreichen.
+**Key state** (on the PC `INT 0x16`, function `02h`): is Shift, Ctrl or
+Alt currently pressed? In `hardware/devices.py` there are already even
+the fields `self.ctrl` and `self.alt` for this — **but they're never set
+and never read.** Dead connections: the hardware would need to fill them
+on keypress and report them via the status port, then the BIOS could
+pass them along.
 
-**Neu starten** (beim PC `INT 0x19`). Es gibt den Portbefehl `P_POWER`, aber
-keinen Dienst „lad den Bootsektor nochmal".
+**Reboot** (on the PC `INT 0x19`). There's the port command `P_POWER`,
+but no "reload the boot sector" service.
 
-### Bewusst nicht nötig
+### Deliberately unnecessary
 
-| Fehlt | Warum es hier keinen Sinn hat |
+| Missing | Why it makes no sense here |
 |---|---|
-| Drucker (`INT 0x17`) | Es gibt keinen Drucker |
-| Serielle Schnittstelle (`INT 0x14`) | Keine Hardware — wäre aber der natürliche Anfang für ein Netzwerkkapitel, siehe [[11 Offene Punkte]] |
-| ROM-BASIC (`INT 0x18`) | Reines Erbe der 80er |
-| Zylinder/Kopf/Sektor | Der TB-32 spricht von Anfang an in **LBA**, also durchnummerierten Sektoren — die Umrechnerei alter Platten fällt weg |
-| Erweiterte Speicherkarte (`E820`) | Die Aufteilung liegt fest, siehe [[02 Speicherkarte und Ports]] |
+| Printer (`INT 0x17`) | There's no printer |
+| Serial port (`INT 0x14`) | No hardware — but would be the natural starting point for a networking chapter, see [[11 Offene Punkte]] |
+| ROM BASIC (`INT 0x18`) | Pure 80s legacy |
+| Cylinder/head/sector | The TB-32 speaks in **LBA** — i.e. sequentially numbered sectors — from the start, so the old-drive conversion math is gone |
+| Extended memory map (`E820`) | The layout is fixed, see [[02 Speicherkarte und Ports]] |
 
-## Woran man beim Ergänzen denken muss
+## Things to Keep in Mind When Adding a Service
 
-Ein neuer Dienst ist **drei** Änderungen, nicht eine:
+A new service is **three** changes, not one:
 
-1. Eintrag in der Sprungtabelle in `firmware/bios.asm` (und der Vektor in
-   `bios_init`, falls es ein neuer Interrupt ist)
-2. Konstante in `firmware/const.inc`
-3. Falls das OS ihn nutzen soll: Brücke in `system/start.asm` und
-   Verpackung in `system/lib.c` — und für Programme zusätzlich eine
-   Syscall-Nummer, siehe [[05 Konventionen]]
+1. Entry in the jump table in `firmware/bios.asm` (and the vector in
+   `bios_init`, if it's a new interrupt)
+2. Constant in `firmware/const.inc`
+3. If the OS is meant to use it: bridge in `system/start.asm` and
+   wrapper in `system/lib.c` — and for programs additionally a
+   syscall number, see [[05 Konventionen]]
 
-Und: Der Kernel darf **nicht größer als bis `0xB0000`** werden, sonst frisst
-er die Puffer des Dateisystems — die Falle steht in [[07 Fallstricke]].
+And: the kernel must **not grow larger than `0xB0000`**, or it eats into
+the file system's buffers — the trap is described in [[07 Fallstricke]].
 
-Verwandt: [[05 Konventionen]], [[02 Speicherkarte und Ports]], [[11 Offene Punkte]]
+Related: [[05 Konventionen]], [[02 Speicherkarte und Ports]], [[11 Offene Punkte]]

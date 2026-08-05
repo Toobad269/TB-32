@@ -1,16 +1,16 @@
 #!/usr/bin/env python3
 """
-Bootstrap-Nachweis: Der C-Compiler übersetzt sich selbst.
+Bootstrap proof: the C compiler compiles itself.
 
-Die Kette:
-    Stufe 1   CC.TBX    wurde auf dem Mac erzeugt (tools/tcc.py)
-    Stufe 2   CC2.TBX = CC.TBX  übersetzt CC.C     -- auf dem TB-32
-    Stufe 3   CC3.TBX = CC2.TBX übersetzt CC.C     -- auf dem TB-32
+The chain:
+    Stage 1   CC.TBX    was built on the Mac (tools/tcc.py)
+    Stage 2   CC2.TBX = CC.TBX  compiles CC.C     -- on the TB-32
+    Stage 3   CC3.TBX = CC2.TBX compiles CC.C     -- on the TB-32
 
-Sind Stufe 2 und Stufe 3 Byte für Byte gleich, ist der Compiler ein
-Fixpunkt: er erzeugt sich selbst unverändert. Genau so weist man
-Bootstrapping nach -- Stufe 1 darf davon abweichen, weil sie von einem
-anderen Compiler stammt.
+If stage 2 and stage 3 are byte-for-byte identical, the compiler is a
+fixed point: it reproduces itself unchanged. This is exactly how
+bootstrapping is proven -- stage 1 is allowed to differ, since it comes
+from a different compiler.
 
     python3 tools/bootstrap.py
 """
@@ -32,7 +32,7 @@ GRUEN, ROT, GELB, WEG = "\033[92m", "\033[91m", "\033[93m", "\033[0m"
 
 
 class PC:
-    """Ein laufender Rechner, der auf Bildschirmausgaben warten kann."""
+    """A running machine that can wait for screen output."""
 
     def __init__(self):
         self.m = Machine(ROOT, disk=test_platte(), cmos=test_cmos())
@@ -47,7 +47,7 @@ class PC:
             self.m.run_slice(self.dt)
 
     def warte_auf(self, text, max_sek=600, melde=None):
-        """Läuft, bis <text> auf dem Bildschirm steht."""
+        """Runs until <text> appears on screen."""
         schritte = int(max_sek / self.dt)
         for i in range(schritte):
             self.m.run_slice(self.dt)
@@ -55,12 +55,12 @@ class PC:
                 self.laufen(0.4)
                 return True
             if melde and i % 1800 == 0 and i:
-                print(f"      ... {int(i * self.dt)} s Rechenzeit vergangen")
+                print(f"      ... {int(i * self.dt)} s of compute time elapsed")
         return text in self.bild()
 
     def tippe(self, zeile):
-        """Tippt eine Zeile und drückt Enter -- Zeichen für Zeichen, mit
-        genug Abstand, damit der Tastaturpuffer nicht überläuft."""
+        """Types a line and presses Enter -- character by character, with
+        enough spacing that the keyboard buffer doesn't overflow."""
         for ch in zeile:
             self.m.keyboard.push(ord(ch), 0)
             self.laufen(0.05)
@@ -69,48 +69,48 @@ class PC:
 
 
 def main():
-    print("Bootstrap-Nachweis für den TB-32 C-Compiler\n")
+    print("Bootstrap proof for the TB-32 C compiler\n")
 
     pc = PC()
-    print("  Rechner startet ...")
+    print("  Machine starting ...")
     if not pc.warte_auf("A:\\>", 30):
-        print(f"{ROT}  Das System ist nicht bis zur Eingabeaufforderung gekommen.{WEG}")
+        print(f"{ROT}  The system did not reach the command prompt.{WEG}")
         return 1
 
-    pc.tippe("CD SOURCE")            # dort liegt der Quelltext des Compilers
+    pc.tippe("CD SOURCE")            # this is where the compiler's source lives
     pc.laufen(0.5)
     pc.tippe("CLS")
     pc.laufen(0.5)
 
-    print("\n  Stufe 2:  CC.TBX übersetzt seinen eigenen Quelltext CC.C")
+    print("\n  Stage 2:  CC.TBX compiles its own source CC.C")
     pc.tippe("CC CC.C CC2.TBX")
     if not pc.warte_auf("Created CC2.TBX", 900, melde=True):
-        print(f"{ROT}  Stufe 2 fehlgeschlagen:{WEG}")
+        print(f"{ROT}  Stage 2 failed:{WEG}")
         print(pc.bild())
         return 1
     for z in pc.bild().splitlines():
         if "Code:" in z or "Compiling" in z:
             print("     ", z.strip())
-    print(f"{GRUEN}      Stufe 2 erzeugt.{WEG}")
+    print(f"{GRUEN}      Stage 2 built.{WEG}")
 
     pc.tippe("CLS")
     pc.laufen(0.5)
 
-    print("\n  Stufe 3:  CC2.TBX übersetzt denselben Quelltext noch einmal")
+    print("\n  Stage 3:  CC2.TBX compiles the same source again")
     pc.tippe("CC2 CC.C CC3.TBX")
     if not pc.warte_auf("Created CC3.TBX", 900, melde=True):
-        print(f"{ROT}  Stufe 3 fehlgeschlagen:{WEG}")
+        print(f"{ROT}  Stage 3 failed:{WEG}")
         print(pc.bild())
         return 1
     for z in pc.bild().splitlines():
         if "Code:" in z or "Compiling" in z:
             print("     ", z.strip())
-    print(f"{GRUEN}      Stufe 3 erzeugt.{WEG}")
+    print(f"{GRUEN}      Stage 3 built.{WEG}")
 
     pc.tippe("CLS")
     pc.laufen(0.5)
 
-    print("\n  Vergleich der beiden Stufen (auf dem Gerät selbst):")
+    print("\n  Comparing the two stages (on the device itself):")
     pc.tippe("FC CC2.TBX CC3.TBX")
     pc.warte_auf("FC:", 60)
     pc.laufen(1.0)
@@ -121,7 +121,7 @@ def main():
 
     identisch = "identical" in ergebnis
 
-    print("\n  Gegenprobe: läuft der selbst erzeugte Compiler?")
+    print("\n  Cross-check: does the self-built compiler run?")
     pc.tippe("CLS")
     pc.laufen(0.4)
     pc.tippe("CC3 DEMO.C DX.TBX")
@@ -137,16 +137,16 @@ def main():
 
     print()
     if identisch and laeuft:
-        print(f"{GRUEN}  BOOTSTRAPPING BESTANDEN{WEG}")
-        print("  Stufe 2 und Stufe 3 sind Byte für Byte gleich, und der")
-        print("  selbst erzeugte Compiler übersetzt korrekte Programme.")
-        print("  Der TB-32 kann seinen eigenen Compiler ohne den Mac herstellen.")
+        print(f"{GRUEN}  BOOTSTRAPPING PASSED{WEG}")
+        print("  Stage 2 and stage 3 are byte-for-byte identical, and the")
+        print("  self-built compiler compiles correct programs.")
+        print("  The TB-32 can produce its own compiler without the Mac.")
     else:
-        print(f"{ROT}  Bootstrapping noch nicht erreicht.{WEG}")
+        print(f"{ROT}  Bootstrapping not yet achieved.{WEG}")
         if not identisch:
-            print("  Stufe 2 und Stufe 3 unterscheiden sich.")
+            print("  Stage 2 and stage 3 differ.")
         if not laeuft:
-            print("  Der erzeugte Compiler liefert kein lauffähiges Programm.")
+            print("  The built compiler does not produce a working program.")
 
     pc.m.shutdown()
     return 0 if (identisch and laeuft) else 1

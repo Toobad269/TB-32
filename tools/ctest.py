@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
 """
-Schnelltest für den C-Compiler: übersetzt ein C-Programm, lädt es direkt in
-den RAM der virtuellen CPU und führt main() aus. Ausgegeben wird der
-Rückgabewert und alles, was das Programm über putchar() geschrieben hat.
+Quick test for the C compiler: compiles a C program, loads it directly into
+the virtual CPU's RAM and runs main(). Prints the return value and
+everything the program wrote via putchar().
 
     python3 tools/ctest.py test.c
-    python3 tools/ctest.py --selftest        (eingebaute Testfälle)
+    python3 tools/ctest.py --selftest        (built-in test cases)
 """
 
 import os
@@ -28,7 +28,7 @@ __start:
     call main
     brk
 
-; --- Minimale Laufzeitbibliothek für die Tests ---
+; --- Minimal runtime library for the tests ---
 putchar:
     out P_DEBUG, r1
     ret
@@ -79,15 +79,15 @@ def run_c(source, max_steps=20_000_000, dump_asm=False):
 
 
 TESTS = [
-    ("Rechnen", """
+    ("Arithmetic", """
      int main() { return 2 + 3 * 4 - 6 / 2; }
      """, 11),
 
-    ("Schleife", """
+    ("Loop", """
      int main() { int i; int s; s = 0; for (i = 1; i <= 10; i++) s += i; return s; }
      """, 55),
 
-    ("Funktionen + Rekursion", """
+    ("Functions + Recursion", """
      int fak(int n) { if (n <= 1) return 1; return n * fak(n - 1); }
      int main() { return fak(7); }
      """, 5040),
@@ -100,7 +100,7 @@ TESTS = [
      }
      """, 2550),
 
-    ("Zeiger und Arrays", """
+    ("Pointers and Arrays", """
      int arr[8];
      int main() {
         int i; int* p;
@@ -110,7 +110,7 @@ TESTS = [
      }
      """, 25 + 9 + 49),
 
-    ("Zeichenketten", """
+    ("Strings", """
      char buf[16];
      int strlen(char* s) { int n; n = 0; while (*s) { n++; s++; } return n; }
      int main() {
@@ -122,7 +122,7 @@ TESTS = [
      }
      """, 1005),
 
-    ("Logik und Vergleiche", """
+    ("Logic and Comparisons", """
      int main() {
         int a; int b; a = 5; b = 12;
         return (a < b) * 1 + (a == 5 && b > 10) * 10 + (a > b || b == 12) * 100
@@ -130,20 +130,20 @@ TESTS = [
      }
      """, 11111),
 
-    ("Bitoperationen", """
+    ("Bit Operations", """
      int main() {
         int x; x = 0xF0;
         return ((x >> 4) | 0x100) + (x & 0x30) + (x ^ 0xFF) + (~0 & 7) + (1 << 5);
      }
      """, (0xF0 >> 4 | 0x100) + (0xF0 & 0x30) + (0xF0 ^ 0xFF) + 7 + 32),
 
-    ("Globale Variablen mit Startwert", """
+    ("Global Variables with Initial Value", """
      int zaehler = 100;
      char text[4] = {65, 66, 67, 0};
      int main() { zaehler += text[0] + text[2]; return zaehler; }
      """, 100 + 65 + 67),
 
-    ("Zeiger auf Zeiger / Funktionszeiger", """
+    ("Pointer to Pointer / Function Pointer", """
      int verdopple(int x) { return x * 2; }
      int anwenden(int f, int wert) { int* q; return wert; }
      int main() {
@@ -154,7 +154,7 @@ TESTS = [
      }
      """, 42),
 
-    ("Ausgabe", """
+    ("Output", """
      int putchar(int c);
      int main() {
         char* s; s = "Compiler laeuft!";
@@ -174,15 +174,15 @@ def selftest():
             got = r0 if r0 < 0x80000000 else r0 - 0x100000000
             if got == expect:
                 print(f"  [OK]     {name:38s} = {got}"
-                      + (f"   Ausgabe: {out}" if out else ""))
+                      + (f"   Output: {out}" if out else ""))
                 ok += 1
             else:
-                print(f"  [FEHLER] {name:38s} = {got}, erwartet {expect}")
+                print(f"  [FAILED] {name:38s} = {got}, expected {expect}")
         except (CompileError, AsmError) as e:
-            print(f"  [FEHLER] {name:38s} {e}")
+            print(f"  [FAILED] {name:38s} {e}")
         except Exception as e:
-            print(f"  [ABSTURZ]{name:38s} {type(e).__name__}: {e}")
-    print(f"\n{ok}/{len(TESTS)} Tests bestanden")
+            print(f"  [CRASH]  {name:38s} {type(e).__name__}: {e}")
+    print(f"\n{ok}/{len(TESTS)} tests passed")
     return 0 if ok == len(TESTS) else 1
 
 
@@ -194,9 +194,9 @@ def main():
     r0, out, cpu, steps = run_c(src, dump_asm="--asm" in sys.argv)
     for line in out:
         print(line)
-    print(f"--- Rückgabe: {r0} ({steps:,} Befehle)")
+    print(f"--- Return value: {r0} ({steps:,} instructions)")
     if cpu.last_fault:
-        print("Fehler:", cpu.last_fault)
+        print("Error:", cpu.last_fault)
     return 0
 
 

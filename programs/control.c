@@ -1,12 +1,12 @@
 /* ==========================================================================
-   CONTROL PANEL  --  die Hardware-Einstellungen, als eigenes Programm
+   CONTROL PANEL  --  the hardware settings, as its own program
 
-   Takt, POST-Piepser, Schnellstart, Meldungen, Luefter. Alles davon steht in
-   der Knopfzelle (CMOS) oder in einem Port -- beides erreicht ein Programm
-   unmittelbar, denn Ports sind auf dem TB-32 nicht geschuetzt. Deshalb
-   brauchte dieser Umzug keinen einzigen neuen Systemaufruf.
+   Clock speed, POST beeper, quick boot, messages, fan. All of it lives in
+   the coin-cell battery (CMOS) or in a port -- a program reaches both
+   directly, since ports on the TB-32 are not protected. That's why this
+   move didn't need a single new system call.
 
-   Uebersetzen auf dem Geraet selbst:  CC CONTROL.C
+   Compile on the device itself:  CC CONTROL.C
    ========================================================================== */
 
 #include "proglib.c"
@@ -101,9 +101,9 @@ void app_control(int w) {
 
     gx_text(x, y + 92, "Click a row to change the value.", C_WINDARK, 256);
     p_knopf(x, y + 104, 96, 16, "Save to CMOS", 0);
-    /* Ohne Rueckmeldung weiss niemand, ob der Klick angekommen ist -- die
-       Werte sehen vorher und nachher gleich aus. Die Meldung verschwindet
-       von selbst, weil das Fenster sich jede Sekunde auffrischt. */
+    /* Without feedback nobody would know whether the click registered --
+       the values look the same before and after. The message disappears
+       on its own because the window refreshes every second. */
     if (ctrl_gesichert > 0) {
         if (ticks() - ctrl_gesichert < 300)
             gx_text(x + 104, y + 108, "Saved", C_GOOD, 256);
@@ -119,9 +119,9 @@ void control_click(int w, int mx, int my) {
     int y; int zeile; int v;
     y = 8;
 
-    /* Auch die Breite pruefen. Vorher stand hier nur die Zeile, und ein
-       Klick irgendwo daneben -- etwa auf die Temperaturanzeige rechts --
-       schrieb das CMOS. */
+    /* Also check the width. Before, only the row was checked here, and a
+       click anywhere else on that row -- for example on the temperature
+       display to the right -- would write to the CMOS. */
     if (my >= y + 104 && my < y + 120) {
         if (mx >= 8 && mx < 8 + 96) {
             cmos_set(0x3F, 1);
@@ -140,7 +140,7 @@ void control_click(int w, int mx, int my) {
     if (zeile == 1) cmos_set(0x12, 1 - cmos_get(0x12));
     if (zeile == 2) cmos_set(0x11, 1 - cmos_get(0x11));
     if (zeile == 3) cmos_set(0x15, 1 - cmos_get(0x15));
-    if (zeile == 4) {                            /* Lüftermodus umschalten */
+    if (zeile == 4) {                            /* Cycle fan mode */
         v = portin(P_FANMODE) + 1;
         if (v > 2) v = 0;
         portout(P_FANMODE, v);
@@ -152,7 +152,7 @@ int main() {
     int art; int laufen;
 
     if (fenster_neu("Control Panel", 340, 200) < 0) {
-        print("Braucht den Schreibtisch -- erst WIN eingeben.\n");
+        print("Needs the desktop -- type WIN first.\n");
         return 1;
     }
     laufen = 1;
@@ -164,7 +164,7 @@ int main() {
         fenster_malziel();
         app_control(0);
         fenster_fertig();
-        if (art == FE_NICHTS) sleep(50);      /* Temperatur laeuft mit */
+        if (art == FE_NICHTS) sleep(50);      /* Temperature keeps updating */
     }
     fenster_zu();
     return 0;

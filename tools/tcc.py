@@ -2,24 +2,24 @@
 """
 TCC -- Toobad C Compiler
 
-Uebersetzt eine C-aehnliche Sprache in TB-32-Assembler. Damit kann ich den
-Kernel und die Programme in einer Hochsprache schreiben statt in Assembler.
+Compiles a C-like language into TB-32 assembler. This lets me write the
+kernel and programs in a high-level language instead of assembler.
 
-Aufbau wie bei jedem echten Compiler:
-    1. LEXER   -- Text in Wortbausteine (Token) zerlegen
-    2. PARSER  -- daraus einen Syntaxbaum bauen
-    3. CODEGEN -- den Baum in Assembler-Befehle uebersetzen
+Structured like any real compiler:
+    1. LEXER   -- split text into tokens
+    2. PARSER  -- build a syntax tree from them
+    3. CODEGEN -- translate the tree into assembler instructions
 
-Sprachumfang (bewusst klein, aber vollstaendig genug fuer ein Betriebssystem):
-    Typen:        int (32 Bit), char (8 Bit), Zeiger (int*, char*), Arrays
-    Anweisungen:  if/else, while, for, return, break, continue, Bloecke
-    Ausdruecke:   + - * / %  == != < <= > >=  && || !  & | ^ ~ << >>
-                  Zuweisung (auch += -= *= usw.), ++/--, ?:
-                  Funktionsaufrufe, Adresse-von (&x), Dereferenzierung (*p)
-    Sonstiges:    globale Variablen, Arrays, Strings, asm("..."), Kommentare
+Language scope (deliberately small, but complete enough for an OS):
+    Types:        int (32 bit), char (8 bit), pointers (int*, char*), arrays
+    Statements:   if/else, while, for, return, break, continue, blocks
+    Expressions:  + - * / %  == != < <= > >=  && || !  & | ^ ~ << >>
+                  assignment (also += -= *= etc.), ++/--, ?:
+                  function calls, address-of (&x), dereference (*p)
+    Other:        global variables, arrays, strings, asm("..."), comments
 
-Aufruf:
-    python3 tools/tcc.py quelle.c ziel.asm
+Usage:
+    python3 tools/tcc.py source.c target.asm
 """
 
 import re
@@ -85,7 +85,7 @@ def tokenize(text):
     while pos < len(text):
         m = TOKEN_RE.match(text, pos)
         if not m:
-            raise CompileError(f"Zeile {line}: unbekanntes Zeichen '{text[pos]}'")
+            raise CompileError(f"Line {line}: unknown character '{text[pos]}'")
         pos = m.end()
         kind, val = m.lastgroup, m.group()
         if kind == "NEWLINE":
@@ -103,7 +103,7 @@ def tokenize(text):
 
 
 # ---------------------------------------------------------------------------
-# 2. PARSER -> Syntaxbaum (einfache Tupel: (art, ...))
+# 2. PARSER -> syntax tree (simple tuples: (kind, ...))
 # ---------------------------------------------------------------------------
 
 class Parser:
@@ -132,9 +132,9 @@ class Parser:
     def expect(self, value):
         if not self.accept(value):
             t = self.peek()
-            raise CompileError(f"Zeile {t.line}: '{value}' erwartet, gefunden '{t.value}'")
+            raise CompileError(f"Line {t.line}: expected '{value}', found '{t.value}'")
 
-    # -- Programm ----------------------------------------------------------
+    # -- Program -------------------------------------------------------
 
     def parse(self):
         decls = []
@@ -143,7 +143,7 @@ class Parser:
         return decls
 
     def type_name(self):
-        """Liest einen Typ:  int / char / void, danach beliebig viele '*'."""
+        """Reads a type:  int / char / void, followed by any number of '*'."""
         t = self.peek()
         if t.kind != "KEYWORD" or t.value not in ("int", "char", "void", "unsigned"):
             return None
@@ -163,12 +163,12 @@ class Parser:
         typ = self.type_name()
         if typ is None:
             t = self.peek()
-            raise CompileError(f"Zeile {t.line}: Typ erwartet, gefunden '{t.value}'")
+            raise CompileError(f"Line {t.line}: expected type, found '{t.value}'")
         name = self.next()
         if name.kind != "NAME":
-            raise CompileError(f"Zeile {name.line}: Name erwartet, gefunden '{name.value}'")
+            raise CompileError(f"Line {name.line}: expected name, found '{name.value}'")
 
-        if self.at("("):                             # --- Funktion ---
+        if self.at("("):                             # --- function ---
             self.next()
             params = []
             if not self.accept(")"):
@@ -176,7 +176,7 @@ class Parser:
                     ptyp = self.type_name()
                     if ptyp is None:
                         t = self.peek()
-                        raise CompileError(f"Zeile {t.line}: Parametertyp erwartet")
+                        raise CompileError(f"Line {t.line}: expected parameter type")
                     pname = self.next().value
                     params.append((ptyp, pname))
                     if not self.accept(","):
@@ -187,7 +187,7 @@ class Parser:
             body = self.block()
             return ("func", typ, name.value, params, body)
 
-        # --- globale Variable, evtl. Array oder mit Startwert ---
+        # --- global variable, possibly an array or with an initial value ---
         size = None
         if self.accept("["):
             if not self.at("]"):
@@ -211,7 +211,7 @@ class Parser:
     def const_expr(self):
         return self.assignment()
 
-    # -- Anweisungen -------------------------------------------------------
+    # -- Statements ------------------------------------------------------
 
     def block(self):
         self.expect("{")
@@ -260,14 +260,14 @@ class Parser:
             self.expect("(")
             code = self.next()
             if code.kind != "STRING":
-                raise CompileError(f"Zeile {t.line}: asm() braucht einen Text")
+                raise CompileError(f"Line {t.line}: asm() needs a string")
             self.expect(")")
             self.expect(";")
             return ("asm", code.value[1:-1])
         if self.accept(";"):
             return ("block", [])
 
-        # lokale Variable?
+        # local variable?
         if t.kind == "KEYWORD" and t.value in ("int", "char", "void", "unsigned"):
             return self.local_decl()
 
@@ -281,7 +281,7 @@ class Parser:
         while True:
             name = self.next()
             if name.kind != "NAME":
-                raise CompileError(f"Zeile {name.line}: Variablenname erwartet")
+                raise CompileError(f"Line {name.line}: expected variable name")
             size = None
             if self.accept("["):
                 size = self.const_expr()
@@ -296,7 +296,7 @@ class Parser:
     def simple_statement(self):
         return ("expr", self.expression())
 
-    # -- Ausdruecke (nach Vorrang gestaffelt) ------------------------------
+    # -- Expressions (staged by precedence) -------------------------------
 
     def expression(self):
         e = self.assignment()
@@ -420,7 +420,7 @@ class Parser:
                 self.next()
                 return ("preinc", self.unary(), -1)
             if t.value == "(":
-                # Typumwandlung?  (char*)x
+                # Type cast?  (char*)x
                 save = self.i
                 self.next()
                 typ = self.type_name()
@@ -483,27 +483,27 @@ class Parser:
             e = self.expression()
             self.expect(")")
             return e
-        raise CompileError(f"Zeile {t.line}: unerwartet '{t.value}'")
+        raise CompileError(f"Line {t.line}: unexpected '{t.value}'")
 
 
 # ---------------------------------------------------------------------------
-# 3. CODEGEN -- Syntaxbaum -> TB-32-Assembler
+# 3. CODEGEN -- syntax tree -> TB-32 assembler
 #
-# Aufrufkonvention:
-#   Argumente in r1..r5 (weitere auf dem Stack), Rueckgabe in r0.
-#   r6..r9 muessen erhalten bleiben, r10..r12 sind frei.
-#   Jede Funktion baut sich einen Rahmen mit fp (r14).
+# Calling convention:
+#   Arguments in r1..r5 (further ones on the stack), return value in r0.
+#   r6..r9 must be preserved, r10..r12 are free.
+#   Every function builds its own frame with fp (r14).
 #
-# Auswertung: Das Ergebnis eines Ausdrucks landet IMMER in r0. Braucht ein
-# Operator zwei Werte, wird der linke solange auf den Stack gelegt.
+# Evaluation: the result of an expression ALWAYS ends up in r0. If an
+# operator needs two values, the left one is pushed onto the stack meanwhile.
 # ---------------------------------------------------------------------------
 
 class Codegen:
     def __init__(self):
         self.out = []
-        self.globals = {}          # name -> (typ, groesse in bytes, ist_array)
+        self.globals = {}          # name -> (typ, size in bytes, is_array)
         self.funcs = set()
-        self.func_types = {}       # name -> Rückgabetyp, für  f()[i]  und  *f()
+        self.func_types = {}       # name -> return type, for  f()[i]  and  *f()
         self.strings = []
         self.locals = {}
         self.local_types = {}
@@ -522,13 +522,13 @@ class Codegen:
         self.label_n += 1
         return f".{hint}{self.label_n}"
 
-    # -- Typhilfen ---------------------------------------------------------
+    # -- Type helpers ------------------------------------------------------
 
     def is_pointer(self, typ):
         return typ is not None and typ[1] > 0
 
     def elem_size(self, typ):
-        """Groesse dessen, worauf ein Zeiger zeigt."""
+        """Size of whatever a pointer points to."""
         if typ is None:
             return 4
         base, stars = typ
@@ -539,12 +539,12 @@ class Codegen:
     def var_size(self, typ):
         return 1 if (typ[0] == "char" and typ[1] == 0) else 4
 
-    # -- Hauptlauf ---------------------------------------------------------
+    # -- Main pass -----------------------------------------------------
 
     def compile(self, decls):
-        self.out.append("; --- vom Toobad C Compiler erzeugt ---")
+        self.out.append("; --- generated by the Toobad C Compiler ---")
 
-        for d in decls:                             # erst alles anmelden
+        for d in decls:                             # register everything first
             if d[0] == "func":
                 self.funcs.add(d[2])
                 self.func_types[d[2]] = d[1]
@@ -572,13 +572,13 @@ class Codegen:
             a, b = self.const_value(node[2]), self.const_value(node[3])
             return {"+": a + b, "-": a - b, "*": a * b,
                     "/": a // b if b else 0}[node[1]]
-        raise CompileError("Konstante erwartet (Arraygroesse muss fest sein)")
+        raise CompileError("Expected a constant (array size must be fixed)")
 
-    # -- Datenbereich ------------------------------------------------------
+    # -- Data section ----------------------------------------------------
 
     def gen_data(self, decls):
         self.out.append("")
-        self.out.append("; --- Daten ---")
+        self.out.append("; --- Data ---")
         for i, chars in enumerate(self.strings):
             self.out.append(f"__str{i}:")
             body = ", ".join(str(c) for c in chars)
@@ -605,7 +605,7 @@ class Codegen:
                 self.out.append(f"    .dw {self.const_value(init)}")
             self.out.append("    .align 4")
 
-    # -- Funktionen --------------------------------------------------------
+    # -- Functions -------------------------------------------------------
 
     def gen_func(self, d):
         _, typ, name, params, body = d
@@ -653,7 +653,7 @@ class Codegen:
         self.emit("ret")
 
     def collect_locals(self, node):
-        """Alle lokalen Variablen einsammeln und im Rahmen platzieren."""
+        """Collect all local variables and place them in the frame."""
         if not isinstance(node, tuple):
             return
         if node[0] == "localdecl":
@@ -678,7 +678,7 @@ class Codegen:
                     if isinstance(y, tuple):
                         self.collect_locals(y)
 
-    # -- Anweisungen -------------------------------------------------------
+    # -- Statements ------------------------------------------------------
 
     def gen_stmt(self, node):
         kind = node[0]
@@ -761,12 +761,12 @@ class Codegen:
 
         elif kind == "break":
             if not self.loops:
-                raise CompileError("break ausserhalb einer Schleife")
+                raise CompileError("break outside a loop")
             self.emit(f"jmp {self.loops[-1][1]}")
 
         elif kind == "continue":
             if not self.loops:
-                raise CompileError("continue ausserhalb einer Schleife")
+                raise CompileError("continue outside a loop")
             self.emit(f"jmp {self.loops[-1][0]}")
 
         elif kind == "asm":
@@ -775,9 +775,9 @@ class Codegen:
                     self.emit(line.strip())
 
         else:
-            raise CompileError(f"unbekannte Anweisung {kind}")
+            raise CompileError(f"unknown statement {kind}")
 
-    # -- Bedingungen: springt nach <label>, wenn Bedingung falsch (want=False)
+    # -- Conditions: jumps to <label> if the condition is false (want=False)
 
     def gen_cond(self, node, label, want_true):
         if node[0] == "cmp":
@@ -824,7 +824,7 @@ class Codegen:
         self.emit("cmpi r0, 0")
         self.emit(f"{'jnz' if want_true else 'jz'} {label}")
 
-    # -- Ausdruecke: Ergebnis landet in r0 --------------------------------
+    # -- Expressions: result ends up in r0 --------------------------------
 
     def gen_expr(self, node):
         kind = node[0]
@@ -846,7 +846,7 @@ class Codegen:
             if name in self.locals:
                 off = self.locals[name]
                 if self.local_types.get("__arr__" + name):
-                    self.emit(f"addi r0, fp, {off}")        # Array = Adresse
+                    self.emit(f"addi r0, fp, {off}")        # array = address
                 else:
                     typ = self.local_types[name]
                     ld = "ldb" if self.var_size(typ) == 1 else "ldw"
@@ -861,7 +861,7 @@ class Codegen:
             elif name in self.funcs:
                 self.emit(f"li r0, {name}")
             else:
-                raise CompileError(f"unbekannte Variable '{name}'")
+                raise CompileError(f"unknown variable '{name}'")
 
         elif kind == "addr":
             self.gen_addr(node[1])
@@ -923,7 +923,7 @@ class Codegen:
 
         elif kind == "bin":
             _, op, a, b = node
-            # Zeigerarithmetik:  p + 1  ->  p + sizeof(*p)
+            # Pointer arithmetic:  p + 1  ->  p + sizeof(*p)
             scale = 1
             ta = self.type_of(a)
             if op in ("+", "-") and self.is_pointer(ta):
@@ -986,14 +986,14 @@ class Codegen:
             self.gen_expr(node[2])
 
         else:
-            raise CompileError(f"unbekannter Ausdruck {kind}")
+            raise CompileError(f"unknown expression {kind}")
 
     def gen_call(self, node):
         _, target, args = node
         for a in reversed(args[5:]):
             self.gen_expr(a)
             self.emit("push r0")
-        # die ersten fuenf Argumente in r1..r5
+        # the first five arguments go into r1..r5
         for i, a in enumerate(args[:5]):
             self.gen_expr(a)
             self.emit("push r0")
@@ -1010,7 +1010,7 @@ class Codegen:
             self.emit(f"addi sp, sp, {4 * (len(args) - 5)}")
 
     def gen_addr(self, node):
-        """Adresse eines Ziels nach r0."""
+        """Address of a target, into r0."""
         if node[0] == "var":
             name = node[1]
             if name in self.locals:
@@ -1020,7 +1020,7 @@ class Codegen:
             elif name in self.funcs:
                 self.emit(f"li r0, {name}")
             else:
-                raise CompileError(f"unbekannte Variable '{name}'")
+                raise CompileError(f"unknown variable '{name}'")
         elif node[0] == "index":
             base, idx = node[1], node[2]
             typ = self.type_of(base)
@@ -1036,10 +1036,10 @@ class Codegen:
         elif node[0] == "deref":
             self.gen_expr(node[1])
         else:
-            raise CompileError("dieser Ausdruck hat keine Adresse")
+            raise CompileError("this expression has no address")
 
     def store_to(self, target):
-        """Speichert r0 in das Ziel (r0 bleibt erhalten)."""
+        """Stores r0 into the target (r0 is preserved)."""
         if target[0] == "var":
             name = target[1]
             if name in self.locals:
@@ -1052,9 +1052,9 @@ class Codegen:
                 st = "stba" if self.var_size(typ) == 1 else "stwa"
                 self.emit(f"{st} {name}, r0")
                 return
-            raise CompileError(f"unbekannte Variable '{name}'")
+            raise CompileError(f"unknown variable '{name}'")
 
-        # Ziel ist ein Speicherplatz: Adresse berechnen, ohne r0 zu verlieren
+        # Target is a memory location: compute the address without losing r0
         self.emit("push r0")
         self.gen_addr(target)
         self.emit("mov r11, r0")
@@ -1064,7 +1064,7 @@ class Codegen:
         st = "stb" if esz == 1 else "stw"
         self.emit(f"{st} [r11], r0")
 
-    # -- ganz einfache Typermittlung (reicht fuer Zeigerarithmetik) --------
+    # -- very simple type inference (enough for pointer arithmetic) -------
 
     def type_of(self, node):
         if not isinstance(node, tuple):
@@ -1096,8 +1096,8 @@ class Codegen:
         if node[0] == "assign":
             return self.type_of(node[2])
         if node[0] == "call":
-            # Rückgabetyp der gerufenen Funktion -- sonst würde  f()[i]
-            # den Index falsch skalieren, wenn f() ein char* liefert.
+            # Return type of the called function -- otherwise f()[i]
+            # would scale the index incorrectly when f() returns a char*.
             t = node[1]
             if t[0] == "var" and t[1] in self.func_types:
                 return self.func_types[t[1]]
@@ -1107,12 +1107,12 @@ class Codegen:
 # ---------------------------------------------------------------------------
 
 def zeilen_im_kommentar(text):
-    """Fuer jede Zeile: faengt sie mitten in einem /* ... */ an?
+    """For each line: does it start in the middle of a /* ... */ comment?
 
-    Der Praeprozessor arbeitet zeilenweise und wuerde sonst ein '#' auch dann
-    fuer eine Anweisung halten, wenn es nur in einem Kommentar steht. Genau das
-    hat einmal eine Zeile geloescht, in der das schliessende '*/' stand -- der
-    Kommentar blieb offen und hat den nachfolgenden echten Quelltext gefressen.
+    The preprocessor works line by line and would otherwise treat a '#' as
+    a directive even when it's only sitting inside a comment. That's exactly
+    what once deleted a line containing the closing '*/' -- the comment
+    stayed open and swallowed the real source code that followed.
     """
     drin = []
     block = False
@@ -1130,12 +1130,12 @@ def zeilen_im_kommentar(text):
                     i += 1
                 continue
             if c == "/" and i + 1 < n and ln[i + 1] == "/":
-                break                            # Zeilenkommentar
+                break                            # line comment
             if c == "/" and i + 1 < n and ln[i + 1] == "*":
                 block = True
                 i += 2
                 continue
-            if c == '"' or c == "'":              # Text- oder Zeichenkonstante
+            if c == '"' or c == "'":              # string or char constant
                 ende = c
                 i += 1
                 while i < n:
@@ -1152,8 +1152,8 @@ def zeilen_im_kommentar(text):
 
 
 def compile_source(text, includes_dir=None):
-    # #include "datei.c" einfach hineinkopieren -- ein echter Praeprozessor
-    # ist fuer unsere Zwecke nicht noetig.
+    # #include "file.c" is simply pasted in -- a real preprocessor isn't
+    # necessary for our purposes.
     if includes_dir:
         seen = set()
         changed = True
@@ -1174,26 +1174,26 @@ def compile_source(text, includes_dir=None):
                     lines.append(ln)
             text = "\n".join(lines)
 
-    # Sehr einfacher Präprozessor: #define NAME wert  (reine Textersetzung)
+    # Very simple preprocessor: #define NAME value  (plain text substitution)
     defines = {}
     lines = []
     kommentar = zeilen_im_kommentar(text)
     for nr, ln in enumerate(text.splitlines()):
-        if kommentar[nr]:                        # '#' im Kommentar ist keins
+        if kommentar[nr]:                        # a '#' inside a comment doesn't count
             lines.append(ln)
             continue
         m = re.match(r"^\s*#define\s+([A-Za-z_]\w*)\s*(.*)$", ln)
         if m:
-            # Einen abschliessenden Kommentar NICHT mit in den Wert nehmen.
+            # Do NOT include a trailing comment in the value.
             #
-            #   #define SRC_BUF 0x280000    /* Quelltext, bis 64 KB */
+            #   #define SRC_BUF 0x280000    /* source code, up to 64 KB */
             #
-            # Ohne diese Zeile ist der Wert von SRC_BUF die Zahl *samt*
-            # Kommentar. Wer den Namen dann irgendwo in einem Kommentar
-            # erwaehnt, bekommt ein `*/` mitten hineingesetzt -- der
-            # Kommentar endet dort, und der Rest des Satzes wird als
-            # Quelltext gelesen. Der Fehler zeigt dann auf eine voellig
-            # harmlose Prosazeile.
+            # Without this, the value of SRC_BUF would be the number *plus*
+            # the comment. If that name is then mentioned anywhere inside a
+            # comment, a `*/` ends up planted in the middle of it -- the
+            # comment ends there, and the rest of the sentence gets read as
+            # source code. The resulting error then points at a completely
+            # harmless line of prose.
             wert = m.group(2)
             schnitt = wert.find("/*")
             if schnitt >= 0:
@@ -1208,7 +1208,7 @@ def compile_source(text, includes_dir=None):
         else:
             lines.append(ln)
     text = "\n".join(lines)
-    for _ in range(4):                       # verschachtelte Makros auflösen
+    for _ in range(4):                       # resolve nested macros
         before = text
         for name, val in defines.items():
             text = re.sub(rf"\b{re.escape(name)}\b", val, text)
@@ -1222,7 +1222,7 @@ def compile_source(text, includes_dir=None):
 
 def main():
     if len(sys.argv) < 3:
-        print("Aufruf: tcc.py quelle.c ziel.asm")
+        print("Usage: tcc.py source.c target.asm")
         return 1
     src, dst = sys.argv[1], sys.argv[2]
     with open(src, encoding="utf-8") as f:
@@ -1230,11 +1230,11 @@ def main():
     try:
         asm = compile_source(text, os.path.dirname(os.path.abspath(src)))
     except CompileError as e:
-        print(f"FEHLER in {src}: {e}")
+        print(f"ERROR in {src}: {e}")
         return 1
     with open(dst, "w", encoding="utf-8") as f:
         f.write(asm)
-    print(f"{src} -> {dst}  ({len(asm.splitlines())} Zeilen Assembler)")
+    print(f"{src} -> {dst}  ({len(asm.splitlines())} lines of assembler)")
     return 0
 
 

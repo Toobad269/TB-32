@@ -1,114 +1,116 @@
 # TB-LOCK
 
-Das serienmäßige TOOBAD BIOS, erweitert um genau eine Sache: **ein Passwort
-vor dem Setup.** Ohne das Passwort kommt niemand mehr an Takt, Bootgerät,
-Secure Boot oder den Flash-Knopf.
+The stock TOOBAD BIOS, extended by exactly one thing: **a password in
+front of Setup.** Without the password, nobody gets at clock speed,
+boot device, Secure Boot, or the flash button anymore.
 
 ```bash
-python3 "Custom BIOS/TB-LOCK/bauen.py"      # baut TB-LOCK.bin
-python3 "Custom BIOS/TB-LOCK/pruefen.py"    # 27 Prüfungen auf der echten Maschine
+python3 "Custom BIOS/TB-LOCK/bauen.py"      # builds TB-LOCK.bin
+python3 "Custom BIOS/TB-LOCK/pruefen.py"    # 27 checks on the real machine
 ```
 
-Aufspielen: **DEL → Firmware → Flash BIOS from File**, dann `TB-LOCK.bin`
-auswählen und den Rechner aus- und wieder einschalten.
+Installing it: **DEL → Firmware → Flash BIOS from File**, then select
+`TB-LOCK.bin` and power the machine off and back on.
 
-## Wie es sich bedient
+## How it's used
 
-Im Setup gibt es einen neuen Reiter **Password** zwischen *Security* und
-*Firmware*:
+Setup gets a new tab, **Password**, between *Security* and *Firmware*:
 
-| Zeile | |
+| Row | |
 |---|---|
-| **Supervisor Password** | zeigt `Installed` oder `Not Installed` |
-| **Set / Change Password** | einrichten oder ändern |
-| **Clear Password** | wieder abschaffen |
+| **Supervisor Password** | shows `Installed` or `Not Installed` |
+| **Set / Change Password** | set up or change it |
+| **Clear Password** | remove it again |
 
-**Einrichten:** ENTER auf *Set / Change Password*, das neue Passwort eintippen,
-ENTER, dasselbe noch einmal, ENTER. Stimmen die beiden Eingaben nicht überein,
-passiert nichts — man sperrt sich also nicht mit einem Tippfehler aus. Ein
-leeres Passwort wird abgelehnt.
+**Setting it up:** ENTER on *Set / Change Password*, type the new
+password, ENTER, type it again, ENTER. If the two entries don't match,
+nothing happens — so you can't lock yourself out with a typo. An empty
+password is rejected.
 
-**Ändern:** dieselbe Zeile. Es kommt zuerst das alte Passwort dran, danach
-zweimal das neue.
+**Changing it:** the same row. It first asks for the old password,
+then twice for the new one.
 
-**Löschen:** *Clear Password*, dann das aktuelle Passwort. Danach steht das
-Setup wieder offen.
+**Clearing it:** *Clear Password*, then the current password. After
+that, Setup is open again.
 
-Ein gesetztes Passwort gilt **sofort und dauerhaft** — es wird nicht erst mit
-F10 bestätigt, und ESC („Exit Without Saving") nimmt es nicht zurück. Wer es
-gerade zweimal eingetippt hat, erwartet, dass es gilt.
+A password that's set takes effect **immediately and permanently** — it
+isn't confirmed with F10 first, and ESC ("Exit Without Saving") doesn't
+undo it. If you've just typed it in twice, you expect it to stick.
 
-**Beim Start:** `DEL` oder `F2` führen nicht mehr direkt ins Setup, sondern an
-ein Fenster *BIOS Setup is locked*. Drei Fehlversuche, dann bleibt das Setup
-zu und der Rechner startet normal weiter. Das Passwort erscheint als Sterne.
+**At boot:** `DEL` or `F2` no longer go straight into Setup; instead you
+land at a *BIOS Setup is locked* window. Three failed attempts, and
+Setup stays locked while the machine continues booting normally. The
+password shows up as asterisks.
 
-## Was geändert wurde
+## What was changed
 
-Vier der fünf Dateien sind Kopien aus `firmware/`. Neu ist nur `passwort.asm`;
-in den anderen stehen wenige Zeilen mehr.
+Four of the five files are copies from `firmware/`. Only
+`passwort.asm` is new; the others have a handful of extra lines.
 
-| Datei | |
+| File | |
 |---|---|
-| `passwort.asm` | **neu** — Eingabe, Prüfsumme, Tor, die beiden Knöpfe |
-| `bios.asm` | drei Zeilen: Name im Kopf, zweimal `setup_tor` statt `setup_main`, ein `.include` |
-| `setup.asm` | der Reiter *Password*, drei `REG_`-Nummern, zwei Verteilerzweige |
+| `passwort.asm` | **new** — input, checksum, gate, the two buttons |
+| `bios.asm` | three lines: name in the header, `setup_tor` instead of `setup_main` in two places, one `.include` |
+| `setup.asm` | the *Password* tab, three `REG_` numbers, two dispatch branches |
 | `const.inc` | `CM_PWFLAG`, `CM_PWSUM0..3`, `PW_BUF1/2` |
-| `video.asm` | unverändert |
+| `video.asm` | unchanged |
 
-### Warum das Tor an **zwei** Stellen steht
+### Why the gate sits in **two** places
 
-`setup_main` wurde im Original an zwei Stellen gerufen: beim normalen `DEL`
-während der Bedenkzeit — und vom **roten Secure-Boot-Bildschirm** aus, wenn
-das Startabbild nicht mehr das bekannte ist. Genau dort liegt der Knopf
-*Trust Current Boot Image*.
+`setup_main` was originally called from two places: on a normal `DEL`
+during the grace period — and from the **red Secure Boot screen**, when
+the boot image is no longer the known one. That's exactly where the
+*Trust Current Boot Image* button lives.
 
-Wäre nur der erste Weg bewacht, gäbe es eine offene Hintertür: Startabbild
-absichtlich kaputtmachen, roter Bildschirm, `DEL`, Setup ohne Passwort. Beide
-Wege gehen deshalb über `setup_tor`. `pruefen.py` prüft genau das, indem es
-Secure Boot einschaltet, den Bootsektor verändert und dann versucht, über den
-roten Bildschirm hereinzukommen.
+If only the first path were guarded, there'd be an open back door:
+deliberately corrupt the boot image, hit the red screen, `DEL`, Setup
+with no password. Both paths therefore go through `setup_tor`.
+`pruefen.py` tests exactly that, by turning on Secure Boot, tampering
+with the boot sector, and then trying to get in via the red screen.
 
-### Wo das Passwort liegt
+### Where the password lives
 
-In der Knopfzelle: `CM_PWFLAG` (0x20) sagt, ob eines gesetzt ist,
-`CM_PWSUM0..3` (0x21–0x24) halten die Prüfsumme.
+In the coin-cell backed memory: `CM_PWFLAG` (0x20) says whether one is
+set, `CM_PWSUM0..3` (0x21–0x24) hold the checksum.
 
-Die Plätze liegen **oberhalb von 0x1F** — das ist kein Zufall. `setup_backup`
-sichert 0x10–0x1F und spielt es bei ESC zurück; ein Passwort dort wäre beim
-Verlassen ohne Speichern stillschweigend wieder weg. Sie liegen aber
-**unterhalb von 0x2E**, damit die Knopfzelle sie in ihre eigene Prüfsumme
-einrechnet.
+These slots sit **above 0x1F** — that's not a coincidence.
+`setup_backup` saves 0x10–0x1F and restores it on ESC; a password
+stored there would silently vanish again when exiting without saving.
+But they sit **below 0x2E**, so that the checksum computation over the
+CMOS includes them.
 
-`Load Setup Defaults` (F5) rührt sie nicht an — wie bei einem echten Board.
+`Load Setup Defaults` (F5) leaves them alone — just like on a real
+board.
 
-## Zwei ehrliche Einschränkungen
+## Two honest limitations
 
-**Die Knopfzelle.** Das CMOS ist die Datei `disk/cmos.bin`. Wer sie löscht,
-ist das Passwort los. Beim echten Mainboard zieht man dafür die Batterie oder
-steckt den Jumper um — es ist also Originaltreue und kein Fehler. Es heißt
-aber: Das Passwort schützt gegen jemanden **am TB-32**, nicht gegen jemanden
-**am Wirtsrechner**.
+**The coin cell.** The CMOS is the file `disk/cmos.bin`. Delete it, and
+the password is gone. On a real mainboard you'd pull the battery or
+move the jumper for that — so this is faithful to the original, not a
+bug. It does mean, though: the password protects against someone **at
+the TB-32**, not against someone **at the host machine**.
 
-**Die Prüfsumme.** Gerechnet wird `h = h * 31 + Zeichen`, angefangen bei
-`0x1234` — dieselbe Rechnung, die TOOBAD-OS für die Anmeldung benutzt und
-`build.py` für den BIOS-Kopf. Das ist eine **Prüfsumme, keine
-kryptografische Hash-Funktion**: wer die vier Byte aus `cmos.bin` liest,
-findet in Sekunden ein anderes Passwort mit derselben Summe. Dieselbe
-Ehrlichkeit gilt in `Doku/13` für Secure Boot, und aus demselben Grund: das
-Prinzip ist echt, die Fälschungssicherheit nicht.
+**The checksum.** It's computed as `h = h * 31 + character`, starting
+from `0x1234` — the same computation TOOBAD-OS uses for login and
+`build.py` uses for the BIOS header. This is a **checksum, not a
+cryptographic hash function**: anyone reading the four bytes from
+`cmos.bin` can find a different password with the same sum in seconds.
+The same honesty applies in `Doku/13` for Secure Boot, and for the same
+reason: the principle is real, tamper-resistance isn't.
 
-Was es **verlässlich** tut: verhindern, dass jemand im Vorbeigehen den Takt
-verstellt, das Bootgerät ändert, Secure Boot abschaltet oder ein fremdes BIOS
-brennt.
+What it **reliably** does: stop someone from casually changing the
+clock speed, changing the boot device, turning off Secure Boot, or
+flashing a foreign BIOS.
 
-## Eine Falle beim Nachbauen
+## A pitfall when rebuilding this
 
-Befehle sind auf dem TB-32 fest vier Byte breit und werden ab einer durch vier
-teilbaren Adresse geholt. `passwort.asm` wird **nach** `setup.asm` eingebunden,
-und `setup.asm` hört mit seiner Zeichenkettentabelle auf — die endet auf einer
-krummen Adresse. Ohne ein `.align 4` vor dem ersten Befehl fängt der ganze
-Code zwei Byte versetzt an. Der Rechner startet dann noch, der POST läuft
-sauber durch, und beim ersten `DEL` zerlegt es ihn mit *Invalid opcode*.
+Instructions on the TB-32 are a fixed four bytes wide and are fetched
+from an address divisible by four. `passwort.asm` is included **after**
+`setup.asm`, and `setup.asm` ends with its string table — which ends on
+an odd address. Without a `.align 4` before the first instruction, all
+the code that follows starts two bytes off. The machine still boots,
+POST runs cleanly, and on the first `DEL` it falls apart with *Invalid
+opcode*.
 
-Genau so ist es beim ersten Bau passiert. Die Zeile steht jetzt drin und ist
-kommentiert.
+That's exactly what happened on the first build. The line is in there
+now, and it's commented.

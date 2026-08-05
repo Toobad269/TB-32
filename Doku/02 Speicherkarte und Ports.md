@@ -1,187 +1,190 @@
-# Speicherkarte und Ports
+# Memory Map and Ports
 
-**Die wichtigste Seite.** Fast jeder schwer zu findende Fehler im Projekt kam
-von überlappenden Speicherbereichen. Vor jedem neuen Puffer hier nachsehen.
+**The most important page.** Almost every hard-to-find bug in the project
+came from overlapping memory regions. Check here before adding any new
+buffer.
 
-Quelle der Wahrheit: `hardware/isa.py`, `firmware/const.inc`, die `#define`s
-in `system/*.c` und `programs/*.c`.
+Source of truth: `hardware/isa.py`, `firmware/const.inc`, the `#define`s
+in `system/*.c` and `programs/*.c`.
 
-## Adressraum
+## Address space
 
-| Bereich | Was | Wer |
+| Range | What | Owner |
 |---|---|---|
-| `0x00000000`–`0x000003FF` | Interruptvektoren, 256 × 4 Byte | BIOS |
-| `0x00000400`–`0x000004FF` | BIOS-Datenbereich (BDA) | BIOS |
-| `0x00007C00` | Bootsektor wird hierhin geladen | BIOS |
-| `0x00008000` | Eingabezeile der Shell | Kernel |
-| `0x00008200` | **Argumente für Programme** | `prog_setargs` |
-| `0x00010000` | Kernel (aktuell ~157 KB, **Platz bis `0xB0000`**) | Bootloader |
-| `0x0007FFF0` | BIOS-Stack | BIOS |
-| `0x0009FFF0` | Kernel-Stack (= Prozess 0) | `start.asm` |
-| `0x000A0000`–`0x000B0000` | Prozess-Stacks, je 8 KB | `proc.c` |
-| `0x000B0000` | Sektorpuffer | `fs.c` |
-| `0x000B1000` | Verzeichnis im RAM (4 KB) | `fs.c` |
+| `0x00000000`–`0x000003FF` | Interrupt vectors, 256 × 4 bytes | BIOS |
+| `0x00000400`–`0x000004FF` | BIOS data area (BDA) | BIOS |
+| `0x00007C00` | Boot sector is loaded here | BIOS |
+| `0x00008000` | Shell input line | Kernel |
+| `0x00008200` | **Arguments for programs** | `prog_setargs` |
+| `0x00010000` | Kernel (currently ~157 KB, **room up to `0xB0000`**) | Bootloader |
+| `0x0007FFF0` | BIOS stack | BIOS |
+| `0x0009FFF0` | Kernel stack (= process 0) | `start.asm` |
+| `0x000A0000`–`0x000B0000` | Process stacks, 8 KB each | `proc.c` |
+| `0x000B0000` | Sector buffer | `fs.c` |
+| `0x000B1000` | Directory in RAM (4 KB) | `fs.c` |
 | `0x000C0000` | FILEBUF, 64 KB | `fs.c` |
-| `0x000D0000` | ED_BUF — Editortext, 60 KB | `edit.c`, GUI-Editor |
-| `0x00100000`–`0x00114000` | Scrollback-Ringpuffer, 512 Zeilen | BIOS `video.asm` |
-| `0x00114000` | Bildsicherung für den Scrollback-Betrachter | `lib.c` |
-| `0x00120000` | **Terminalfenster-Puffer** 70×22×2 | `term.c` |
-| `0x00124000` | Zurückblätter-Ring des Terminalfensters, 200 Zeilen | `term.c` |
-| `0x00128000` | Mitschnitt der Compilerausgabe, 40 Zeilen | `term.c` (`cap_*`) |
-| `0x00130000` | **Zwischenablage**, max 8 KB (`clip_len`) | `gui.c`, `pc.py` |
-| `0x00200000` | **PROG_ADDR** — hierhin lädt das OS Programme | `syscall.c` |
-| `0x00240000` | DATA_ADDR — globale Variablen erzeugter Programme | `cc.c` |
-| `0x00280000` | SRC_BUF — Quelltext in CC/ASM/PY | Werkzeuge |
-| `0x00292000` | OUT_BUF des Assemblers | `asm.c` |
-| `0x00300000` | OUT_BUF des Compilers / Heap von PY | `cc.c`, `py.c` |
-| `0x00380000` | STR_BUF des Compilers | `cc.c` |
+| `0x000D0000` | ED_BUF — editor text, 60 KB | `edit.c`, GUI editor |
+| `0x00100000`–`0x00114000` | Scrollback ring buffer, 512 lines | BIOS `video.asm` |
+| `0x00114000` | Screen backup for the scrollback viewer | `lib.c` |
+| `0x00120000` | **Terminal window buffer** 70×22×2 | `term.c` |
+| `0x00124000` | Terminal window scrollback ring, 200 lines | `term.c` |
+| `0x00128000` | Capture of compiler output, 40 lines | `term.c` (`cap_*`) |
+| `0x00130000` | **Clipboard**, max 8 KB (`clip_len`) | `gui.c`, `pc.py` |
+| `0x00200000` | **PROG_ADDR** — where the OS loads programs | `syscall.c` |
+| `0x00240000` | DATA_ADDR — global variables of generated programs | `cc.c` |
+| `0x00280000` | SRC_BUF — source code in CC/ASM/PY | Tools |
+| `0x00292000` | OUT_BUF of the assembler | `asm.c` |
+| `0x00300000` | OUT_BUF of the compiler / heap of PY | `cc.c`, `py.c` |
+| `0x00380000` | STR_BUF of the compiler | `cc.c` |
 | `0x003A0000` | INC_BUF (`#include`) | `cc.c` |
-| `0x00400000`, `0x00500000` | FC_BUF1/2 für den Dateivergleich | `kernel.c` |
-| `0x00FFFFFF` | Ende des RAM (16 MB) | |
-| `0x02000000` | Textbildspeicher 80×25×2 | Grafikkarte |
-| `0x02100000` | Grafikbildspeicher 640×400×1 | Grafikkarte |
-| `0x0F000000` | BIOS-ROM, 64 KB, nur lesbar | |
+| `0x00400000`, `0x00500000` | FC_BUF1/2 for the file comparison | `kernel.c` |
+| `0x00FFFFFF` | End of RAM (16 MB) | |
+| `0x02000000` | Text framebuffer 80×25×2 | Graphics card |
+| `0x02100000` | Graphics framebuffer 640×400×1 | Graphics card |
+| `0x0F000000` | BIOS ROM, 64 KB, read-only | |
 
-**Regel:** Ein Programm bei `0x200000` darf höchstens bis `0x280000` wachsen
-(PROG_MAX = 512 KB), sonst frisst es die Werkzeugpuffer. CC.TBX ist mit ~170 KB
-der größte Brocken.
+**Rule:** A program at `0x200000` may grow to at most `0x280000`
+(PROG_MAX = 512 KB), otherwise it eats into the tool buffers. CC.TBX at
+~170 KB is the biggest chunk.
 
-## BIOS-Datenbereich
+## BIOS data area
 
-| Adresse | Inhalt |
+| Address | Contents |
 |---|---|
 | `0x400` / `0x404` | Cursor x / y |
-| `0x408` | Textattribut |
-| `0x40C` | Timer-Ticks (100/s) |
-| `0x414` / `0x418` | Tastaturpuffer Kopf / Ende |
-| `0x420` | Tastaturpuffer, 32 × 4 Byte |
-| `0x4A0` | **Speichergröße in KB** (vom POST ermittelt) |
-| `0x4A4` | Plattengröße in Sektoren |
-| `0x4A8` / `0x4AC` | Scrollback: Schreibzeiger / Füllstand |
-| `0x4B0` | Kratzpapier für Zahlenausgabe |
+| `0x408` | Text attribute |
+| `0x40C` | Timer ticks (100/s) |
+| `0x414` / `0x418` | Keyboard buffer head / tail |
+| `0x420` | Keyboard buffer, 32 × 4 bytes |
+| `0x4A0` | **Memory size in KB** (determined by POST) |
+| `0x4A4` | Disk size in sectors |
+| `0x4A8` / `0x4AC` | Scrollback: write pointer / fill level |
+| `0x4B0` | Scratch space for number output |
 
-## I/O-Ports
+## I/O ports
 
-| Port | Gerät | Bedeutung |
+| Port | Device | Meaning |
 |---|---|---|
-| `0x00` / `0x01` | PIC | Interrupt bestätigen / Maske |
-| `0x10` / `0x11` | Timer | Frequenz setzen / Ticks lesen |
-| `0x20` / `0x21` | Tastatur | Daten / Status |
-| `0x30`–`0x35` | Platte | LBA, Anzahl (**16 Bit**), Adresse, Kommando, Status, Größe |
-| `0x40`–`0x43` | Grafik | Modus, Cursor, Palettenindex, Palettenwert |
-| `0x44`–`0x4C` | **Blitter** | X, Y, W, H, Farbe, Kommando, Zeichen, Quelle, Hintergrund |
-| `0x4D`–`0x4F` | Mauszeiger | X, Y, sichtbar |
-| `0x50` / `0x51` | Lautsprecher | Frequenz / an |
-| `0x52` | **Doppelpufferung** | 1 = an, 0 = aus |
-| `0x53` | **Bild zeigen** | 1 = Seiten tauschen, 2 = Rückseite nach vorn kopieren |
-| `0x54` | **Vergrößerung** | Faktor für Blitter-Kommando 3 (1 = normal, bis 16) |
-| `0x56`–`0x5A` | **Blockkopierer (DMA)** | Quelle, Ziel, Länge, Wert, Kommando |
-| `0x60`–`0x62` | Maus | X, Y, Tasten |
-| `0x63` | Mausrad | Rasten seit dem letzten Lesen; **Lesen setzt zurück** |
-| `0x70` / `0x71` | CMOS | Register wählen / lesen+schreiben |
-| `0x80` | Debug | Zeichen ins Entwicklerlog des Mac |
-| `0x90` | Netzteil | 1 = aus, 2 = Neustart |
-| `0xA0`–`0xA5` | Thermik | Temperatur, Lüfter, Drosselung, Grenze, Lüftermodus, Höchstwert |
-| `0xB0`–`0xB2` | BIOS-Chip | Befehl / Puffergröße / Zieladresse — den ROM neu beschreiben, siehe [[16 Eigenes BIOS schreiben]] |
+| `0x00` / `0x01` | PIC | acknowledge interrupt / mask |
+| `0x10` / `0x11` | Timer | set frequency / read ticks |
+| `0x20` / `0x21` | Keyboard | data / status |
+| `0x30`–`0x35` | Disk | LBA, count (**16-bit**), address, command, status, size |
+| `0x40`–`0x43` | Graphics | mode, cursor, palette index, palette value |
+| `0x44`–`0x4C` | **Blitter** | X, Y, W, H, color, command, char, source, background |
+| `0x4D`–`0x4F` | Mouse cursor | X, Y, visible |
+| `0x50` / `0x51` | Speaker | frequency / on |
+| `0x52` | **Double buffering** | 1 = on, 0 = off |
+| `0x53` | **Show frame** | 1 = swap pages, 2 = copy back buffer to front |
+| `0x54` | **Zoom** | factor for blitter command 3 (1 = normal, up to 16) |
+| `0x56`–`0x5A` | **Block copier (DMA)** | source, destination, length, value, command |
+| `0x60`–`0x62` | Mouse | X, Y, buttons |
+| `0x63` | Mouse wheel | notches since last read; **reading resets it** |
+| `0x70` / `0x71` | CMOS | select register / read+write |
+| `0x80` | Debug | character to the Mac's developer log |
+| `0x90` | Power supply | 1 = off, 2 = restart |
+| `0xA0`–`0xA5` | Thermal | temperature, fan, throttling, limit, fan mode, peak value |
+| `0xB0`–`0xB2` | BIOS chip | command / buffer size / target address — reflash the ROM, see [[16 Eigenes BIOS schreiben]] |
 
-Der Bildspeicher des Grafikmodus liegt ab `0x02100000`, ein Byte je Punkt.
-Programme dürfen direkt hineinschreiben (`gx_punkt` in `programs/gfxlib.c`) —
-für einzelne Punkte ist das schneller als ein Blitterbefehl je Punkt, weil
-kein Systemaufruf dazwischen liegt.
+The framebuffer of the graphics mode starts at `0x02100000`, one byte
+per pixel. Programs may write into it directly (`gx_punkt` in
+`programs/gfxlib.c`) — for individual pixels this is faster than a
+blitter call per pixel, because there's no system call in between.
 
-**Ports sind nicht geschützt.** Es gibt keine Privilegstufen auf dem TB-32 —
-ein Programm darf `outr`/`inr` genauso benutzen wie der Kernel. `gfxlib.c`
-macht davon Gebrauch und schreibt die Blitter-Ports selbst, statt über
-`int 0x40` zu gehen. In C heißen die beiden `portout(port, wert)` und
-`portin(port)` — TCC findet sie in `prog_start.asm`, CC auf dem Gerät setzt
-den Befehl direkt an der Aufrufstelle ein.
+**Ports are not protected.** There are no privilege levels on the TB-32
+— a program may use `outr`/`inr` just as freely as the kernel.
+`gfxlib.c` makes use of this and writes the blitter ports itself instead
+of going through `int 0x40`. In C the two are called `portout(port,
+value)` and `portin(port)` — TCC finds them in `prog_start.asm`, CC on
+the device inserts the instruction directly at the call site.
 
-Merke zur Reihenfolge: `outr <Wert>, <Port>` — die **Portnummer steht in
-`ra`**, also im zweiten Operanden.
+Note the order: `outr <value>, <port>` — the **port number is in
+`ra`**, i.e. the second operand.
 
-Blitter-Kommandos (Port `0x49`): 1 = Fläche, 2 = Rahmen, 3 = Zeichen aus dem
-Zeichensatz, 4 = Bild aus dem RAM, 5 = Bereich kopieren, **7 = Bild skaliert**
-(Quellgröße im CHR-Register als `breite | höhe<<16`, Zielgröße in W und H,
-Nächster-Nachbar), **6 = Zeichenkette
-aus dem RAM** (Adresse im CHR-Register `0x4A`, Länge im W-Register `0x46`,
-Zeichensatz bleibt in SRC). Ein Befehl statt einem je Buchstabe — eine
-Editorseite sind 1600 Stück.
+Blitter commands (port `0x49`): 1 = filled area, 2 = outline, 3 =
+character from the font, 4 = image from RAM, 5 = copy region, **7 =
+scaled image** (source size in the CHR register as `width | height<<16`,
+target size in W and H, nearest-neighbor), **6 = string from RAM**
+(address in the CHR register `0x4A`, length in the W register `0x46`,
+font stays in SRC). One instruction instead of one per letter — an
+editor page is 1600 of them.
 
-Puffer des Coders: Farben je sichtbarem Zeichen ab `0x00700000`.
-Puffer von Word: Text ab `0x00720000`, **Farbe je Zeichen** ab `0x00728000`,
-Formbytes je Absatz ab `0x00730000`, **zweites Formbyte (Listen)** ab
-`0x00730400`, Bildgrößen ab `0x00730800` und `0x00731800`, Umbruchliste ab
-`0x00733000` (**vier Worte je Zeile**: Anfang, Länge, Absatz, Seite),
-Dateipuffer ab `0x00739000`, geladenes Bild ab `0x00750000`.
+Coder's buffer: colors per visible character starting at `0x00700000`.
+Word's buffers: text starting at `0x00720000`, **color per character**
+starting at `0x00728000`, shape bytes per paragraph starting at
+`0x00730000`, **second shape byte (lists)** starting at `0x00730400`,
+image sizes starting at `0x00730800` and `0x00731800`, wrap list
+starting at `0x00733000` (**four words per line**: start, length,
+paragraph, page), file buffer starting at `0x00739000`, loaded image
+starting at `0x00750000`.
 
-Die Maus liefert in Port `0x62` **Bit 0 links, Bit 1 Mitte, Bit 2 rechts**.
-Der Schreibtisch merkt sich in `gui_taste`, welche Taste einen Klick
-ausgelöst hat — daran hängt das Rechtsklick-Menü.
+The mouse reports in port `0x62` **bit 0 left, bit 1 middle, bit 2
+right**. The desktop remembers in `gui_taste` which button triggered a
+click — the right-click menu depends on it.
 
-## Blockkopierer und Blocksuche
+## Block copier and block search
 
-Der Baustein an `0x56`–`0x5A` schaufelt Speicher **am Prozessor vorbei** —
-er sieht denselben Adressraum, Quelle und Ziel dürfen also auch der
-Bildspeicher sein. Kommandos (Port `0x5A`):
+The block at `0x56`–`0x5A` moves memory **bypassing the processor** — it
+sees the same address space, so source and destination can also be the
+framebuffer. Commands (port `0x5A`):
 
-| Cmd | Was |
+| Cmd | What |
 |---|---|
-| 1 | kopieren (Quelle → Ziel, Länge Bytes) |
-| 2 | füllen (Ziel bekommt `Länge` mal den Wert) |
-| 3 | **suchen**: wie viele Bytes ab Quelle sind gleich dem Wert |
-| 4 | **suchen**: an welcher Stelle ab Quelle steht das erste gleiche (−1 = keins) |
-| 5 | **suchen rückwärts**: wie viele Bytes vor Quelle (einschließlich) sind gleich |
+| 1 | copy (source → destination, length in bytes) |
+| 2 | fill (destination gets the value `length` times) |
+| 3 | **search**: how many bytes from source onward equal the value |
+| 4 | **search**: at which position from source is the first match (−1 = none) |
+| 5 | **search backward**: how many bytes before source (inclusive) equal the value |
 
-Das Ergebnis der Suchbefehle steht danach im **Längenregister** (`0x58`) und
-wird von dort gelesen.
+The result of the search commands is then in the **length register**
+(`0x58`) and is read from there.
 
-Warum es das gibt: 256 KB Byte für Byte umzuschaufeln kostet den Prozessor
-eine Million Befehle — eine Drittelsekunde. Kein Rückgängig, keine
-Bildablage wäre damit flüssig. Mit dem Baustein sind es 0,03 ms. Die
-Suchbefehle sind das Gegenstück zu den Zeichenkettenbefehlen echter
-Prozessoren: das Füllwerkzeug in Paint braucht sonst je Bildpunkt einen
-eigenen Lesebefehl.
+Why this exists: shoveling 256 KB byte by byte costs the processor a
+million instructions — a third of a second. No undo, no image staging
+would be smooth with that. With the block copier it's 0.03 ms. The
+search commands are the counterpart to real processors' string
+instructions: without it, the fill tool in Paint would need a separate
+read instruction per pixel.
 
-Adressen der Paint-Puffer: Leinwand `0x00600008` (480×260), Rückgängig-Kopie
-`0x00640000`, Warteschlange des Füllwerkzeugs `0x00680000`.
+Addresses of the Paint buffers: canvas `0x00600008` (480×260), undo copy
+`0x00640000`, fill tool queue `0x00680000`.
 
-## Zwei Bildseiten
+## Two display pages
 
-Die Karte hat zwei gleich große Bildspeicher. Angezeigt wird immer der eine,
-gemalt wird immer in den anderen; Port `0x53` tauscht sie. Solange
-Doppelpufferung aus ist (`0x52` = 0), sind beide dasselbe Feld und jeder
-Malbefehl ist sofort sichtbar — so arbeitet der Schreibtisch.
+The card has two equally sized framebuffers. One is always shown, the
+other is always being drawn to; port `0x53` swaps them. As long as
+double buffering is off (`0x52` = 0), both are the same field and every
+draw call is immediately visible — that's how the desktop works.
 
-Das ist der Unterschied zwischen „es flackert" und „es flackert nicht": ohne
-zweite Seite liest der Bildschirm mit, während gemalt wird, und man sieht
-halb gezeichnete Bilder. Ein Spiel schaltet also am Anfang `gx_doppelpuffer(1)`
-ein, malt jedes Bild komplett neu und ruft am Ende `gx_zeigen()`.
+That's the difference between "it flickers" and "it doesn't flicker":
+without a second page, the screen reads along while drawing happens, and
+you see half-drawn images. A game therefore turns on
+`gx_doppelpuffer(1)` at the start, redraws the entire frame each time,
+and calls `gx_zeigen()` at the end.
 
-**Zwei Betriebsarten**, und die Wahl hängt daran, ob man alles oder nur
-Teile neu malt:
+**Two modes**, and the choice depends on whether you're redrawing
+everything or only parts:
 
-| Port `0x53` | Was passiert | Für wen |
+| Port `0x53` | What happens | For whom |
 |---|---|---|
-| 1 | Seiten tauschen (zwei Zeiger, sofort) | Spiele — sie malen jedes Bild komplett |
-| 2 | Rückseite nach vorn kopieren | **der Schreibtisch** — er malt meist nur ein Fenster neu, der Rest muss stehen bleiben |
+| 1 | swap pages (two pointers, instant) | games — they redraw the entire frame each time |
+| 2 | copy back buffer to front | **the desktop** — it usually redraws only one window, the rest must stay in place |
 
-Der Schreibtisch benutzt seit August 2026 durchgehend Betriebsart 2. Deshalb
-flackert dort nichts mehr.
+The desktop has used mode 2 exclusively since August 2026. That's why
+nothing flickers there anymore.
 
-Ein Moduswechsel (Port `0x40`) setzt die Vergrößerung auf 1 zurück — sonst
-schriebe der Schreibtisch in Riesenschrift weiter, wenn ein Programm mit
-gesetztem Zoom abstürzt.
+A mode change (port `0x40`) resets zoom to 1 — otherwise the desktop
+would keep writing in giant letters if a program crashes with zoom set.
 
-## CMOS-Register
+## CMOS registers
 
-| Reg | Inhalt |
+| Reg | Contents |
 |---|---|
-| `0x00`–`0x09` | Uhrzeit und Datum (binär, nicht BCD) |
-| `0x10` | Startreihenfolge |
-| `0x11` | Schnellstart |
-| `0x12` | Signalton beim Start |
-| `0x13` | **Prozessortakt-Index** (0–4 → 0.4/1/2/4/8 MHz) |
-| `0x15` | Startmeldungen ausführlich |
-| `0x3F` | Schreiben darauf sichert die Knopfzelle in `disk/cmos.bin` |
+| `0x00`–`0x09` | Time and date (binary, not BCD) |
+| `0x10` | Boot order |
+| `0x11` | Fast boot |
+| `0x12` | Beep on startup |
+| `0x13` | **Processor clock index** (0–4 → 0.4/1/2/4/8 MHz) |
+| `0x15` | Verbose boot messages |
+| `0x3F` | Writing to this saves the coin cell to `disk/cmos.bin` |
 
-Verwandt: [[01 Architektur TB-32]], [[07 Fallstricke]]
+Related: [[01 Architektur TB-32]], [[07 Fallstricke]]

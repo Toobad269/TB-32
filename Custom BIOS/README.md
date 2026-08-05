@@ -1,42 +1,45 @@
 # Custom BIOS
 
-Eigene Firmware für den TB-32. Jeder Unterordner ist ein vollständiges
-BIOS-Abbild mit eigenem Namen, eigener Quelle und eigenem Test.
+Custom firmware for the TB-32. Each subfolder is a complete BIOS image
+with its own name, its own source, and its own test.
 
 | | |
 |---|---|
-| [`TB-LOCK/`](TB-LOCK/) | Das serienmäßige BIOS plus **Setup-Passwort**. Ohne Passwort kommt niemand mehr ins Setup |
+| [`TB-LOCK/`](TB-LOCK/) | The stock BIOS plus a **Setup password**. Without the password, nobody gets into Setup anymore |
 
-## Warum das geht
+## Why this works
 
-Der BIOS-Chip des TB-32 ist austauschbar. Das Mainboard prüft beim
-Einschalten nur zwei Dinge im Kopf des Abbildes — die Kennung `TBBI` und eine
-Prüfsumme — und greift sonst zur Sicherung. Was dahinter steht, ist dem Board
-egal. Wie ein eigenes BIOS aufgebaut sein muss, steht vollständig in
+The TB-32's BIOS chip is swappable. At power-on, the mainboard only
+checks two things in the image's header — the `TBBI` marker and a
+checksum — and falls back to the backup otherwise. What's behind that
+is none of the board's business. How a custom BIOS needs to be
+structured is fully documented in
 [`Doku/16 Eigenes BIOS schreiben.md`](../Doku/16%20Eigenes%20BIOS%20schreiben.md);
-die kleinste lauffähige Vorlage ist `firmware/minimal.asm`.
+the smallest working template is `firmware/minimal.asm`.
 
-## Ein eigenes BIOS bauen und benutzen
+## Building and using a custom BIOS
 
 ```bash
-python3 "Custom BIOS/TB-LOCK/bauen.py"      # erzeugt TB-LOCK.bin
-python3 "Custom BIOS/TB-LOCK/pruefen.py"    # startet den Rechner damit und prüft es
+python3 "Custom BIOS/TB-LOCK/bauen.py"      # produces TB-LOCK.bin
+python3 "Custom BIOS/TB-LOCK/pruefen.py"    # boots the machine with it and checks it
 ```
 
-Aufgespielt wird es im laufenden Rechner: **DEL → Firmware → Flash BIOS from
-File**. Das alte BIOS legt das Board vorher als Sicherung ab, und *Restore
-Backup BIOS* holt es zurück — wer sich aussperrt, kommt also wieder heraus.
+It's installed on the running machine via: **DEL → Firmware → Flash BIOS
+from File**. The board saves the old BIOS as a backup beforehand, and
+*Restore Backup BIOS* brings it back — so if you lock yourself out, you
+can still get back in.
 
-Das fertige `.bin` liegt **mit im Verzeichnis** — wer nur flashen will, muss
-nichts bauen. Das ist die Ausnahme von der Regel des Projekts, dass Erzeugtes
-nicht eingecheckt wird; ein BIOS-Abbild ist hier das Ergebnis und nicht bloß
-ein Zwischenschritt. Wer es doch selbst baut, bekommt Byte für Byte dasselbe.
-Die Symboltabelle `.sym` bleibt draußen, die braucht nur der Debugger.
+The finished `.bin` **ships in the folder** — if you just want to flash
+it, there's nothing to build. This is the exception to the project's
+rule that build output isn't checked in; here, a BIOS image is the
+deliverable, not just an intermediate step. If you build it yourself
+anyway, you get the exact same bytes. The `.sym` symbol table stays out,
+since only the debugger needs that.
 
-## Ein weiteres dazulegen
+## Adding another one
 
-Neuer Ordner, Quelldateien hinein, `bauen.py` daneben. Die Ordner sind
-voneinander unabhängig: `TB-LOCK` hat seine eigene Kopie von `bios.asm`,
-`setup.asm`, `video.asm` und `const.inc` und fasst `firmware/` nicht an. Wer
-etwas am Serien-BIOS ändert, muss es also bewusst herüberholen — dafür kann
-kein Versuch hier drin den normalen Rechner kaputtmachen.
+New folder, source files inside, `bauen.py` alongside them. The folders
+are independent of each other: `TB-LOCK` has its own copy of `bios.asm`,
+`setup.asm`, `video.asm`, and `const.inc` and doesn't touch `firmware/`.
+Anyone changing the stock BIOS has to deliberately bring the change
+over — which means nothing tried in here can break the regular machine.

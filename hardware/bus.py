@@ -1,13 +1,13 @@
 """
-Der Systembus -- die Leiterbahnen des Mainboards.
+The system bus -- the traces of the mainboard.
 
-Er entscheidet bei jedem Speicherzugriff, WER gemeint ist:
+It decides on every memory access WHO is meant:
     0x00000000  RAM (16 MiB)
-    0x02000000  Bildspeicher Textmodus
-    0x02100000  Bildspeicher Grafikmodus
-    0x0F000000  BIOS-ROM (nur lesen -- ein Schreibversuch verpufft, wie echt)
+    0x02000000  Video memory, text mode
+    0x02100000  Video memory, graphics mode
+    0x0F000000  BIOS ROM (read-only -- a write attempt is silently dropped, just like on real hardware)
 
-Und er verteilt IN/OUT-Befehle an die richtigen Geräte.
+And it dispatches IN/OUT instructions to the right devices.
 """
 
 from hardware.isa import (
@@ -24,7 +24,7 @@ class Bus:
         self.port_devices = {}
         self.unknown_ports = set()
 
-    # -- Geräte anmelden ---------------------------------------------------
+    # -- Register devices ---------------------------------------------------
 
     def register(self, device, ports):
         for p in ports:
@@ -32,11 +32,11 @@ class Bus:
 
     def load_rom(self, data):
         if len(data) > ROM_SIZE:
-            raise ValueError(f"BIOS ist zu groß: {len(data)} > {ROM_SIZE}")
+            raise ValueError(f"BIOS is too large: {len(data)} > {ROM_SIZE}")
         self.rom = bytearray(ROM_SIZE)
         self.rom[:len(data)] = data
 
-    # -- Adressdekodierung -------------------------------------------------
+    # -- Address decoding -------------------------------------------------
 
     def _region(self, addr):
         if addr < RAM_SIZE:
@@ -70,7 +70,7 @@ class Bus:
 
     def write8(self, addr, value):
         if ROM_BASE <= addr < ROM_BASE + ROM_SIZE:
-            return                                   # ROM ist schreibgeschützt
+            return                                   # ROM is write-protected
         mem, off = self._region(addr)
         if mem is not None and off < len(mem):
             mem[off] = value & 0xFF
@@ -93,7 +93,7 @@ class Bus:
             mem[off + 2] = (value >> 16) & 0xFF
             mem[off + 3] = (value >> 24) & 0xFF
 
-    # -- Blocktransfer (DMA der Festplatte) --------------------------------
+    # -- Block transfer (disk DMA) --------------------------------
 
     def write_block(self, addr, data):
         mem, off = self._region(addr)
@@ -110,7 +110,7 @@ class Bus:
             return b"\x00" * length
         return bytes(mem[off:off + length]).ljust(length, b"\x00")
 
-    # -- Ein-/Ausgabe ------------------------------------------------------
+    # -- Input/output ------------------------------------------------------
 
     def port_in(self, port):
         dev = self.port_devices.get(port)

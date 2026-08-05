@@ -1,177 +1,184 @@
-# Weg zum Raspberry Pi
+# Path to the Raspberry Pi
 
-**Ziel:** TOOBAD-OS läuft auf einem echten Gerät — ohne Linux dahinter, und
-**ohne dass der TB-32 verschwindet**.
+**Goal:** TOOBAD-OS runs on a real device — without Linux underneath, and
+**without the TB-32 disappearing**.
 
-Diese Seite hält den Plan, die Entscheidung dahinter und den Stand fest.
-Stand: Schritt 1 fertig, alles Weitere wartet auf Colins Rückkehr aus dem
-Urlaub.
+This page holds the plan, the reasoning behind it, and the current
+status. Status: step 1 done, everything else is waiting for Colin to
+return from vacation.
 
 ---
 
-## Die Entscheidung: emulieren, nicht portieren
+## The Decision: Emulate, Don't Port
 
-Es gab zwei Wege, und die Wahl ist gefallen.
+There were two paths, and the choice has been made.
 
-| | **Emulator in C, bare metal** (gewählt) | OS auf ARM portieren |
+| | **Emulator in C, bare metal** (chosen) | Port the OS to ARM |
 |---|---|---|
-| Bildschirm, Timer, SD, USB selbst schreiben | ja | ja |
-| Compiler bekommt ARM64-Rückende | — | ja |
-| BIOS und `start.asm` in ARM-Assembler neu | — | ja, komplett |
-| Blitter in Software nachbauen | — | ja, alle sieben Kommandos |
-| Jedes `portout` in `gui.c`, `paint.c`, `word.c` neu | — | ja |
-| TOOBAD-OS muss geändert werden | **kein einziges Byte** | überall |
+| Write screen, timer, SD, USB ourselves | yes | yes |
+| Compiler gets an ARM64 backend | — | yes |
+| BIOS and `start.asm` rewritten in ARM assembly | — | yes, completely |
+| Rebuild the blitter in software | — | yes, all seven commands |
+| Every `portout` in `gui.c`, `paint.c`, `word.c` rewritten | — | yes |
+| TOOBAD-OS needs to be changed | **not a single byte** | everywhere |
 
-Die schwere Stelle (Bare-Metal-Treiber, vor allem USB) ist bei **beiden**
-Wegen dieselbe. Der Portierungsweg ist derselbe Berg **plus** vier weitere.
+The hard part (bare-metal drivers, especially USB) is the same on
+**both** paths. The porting path is the same mountain **plus** four more.
 
-Und der entscheidende Punkt: Bei einer ARM-Portierung wäre der **TB-32 weg**
-— der eigene Befehlssatz, der Assembler, **CC** (der Compiler, der auf dem
-Gerät selbst läuft und sich selbst übersetzt), das Bootstrapping. Übrig
-bliebe „ein OS auf fremder Hardware".
+And the decisive point: with an ARM port, the **TB-32 would be gone** —
+the custom instruction set, the assembler, **CC** (the compiler that runs
+on the device itself and compiles itself), the bootstrapping. What would
+remain is "an OS on someone else's hardware."
 
-Beim Emulator-Weg bleibt alles erhalten: **der Emulator ist dann das
-Mainboard.** Er nimmt die echte Pi-Hardware und stellt dem TB-32 seine
-gewohnten Ports hin. Die OS-Seite merkt nichts.
+With the emulator path, everything is preserved: **the emulator then
+becomes the mainboard.** It takes the real Pi hardware and presents the
+TB-32 with its familiar ports. The OS side notices nothing.
 
 ---
 
-## Die Schritte
+## The Steps
 
-### Schritt 1 — Emulator in C ✅ **fertig**
+### Step 1 — Emulator in C ✅ **done**
 
-`emu/` neben `hardware/`. Siehe [[14 Aenderungsjournal]] und
+`emu/` alongside `hardware/`. See [[14 Aenderungsjournal]] and
 [[06 Bauen und Testen]].
 
-- `emu/cpu.c` — alle 57 Befehle
-- `emu/machine.c` — Bus, Grafikkarte mit Blitter, Platte, Tastatur, Timer,
-  CMOS, Blockkopierer, Wärme
-- `emu/main.c` — kopfloser Start zum Vergleichen
-- `tools/emu_vergleich.py` — prüft C gegen Python, Befehl für Befehl
+- `emu/cpu.c` — all 57 instructions
+- `emu/machine.c` — bus, graphics card with blitter, disk, keyboard,
+  timer, CMOS, block copier, heat
+- `emu/main.c` — headless startup for comparison
+- `tools/emu_vergleich.py` — checks C against Python, instruction by
+  instruction
 
-Gemessen: **1,8 → 287 Millionen Befehle je Sekunde**, Faktor 160.
-TOOBAD-OS bootet, der Bildschirm ist Zeichen für Zeichen gleich.
+Measured: **1.8 → 287 million instructions per second**, a factor of
+160. TOOBAD-OS boots, the screen matches character for character.
 
-### Schritt 1b — Fenster für die C-Fassung (offen)
+### Step 1b — Window for the C Version (open)
 
-SDL2 statt pygame, damit man den C-Emulator wie `pc.py` benutzen kann.
-Tastatur, Maus, Bildausgabe. Danach ist die Python-Fassung nur noch
-Referenz zum Vergleichen.
+SDL2 instead of pygame, so the C emulator can be used like `pc.py`.
+Keyboard, mouse, video output. After that, the Python version becomes
+just a reference for comparison.
 
-### Schritt A — Pi mit Linux (offen, ohne Risiko)
+### Step A — Pi with Linux (open, no risk)
 
-Über SSH das Projekt auf den Pi, dort übersetzen, im Vollbild auf HDMI
-starten. Colins Linux bleibt völlig unberührt (`rm -rf` und es ist weg).
+Push the project to the Pi over SSH, compile it there, run it fullscreen
+on HDMI. Colin's Linux stays completely untouched (`rm -rf` and it's
+gone).
 
-**Warum diese Zwischenstufe nicht übersprungen wird:** Sonst debuggt man
-zwei unbekannte Sachen gleichzeitig — den Emulator auf ARM *und* Bare
-Metal. So sieht man erst, ob der Emulator auf ARM richtig rechnet.
+**Why this intermediate stage isn't skipped:** otherwise you'd be
+debugging two unknowns at once — the emulator on ARM *and* bare metal.
+This way you first see whether the emulator computes correctly on ARM.
 
-### Schritt B — Bare Metal (offen)
+### Step B — Bare Metal (open)
 
-Der Pi bootet `kernel8.img` direkt: darin steckt der TB-32-Emulator als
-nativer ARM-Code. Kein Linux.
+The Pi boots `kernel8.img` directly: inside it is the TB-32 emulator as
+native ARM code. No Linux.
 
 ---
 
-## Wie ein Pi startet (kein Imager nötig)
+## How a Pi Boots (no imager needed)
 
-Beim Einschalten läuft nicht die ARM-CPU zuerst, sondern der Grafikchip. Er
-liest die **erste Partition der SD-Karte (FAT32)** und sucht feste
-Dateinamen. Findet er `kernel8.img`, lädt er die Datei und startet die
-ARM-Kerne hinein. Fertig — kein eigener Bootloader, kein Image-Format.
+At power-on it's not the ARM CPU that runs first, but the graphics chip.
+It reads the **first partition of the SD card (FAT32)** and looks for
+fixed file names. If it finds `kernel8.img`, it loads the file and starts
+the ARM cores into it. Done — no dedicated bootloader, no image format.
 
-Auf einem Pi 4 sähe die Karte so aus:
+On a Pi 4 the card would look like this:
 
-| Datei | Woher |
+| File | Where from |
 |---|---|
-| `start4.elf`, `fixup4.dat` | offizielle Pi-Firmware, unverändert |
-| `config.txt` | schreiben wir, drei Zeilen |
-| **`kernel8.img`** | **unser Emulator** |
+| `start4.elf`, `fixup4.dat` | official Pi firmware, unmodified |
+| `config.txt` | we write it, three lines |
+| **`kernel8.img`** | **our emulator** |
 
-**Der Pi 5 startet anders** (EEPROM-Bootloader, andere Firmware-Dateien) —
-siehe unten.
-
----
-
-## Der Ablauf mit Colins Karte
-
-Colin hat **eine** SD-Karte, auf der Baronie, der Toobad-Server und SideEye
-laufen. Er will nichts kaufen. Deshalb:
-
-1. **Wir fassen die Linux-Partition nie an.** macOS mountet ohnehin nur die
-   FAT32-Bootpartition — an ext4 kommt es gar nicht heran. Das ist die
-   Rettung: kein rohes Schreiben, kein `sudo`, kein Risiko.
-2. **Backup = die Bootpartition** (ein paar hundert MB statt 32 GB), gezogen
-   wenn die Karte im Mac steckt. Nicht über SSH — das dauert Stunden.
-3. Unser `kernel8.img` kommt **neben** das Vorhandene, umgeschaltet wird über
-   eine Zeile in `config.txt`. Zurück zu Linux = diese Zeile zurückändern.
-   Von `config.txt` vorher eine Kopie.
-
-**Grenze:** Auf eine rohe Karte schreiben bräuchte `sudo` — Claude kann kein
-Passwort eingeben. Auf die gemountete FAT-Partition kopieren geht ohne.
+**The Pi 5 boots differently** (EEPROM bootloader, different firmware
+files) — see below.
 
 ---
 
-## Der Pi 5 ist der schwierigste Pi (Stand August 2026)
+## The Process with Colin's Card
 
-Colin hat einen **Pi 5**. Das ist ausgerechnet das Modell mit der dünnsten
-Bare-Metal-Unterstützung, und der Grund ist der **RP1**: USB, Netzwerk und
-GPIO hängen nicht mehr am Hauptchip, sondern an einem eigenen Chip hinter
-PCIe. Für Bare Metal heißt das: PCIe hochfahren, RP1 ansprechen,
-xHCI-Treiber, dann erst USB-Tastatur.
+Colin has **one** SD card, on which Baronie, the Toobad server, and
+SideEye run. He doesn't want to buy anything. So:
 
-Recherchierter Stand von [Circle](https://circle-rpi.readthedocs.io/en/50.0/appendices/raspberry-pi-5.html)
-(Bare-Metal-Treibersammlung für den Pi, **kein** Betriebssystem):
+1. **We never touch the Linux partition.** macOS only mounts the FAT32
+   boot partition anyway — it can't even get at ext4. That's the
+   safeguard: no raw writing, no `sudo`, no risk.
+2. **Backup = the boot partition** (a few hundred MB instead of 32 GB),
+   pulled while the card is in the Mac. Not over SSH — that would take
+   hours.
+3. Our `kernel8.img` goes **alongside** the existing one, switched via a
+   single line in `config.txt`. Back to Linux = revert that line. Keep a
+   copy of `config.txt` beforehand.
 
-- **Bildschirm:** Firmware-Unterstützung für Framebuffer „weniger
-  komfortabel" — keine Konfiguration über `config.txt`, Auflösung aus dem
-  Programm heraus nicht setzbar
-- **USB:** „sollte funktionieren", aber Berichte über Erkennungsprobleme
-  beim Start — **besonders wenn HDMI angeschlossen ist**. Genau unsere
-  Kombination.
-- **Netzwerk:** ~~gar nicht~~ **geht inzwischen.** Circles README (Stand
-  04.08.2026) führt für den Pi 5 sowohl „MACB / GEM Gigabit Ethernet NIC of
-  Raspberry Pi 5" als auch „Wireless LAN access" als unterstützt. Die
-  Appendix-Seite zum Pi 5 sagt dazu nichts und verweist auf das README --
-  wer hier nachschaut, muss also das README lesen, nicht die Doku-Seite.
-  Getestet laut Circle nur mit den BCM2712-Steppings C1 und D0.
-
-### Was das praktisch heißt
-
-- Ein **Pi 4** würde Schritt B von einem Monat mit ungewissem Ausgang auf
-  etwa eine Woche bringen. Colin will keinen kaufen — akzeptiert.
-- Auf dem Pi 5 gehen wir es über **Circle** an: damit müssen wir USB *nicht
-  selbst* schreiben, und das war die Wand.
-- Falls Circle zu wackelig ist: eigene Treiber. Dafür braucht es aber einen
-  **USB-Seriell-Adapter (~10 €)**. Ohne serielle Ausgabe debuggt man bare
-  metal blind — sobald der Pi ohne Linux startet, ist SSH weg.
+**Limit:** writing to a raw card would need `sudo` — Claude can't enter a
+password. Copying onto the mounted FAT partition works without it.
 
 ---
 
-## Was NICHT geht (mehrfach gefragt)
+## The Pi 5 Is the Hardest Pi (as of August 2026)
 
-- **Vom USB-Stick auf dem Ryzen 7600X booten.** Der Ryzen ist x86-64, der
-  TB-32 ist eine andere CPU. Kein Byte unseres Codes läuft dort. Das eigene
-  BIOS „auf das Mainboard laden" scheitert zusätzlich an signiertem UEFI.
-- **Claude Code oder brew auf dem TB-32.** Node.js-Programme für
-  macOS/Linux auf x86/ARM; sie bräuchten POSIX, TCP/IP, TLS und eine
-  JavaScript-Laufzeit — und selbst dann stimmte der Befehlssatz nicht.
-- **Realistischer RAM-Speed im Emulator.** Gibt es nicht: jeder
-  Speicherzugriff ist sofort fertig, kein Cache, keine Wartetakte.
-  Gedrosselt wird nur die CPU über ihr Befehlsbudget. Wäre ein eigenes
-  Stück Hardware zum Nachbauen.
+Colin has a **Pi 5**. That happens to be the model with the thinnest
+bare-metal support, and the reason is the **RP1**: USB, networking, and
+GPIO no longer hang off the main chip, but off a separate chip behind
+PCIe. For bare metal that means: bring up PCIe, address the RP1, an
+xHCI driver, only then a USB keyboard.
 
-## Was ginge, aber ein eigenes Projekt wäre
+Researched status from [Circle](https://circle-rpi.readthedocs.io/en/50.0/appendices/raspberry-pi-5.html)
+(a bare-metal driver collection for the Pi, **not** an operating system):
 
-- **Netzwerk und ein einfacher Browser.** Netzwerkkarte als Gerät, eigener
-  TCP/IP-Stapel in TB-32-Code, HTTP holen, einfaches HTML darstellen. HTTPS,
-  JavaScript und CSS nicht.
-- **FPGA.** Der TB-32 ist ein richtiger Prozessorentwurf — auf einem
-  FPGA-Board (50–150 €) könnte man den Chip **wirklich bauen**. Das ist der
-  ehrliche Weg für eine selbstgebaute CPU.
+- **Screen:** firmware support for the framebuffer is "less
+  convenient" — no configuration via `config.txt`, resolution can't be
+  set from the program
+- **USB:** "should work," but there are reports of detection problems
+  at startup — **especially when HDMI is connected**. Exactly our
+  combination.
+- **Network:** ~~not at all~~ **works by now.** Circle's README (as of
+  08/04/2026) lists both "MACB / GEM Gigabit Ethernet NIC of
+  Raspberry Pi 5" and "Wireless LAN access" as supported for the Pi 5.
+  The Pi 5 appendix page says nothing about this and points to the
+  README instead — so whoever looks here has to read the README, not
+  the doc page. Tested according to Circle only with BCM2712 steppings
+  C1 and D0.
+
+### What This Means in Practice
+
+- A **Pi 4** would bring step B from a month with an uncertain outcome
+  down to about a week. Colin doesn't want to buy one — accepted.
+- On the Pi 5 we're tackling it via **Circle**: that means we *don't*
+  have to write USB ourselves, and that was the wall.
+- If Circle turns out too shaky: our own drivers. But that needs a
+  **USB-to-serial adapter (~€10)**. Without serial output, debugging
+  bare metal is blind — as soon as the Pi boots without Linux, SSH is
+  gone.
 
 ---
 
-Verwandt: [[14 Aenderungsjournal]], [[06 Bauen und Testen]],
+## What Does NOT Work (asked multiple times)
+
+- **Booting from a USB stick on the Ryzen 7600X.** The Ryzen is x86-64,
+  the TB-32 is a different CPU. Not a single byte of our code runs
+  there. Loading our own BIOS "onto the mainboard" additionally fails
+  on signed UEFI.
+- **Claude Code or brew on the TB-32.** Node.js programs are for
+  macOS/Linux on x86/ARM; they would need POSIX, TCP/IP, TLS, and a
+  JavaScript runtime — and even then the instruction set wouldn't
+  match.
+- **Realistic RAM speed in the emulator.** Doesn't exist: every memory
+  access completes instantly, no cache, no wait states. Only the CPU is
+  throttled, via its instruction budget. Would be its own piece of
+  hardware to rebuild.
+
+## What Would Work, But Would Be Its Own Project
+
+- **Networking and a simple browser.** Network card as a device, its
+  own TCP/IP stack in TB-32 code, fetching over HTTP, rendering simple
+  HTML. Not HTTPS, JavaScript, or CSS.
+- **FPGA.** The TB-32 is a genuine processor design — on an FPGA board
+  (€50–150) you could **really build** the chip. That's the honest path
+  for a homebuilt CPU.
+
+---
+
+Related: [[14 Aenderungsjournal]], [[06 Bauen und Testen]],
 [[02 Speicherkarte und Ports]]

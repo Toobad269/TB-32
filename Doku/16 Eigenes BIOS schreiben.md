@@ -1,325 +1,338 @@
-# Eigenes BIOS schreiben
+# Writing Your Own BIOS
 
-Das BIOS des TB-32 ist austauschbar. Man kann ein eigenes schreiben, es
-flashen, und der Rechner startet damit — oder eben nicht mehr, wenn es
-falsch ist.
+The TB-32's BIOS is replaceable. You can write your own, flash it, and
+the computer boots with it — or doesn't, if it's wrong.
 
-Diese Seite ist der **Vertrag**: alles, was ein BIOS liefern muss, damit
-TOOBAD-OS darauf läuft. Wer sich daran hält, hat ein funktionierendes BIOS,
-egal wie es innen aussieht.
+This page is the **contract**: everything a BIOS must provide for
+TOOBAD-OS to run on it. Whoever sticks to it has a working BIOS,
+regardless of what it looks like inside.
 
-Fertige Vorlage zum Umbauen: **`firmware/minimal.asm`** (3324 Byte, kann
-nichts außer starten — und genau das reicht).
+Ready-made template to rebuild from: **`firmware/minimal.asm`** (3324
+bytes, can't do anything except boot — and that's exactly enough).
 
 ---
 
-## Der Kopf: die ersten 48 Byte
+## The Header: the First 48 Bytes
 
-Ohne ihn nimmt das Mainboard das Abbild gar nicht erst an.
+Without it, the mainboard won't even accept the image.
 
-| Position | Inhalt |
+| Position | Content |
 |---|---|
-| `0x00` | ein Sprung über den Kopf (`jmp start`) — hier landet die CPU nach dem Einschalten |
-| `0x04` | die vier Zeichen `TBBI` |
-| `0x08` | Länge des Abbildes in Byte |
-| `0x0C` | Prüfsumme |
-| `0x10` | **Name, 32 Byte, mit Nullbyte abgeschlossen** |
-| `0x30` | ab hier der Code |
+| `0x00` | a jump over the header (`jmp start`) — this is where the CPU lands after power-on |
+| `0x04` | the four characters `TBBI` |
+| `0x08` | length of the image in bytes |
+| `0x0C` | checksum |
+| `0x10` | **name, 32 bytes, terminated with a null byte** |
+| `0x30` | code starts here |
 
 ```asm
 .org ROM_BASE
 reset:
     jmp start
     .db "TBBI"
-    .dw 0                  ; Laenge     -- build.py traegt sie ein
-    .dw 0                  ; Pruefsumme -- build.py traegt sie ein
-    .db "MEIN BIOS", 0     ; 0x10 -- der Name im Startbild
-    .space 22              ;         auf genau 32 Byte auffuellen
+    .dw 0                  ; length     -- build.py fills this in
+    .dw 0                  ; checksum   -- build.py fills this in
+    .db "MY BIOS", 0       ; 0x10 -- the name shown on the boot screen
+    .space 22              ;         pad to exactly 32 bytes
 start:                     ; 0x30
     li sp, BIOS_STACK
 ```
 
-**Der Name ist kein Schmuck.** Das Mainboard liest ihn und schreibt ihn beim
-Einschalten in die Bildmitte — *bevor* die CPU überhaupt läuft. Deshalb sieht
-das Startbild bei jedem BIOS gleich aus, und trotzdem steht dort der eigene
-Name. Fehlt das Feld (ältere Abbilder), zeigt das Board `UNNAMED BIOS`.
+**The name isn't decoration.** The mainboard reads it and writes it to
+the center of the screen at power-on — *before* the CPU is even running.
+That's why the boot screen looks the same for every BIOS, and yet shows
+its own name. If the field is missing (older images), the board shows
+`UNNAMED BIOS`.
 
-**Länge und Prüfsumme trägt `build.py` ein**, nicht der Assembler — beide
-hängen vom fertigen Abbild ab. Die Rechnung steht in `bios_kopf_stempeln`:
-Länge auf vier aufrunden, das Prüfsummenfeld auf null setzen, dann
+**`build.py` fills in the length and checksum**, not the assembler —
+both depend on the finished image. The calculation lives in
+`bios_kopf_stempeln`: round the length up to four, set the checksum
+field to zero, then
 
 ```
-summe = 0x1234
-für jedes 32-Bit-Wort:  summe = summe * 31 + wort
+sum = 0x1234
+for each 32-bit word:  sum = sum * 31 + word
 ```
 
-Geprüft wird **an drei Stellen zu drei Zeitpunkten**:
+Checked **at three points, at three different times**:
 
-1. **Beim Flashen** — die Firmware lehnt ein Abbild ohne Kennung oder mit
-   falscher Prüfsumme ab und schreibt gar nicht erst (`bios_pruefen` in
+1. **When flashing** — the firmware rejects an image with a missing tag
+   or wrong checksum and doesn't write it at all (`bios_pruefen` in
    `firmware/setup.asm`)
-2. **Beim Einschalten** — das Mainboard prüft nach und greift sonst zur
-   Sicherung (`Machine.rom_pruefen` in `hardware/machine.py`)
-3. **Secure Boot**, falls eingeschaltet — dann muss auch noch die gemerkte
-   Summe stimmen, siehe [[13 BIOS-Dienste und was fehlt]]
+2. **At power-on** — the mainboard rechecks and otherwise falls back to
+   the backup (`Machine.rom_pruefen` in `hardware/machine.py`)
+3. **Secure Boot**, if enabled — then the remembered checksum also has
+   to match, see [[13 BIOS-Dienste und was fehlt]]
 
-Punkt 2 ist der wichtige: **eine kaputte Firmware kann sich nicht selbst
-prüfen.** Deshalb sitzt diese Prüfung im Board.
-
----
-
-## Was beim Einschalten passiert
-
-Die CPU beginnt bei `ROM_BASE` = `0x0F000000`. Ab da ist alles unsere Sache:
-
-1. **Stack setzen** (`BIOS_STACK` = `0x0007FFF0`)
-2. **BIOS-Datenbereich leeren** (ab `0x400`) — dort liegen Cursorposition,
-   Farbe, Tickzähler und der Tastaturpuffer
-3. **Interrupttabelle füllen** (ab Adresse 0, je Vektor 4 Byte). Ohne diese
-   Einträge springt jeder Interrupt nach Adresse 0
-4. **Timer anwerfen**: `out P_TIMER_HZ, 100`
-5. **Interrupts freigeben** (`sti`)
-6. **Sektor 0 nach `0x7C00` laden**, die Signatur `55 AA` an Position 510
-   prüfen und hineinspringen
-
-Was das BIOS **nicht** mehr selbst machen muss: das Startbild und die
-Bedenkzeit. Beides gehört dem Board (siehe unten). Ein BIOS, das die
-DEL-Taste auswerten will, findet sie nach dem Start ganz normal im
-Tastaturpuffer.
-
-Alles andere — Startbild, Speichertest, Setup, Secure Boot — ist Kür. Der
-Rechner läuft auch ohne.
+Point 2 is the important one: **broken firmware can't check itself.**
+That's why this check sits in the board.
 
 ---
 
-## Die Interruptvektoren
+## What Happens at Power-On
 
-| Vektor | wofür | Pflicht? |
+The CPU starts at `ROM_BASE` = `0x0F000000`. From there it's all our
+business:
+
+1. **Set the stack** (`BIOS_STACK` = `0x0007FFF0`)
+2. **Clear the BIOS data area** (from `0x400`) — that's where cursor
+   position, color, tick counter, and the keyboard buffer live
+3. **Fill the interrupt table** (from address 0, 4 bytes per vector).
+   Without these entries, every interrupt jumps to address 0
+4. **Start the timer**: `out P_TIMER_HZ, 100`
+5. **Enable interrupts** (`sti`)
+6. **Load sector 0 to `0x7C00`**, check the `55 AA` signature at offset
+   510, and jump into it
+
+What the BIOS **no longer** has to do itself: the boot screen and the
+grace period. Both belong to the board (see below). A BIOS that wants to
+evaluate the DEL key will find it in the keyboard buffer normally after
+startup.
+
+Everything else — boot screen, memory test, setup, Secure Boot — is
+optional. The machine runs without it too.
+
+---
+
+## The Interrupt Vectors
+
+| Vector | For | Required? |
 |---|---|---|
-| `0x08` | Timer-IRQ | ja — sonst zählt keine Uhr und `hlt` weckt nie auf |
-| `0x09` | Tastatur-IRQ | ja |
-| `0x10` | Dienst Bildschirm | ja |
-| `0x13` | Dienst Festplatte | ja |
-| `0x16` | Dienst Tastatur | ja |
-| `0x1A` | Dienst Zeit | ja |
-| `0x00` | Division durch null | nein (dann stürzt der Rechner unschön ab) |
-| `0x06` | unbekannter Befehl | nein |
+| `0x08` | Timer IRQ | yes — otherwise no clock counts and `hlt` never wakes up |
+| `0x09` | Keyboard IRQ | yes |
+| `0x10` | Screen service | yes |
+| `0x13` | Disk service | yes |
+| `0x16` | Keyboard service | yes |
+| `0x1A` | Time service | yes |
+| `0x00` | Division by zero | no (the machine will just crash badly) |
+| `0x06` | Unknown instruction | no |
 
-Beide Hardware-Interrupts müssen dem Controller quittieren
-(`out P_PIC_ACK, …`), sonst kommt nie wieder einer.
+Both hardware interrupts must acknowledge the controller
+(`out P_PIC_ACK, …`), or none ever comes again.
 
-**Und der Tastatur-Handler muss ALLE wartenden Tasten holen**, nicht nur
-eine — der Controller kennt je Quelle nur ein Bit. Wer nach der ersten
-aufhört, hinkt bei schnellem Tippen dauerhaft einen Anschlag hinterher.
-Das war ein echter Fehler, siehe [[07 Fallstricke]].
+**And the keyboard handler must drain ALL waiting keys**, not just
+one — the controller only tracks one bit per source. Whoever stops
+after the first key permanently lags one keystroke behind during fast
+typing. That was a real bug, see [[07 Fallstricke]].
 
 ---
 
-## Die vier Dienste
+## The Four Services
 
-Aufgerufen mit `int <nummer>`, Funktionsnummer in `r0`, Argumente ab `r1`,
-Ergebnis in `r0`. Das Gegenstück auf der Systemseite steht in
-`system/start.asm` — dort sieht man jeden Aufruf.
+Called with `int <number>`, function number in `r0`, arguments from
+`r1`, result in `r0`. The counterpart on the system side lives in
+`system/start.asm` — that's where you can see every call.
 
-### INT 0x10 — Bildschirm
+### INT 0x10 — Screen
 
-Die **Reihenfolge ist Pflicht**, das System ruft über die Nummer auf.
+The **order is mandatory**, the system calls by number.
 
-| r0 | Name | Argumente |
+| r0 | Name | Arguments |
 |---|---|---|
-| 0 | putc | r1 Zeichen, r2 Attribut |
-| 1 | puts | r1 Zeiger auf 0-terminierten Text, r2 Attribut |
+| 0 | putc | r1 character, r2 attribute |
+| 1 | puts | r1 pointer to 0-terminated text, r2 attribute |
 | 2 | setcursor | r1 x, r2 y |
-| 3 | clear | r1 Attribut |
+| 3 | clear | r1 attribute |
 | 4 | getcursor | — → r0 = `y<<16 \| x` |
-| 5 | putat | r1 x, r2 y, r3 Zeichen, r4 Attribut |
-| 6 | putn | r1 Zahl, r2 Attribut (dezimal, ohne Vorzeichen) |
-| 7 | puthex | r1 Wert, r2 Attribut, **r3 Stellen** |
-| 8 | setmode | r1 = 0 Text, 1 Grafik |
-| 9 | box | r1 x, r2 y, r3 Breite, r4 Höhe, r5 Attribut |
-| 10 | fillrect | r1 x, r2 y, r3 Breite, r4 Höhe, r5 Attribut |
-| 11 | hline | r1 x, r2 y, r3 Länge, r4 Zeichen, r5 Attribut |
-| 12 | scroll | — (alles eine Zeile hoch) |
-| 13 | clearrow | r1 y, r2 Attribut |
-| 14 | putsat | r1 x, r2 y, r3 Text, r4 Attribut |
-| 15 | sbcount | — → r0 = Zeilen in der Bildschirmhistorie |
-| 16 | sbline | r1 Zeilennummer, r2 Zieladresse |
+| 5 | putat | r1 x, r2 y, r3 character, r4 attribute |
+| 6 | putn | r1 number, r2 attribute (decimal, unsigned) |
+| 7 | puthex | r1 value, r2 attribute, **r3 digit count** |
+| 8 | setmode | r1 = 0 text, 1 graphics |
+| 9 | box | r1 x, r2 y, r3 width, r4 height, r5 attribute |
+| 10 | fillrect | r1 x, r2 y, r3 width, r4 height, r5 attribute |
+| 11 | hline | r1 x, r2 y, r3 length, r4 character, r5 attribute |
+| 12 | scroll | — (everything up one line) |
+| 13 | clearrow | r1 y, r2 attribute |
+| 14 | putsat | r1 x, r2 y, r3 text, r4 attribute |
+| 15 | sbcount | — → r0 = lines in the screen history |
+| 16 | sbline | r1 line number, r2 target address |
 
-**15 und 16 darf man weglassen** — dann geben sie einfach 0 zurück, und die
-Historie im Terminal ist leer. So macht es `minimal.asm`. Was man nicht
-weglassen darf, ist der Eintrag selbst: fehlt er in der Tabelle, springt
-das System ins Leere.
+**15 and 16 may be left out** — then they simply return 0, and the
+terminal's history is empty. That's what `minimal.asm` does. What you
+must *not* leave out is the table entry itself: if it's missing, the
+system jumps into nowhere.
 
-**putc muss Steuerzeichen kennen.** Das ist die Anforderung, die man beim
-Abschreiben am ehesten übersieht — sie steht in keiner Funktionsnummer:
+**putc must recognize control characters.** This is the requirement
+that's easiest to overlook when copying it — it isn't listed under any
+function number:
 
-| Code | | was putc tun muss |
+| Code | | what putc must do |
 |---|---|---|
-| 10 | `\n` | Zeilenumbruch, am unteren Rand scrollen |
-| **8** | **Rücktaste** | **Cursor eins zurück und das Zeichen dort löschen** |
-| 13 | `\r` | Cursor an den Zeilenanfang |
-| 9 | Tab | auf das nächste Vielfache von 8 |
+| 10 | `\n` | line break, scroll at the bottom edge |
+| **8** | **Backspace** | **move cursor back one and delete the character there** |
+| 13 | `\r` | cursor to start of line |
+| 9 | Tab | to the next multiple of 8 |
 
-Fehlt die **8**, legt das BIOS das Byte 8 als ganz normales Zeichen in den
-Bildspeicher — und CP437 stellt 8 als „◘" dar. Die Eingabezeile sammelt dann
-bei jedem Druck auf die Rücktaste ein Kästchen ein, statt zu löschen.
-Verwirrend daran: der Text *im Speicher* stimmt trotzdem, nur der Bildschirm
-lügt. Genau das ist Colin mit seinem ersten eigenen BIOS passiert.
+If the **8** is missing, the BIOS drops the byte 8 into the screen
+buffer as an ordinary character — and CP437 renders 8 as "◘". The input
+line then collects a little box on every backspace press instead of
+deleting. What makes this confusing: the text *in memory* is correct
+regardless, only the screen lies. This is exactly what happened to Colin
+with his first own BIOS.
 
-Das System schickt die 8 an zwei Stellen: `readline` in `system/lib.c` und
-die Eingabe des Python-Interpreters in `programs/py.c`.
+The system sends the 8 to two places: `readline` in `system/lib.c` and
+the input routine of the Python interpreter in `programs/py.c`.
 
-`r3 Stellen` bei **puthex** ist eine echte Falle. Wer es vergisst, druckt
-den Wert hunderte Male und füllt den ganzen Bildschirm — genau das ist beim
-Bau des Firmware-Reiters passiert.
+`r3 digit count` in **puthex** is a real trap. Forget it, and it prints
+the value hundreds of times and fills the entire screen — exactly what
+happened while building the firmware tab.
 
-### INT 0x13 — Festplatte
+### INT 0x13 — Disk
 
-| r0 | Name | Argumente | Ergebnis |
+| r0 | Name | Arguments | Result |
 |---|---|---|---|
-| 0 | lesen | r1 Sektor (LBA), r2 Anzahl, r3 Zieladresse | r0 = Status, 0 = gut |
-| 1 | schreiben | dito | r0 = Status |
-| 2 | Größe | — | r0 = Sektoren |
+| 0 | read | r1 sector (LBA), r2 count, r3 target address | r0 = status, 0 = good |
+| 1 | write | same | r0 = status |
+| 2 | size | — | r0 = sectors |
 
-### INT 0x16 — Tastatur
+### INT 0x16 — Keyboard
 
-| r0 | Name | Ergebnis |
+| r0 | Name | Result |
 |---|---|---|
-| 0 | warten | r0 = `Scancode<<8 \| ASCII` |
-| 1 | nachsehen | 0 oder der Code — die Taste bleibt im Puffer |
-| 2 | Puffer leeren | — |
+| 0 | wait | r0 = `Scancode<<8 \| ASCII` |
+| 1 | peek | 0 or the code — the key stays in the buffer |
+| 2 | flush buffer | — |
 
-Beim Warten gehört ein **`hlt`** in die Schleife. Ohne dreht die CPU im
-Leerlauf mit voller Last, wird heiß und drosselt sich selbst — auch das ist
-schon passiert, siehe [[10 Temperatur]].
+A **`hlt`** belongs in the wait loop. Without it, the CPU spins idle at
+full load, gets hot, and throttles itself — this too has already
+happened, see [[10 Temperatur]].
 
-### INT 0x1A — Zeit
+### INT 0x1A — Time
 
-| r0 | Name | Ergebnis |
+| r0 | Name | Result |
 |---|---|---|
-| 0 | Ticks seit dem Start | r0 (100 je Sekunde) |
-| 1 | Uhrzeit | `h<<16 \| m<<8 \| s` |
-| 2 | Datum | `j<<16 \| m<<8 \| t` |
+| 0 | ticks since start | r0 (100 per second) |
+| 1 | time of day | `h<<16 \| m<<8 \| s` |
+| 2 | date | `y<<16 \| m<<8 \| d` |
 
 ---
 
-## Was das BIOS **nicht** machen muss
+## What the BIOS Does **Not** Have to Do
 
-Fast alles. Das System redet mit der Hardware weitgehend selbst — Grafik,
-Blitter, Maus, Lautsprecher, Blockkopierer und Temperatur gehen über
-`inr`/`outr` direkt an die Ports, ganz ohne BIOS. Die Portliste steht in
-[[02 Speicherkarte und Ports]].
+Almost everything. The system talks to the hardware itself for the most
+part — graphics, blitter, mouse, speaker, block copier, and temperature
+all go over `inr`/`outr` directly to the ports, with no BIOS involved.
+The port list is in [[02 Speicherkarte und Ports]].
 
-Deshalb ist ein brauchbares BIOS hier so klein: **3324 Byte** gegen 12216
-beim vollen.
+That's why a working BIOS is so small here: **3324 bytes** versus 12216
+for the full one.
 
 ---
 
-## Ein BIOS auf dem Gerät selbst schreiben
+## Writing a BIOS on the Device Itself
 
-Seit dem Ausbau des Assemblers kann der TB-32 **seine eigene Firmware
-bauen** — nachgemessen: das Ergebnis ist Byte für Byte dasselbe wie vom Mac,
-bis auf Länge und Prüfsumme im Kopf, die der Coder selbst einträgt.
+Since the assembler was extended, the TB-32 can **build its own
+firmware** — verified: the result is byte-for-byte identical to the
+Mac's, except for the length and checksum in the header, which the Coder
+fills in itself.
 
-**Coder → New → BIOS** legt eine Quelle mit fertiger Vorlage an. Der
-`?`-Knopf oben rechts öffnet die Kurzfassung dieser Seite auf dem Gerät.
+**Coder → New → BIOS** creates a source file with a ready-made template.
+The `?` button in the top right opens the short version of this page on
+the device.
 
-Unten zwei Knöpfe:
+Two buttons at the bottom:
 
 | | |
 |---|---|
-| **Test** | baut, prüft, fragt nach — und startet den Rechner **einmal** damit. Der Chip bleibt, wie er ist; der nächste Neustart bringt das normale BIOS zurück. Im Startbild steht `TEST IMAGE -- runs once`. |
-| **Flash** | dasselbe, aber dauerhaft. Nach der Rückfrage im Coder startet der Rechner neu, und die **Firmware** fragt in Rot ein zweites Mal, bevor irgendetwas geschrieben wird. |
+| **Test** | builds, checks, asks for confirmation — and boots the machine **once** with it. The chip stays as it is; the next restart brings back the normal BIOS. The boot screen shows `TEST IMAGE -- runs once`. |
+| **Flash** | the same, but permanently. After confirming in the Coder, the machine restarts, and the **firmware** asks a second time, in red, before anything is written. |
 
-Die zweite Rückfrage stellt bewusst das BIOS und nicht der Coder: ein
-Programm darf nicht allein entscheiden, dass der Chip überschrieben wird.
+The second confirmation is deliberately posed by the BIOS, not the
+Coder: a program must not be allowed to decide alone that the chip gets
+overwritten.
 
-**Was der Assembler auf dem Gerät dafür gelernt hat:** `.org`, `.equ`,
-`.include`, Ausdrücke mit Punkt-vor-Strich und Klammern, `ldwa`/`stwa`,
-512 statt 256 Symbole — und **lokale Marken** (`.loop`, `.done`) gehören
-jetzt zur zuletzt genannten globalen Marke. Ohne das war `.copy` überall
-dieselbe, und die Sprünge landeten in einer anderen Funktion.
+**What the on-device assembler had to learn for this:** `.org`, `.equ`,
+`.include`, expressions with operator precedence and parentheses,
+`ldwa`/`stwa`, 512 instead of 256 symbols — and **local labels**
+(`.loop`, `.done`) now belong to the most recently named global label.
+Without that, `.copy` was the same label everywhere, and jumps landed in
+a different function.
 
-## Flashen von einer Datei
+## Flashing from a File
 
 ```
 python3 build.py                          # -> firmware/minimal.bin
 ```
 
-Dann im TB-32: **DEL** beim Start → Reiter **Firmware** → *Flash BIOS from
-File* → im Mac-Dialog die `.bin` aussuchen → mit ENTER bestätigen.
+Then in the TB-32: **DEL** at startup → **Firmware** tab → *Flash BIOS
+from File* → pick the `.bin` in the Mac dialog → confirm with ENTER.
 
-Der Reiter zeigt außerdem Größe und Prüfsumme des Chips, der **gerade
-läuft** — daran sieht man sofort, ob wirklich das eigene BIOS drin ist.
+The tab also shows the size and checksum of the chip that's **currently
+running** — that's how you can immediately tell whether your own BIOS is
+really in there.
 
-Gebrannt wird die Chipdatei, **nicht der laufende Chip**: das neue BIOS gilt
-ab dem nächsten Einschalten. Wer den Speicher überschreibt, aus dem die CPU
-gerade ihre Befehle holt, stürzt im selben Augenblick ab; echte
-Flash-Programme kopieren sich dafür erst ins RAM.
+What gets burned is the chip file, **not the running chip**: the new
+BIOS takes effect starting with the next power-on. Overwriting the
+memory the CPU is currently fetching its instructions from would crash
+it on the spot; real flash programs copy themselves into RAM first for
+that reason.
 
-### Wenn es schiefgeht
+### If It Goes Wrong
 
-Drei Netze, in dieser Reihenfolge:
+Three safety nets, in this order:
 
-1. Ein Abbild ohne `TBBI` oder mit falscher Prüfsumme wird **gar nicht erst
-   geschrieben**.
-2. Vor jedem Brennen wandert das alte Abbild nach `firmware/bios.backup.bin`.
-   Enthält der Chip beim Einschalten Unsinn, spielt das Board die Sicherung
-   **von selbst** zurück (Dual BIOS) und sagt es im Terminal.
-3. Ein Abbild, das die Prüfung besteht und trotzdem hängenbleibt, holt man
-   über *Restore Backup BIOS* im selben Reiter zurück — oder über
-   `python3 build.py`, das den Auslieferungszustand wieder herstellt.
+1. An image without `TBBI` or with a wrong checksum is **never written
+   in the first place**.
+2. Before every burn, the old image moves to
+   `firmware/bios.backup.bin`. If the chip contains garbage at power-on,
+   the board restores the backup **automatically** (Dual BIOS) and
+   reports it in the terminal.
+3. An image that passes the check and still hangs is recovered via
+   *Restore Backup BIOS* in the same tab — or via `python3 build.py`,
+   which restores the factory state.
 
-Netz 2 greift nur bei einem **kaputten** Abbild. Ein formal gültiges BIOS,
-das einfach nicht funktioniert, startet den Rechner nicht — dafür ist Netz 3
-da.
+Net 2 only kicks in for a **corrupted** image. A formally valid BIOS
+that simply doesn't work won't boot the machine — that's what net 3 is
+for.
 
 ---
 
-## Die Hardware dahinter
+## The Hardware Behind It
 
-Drei Ports, siehe `hardware/devices.py`, Klasse `Flash`:
+Three ports, see `hardware/devices.py`, class `Flash`:
 
-| Port | Richtung | Bedeutung |
+| Port | Direction | Meaning |
 |---|---|---|
-| `0xB0` | schreiben | 1 Datei vom Wirt holen, 2 Puffer in den RAM, 3 brennen, 4 Sicherung zurück |
-| `0xB0` | lesen | Ergebnis des letzten Befehls, 0 = gut |
-| `0xB1` | lesen | Bytes im Puffer, 0 = keine Datei |
-| `0xB2` | schreiben | Zieladresse für Befehl 2 |
+| `0xB0` | write | 1 fetch file from host, 2 buffer into RAM, 3 burn, 4 restore backup |
+| `0xB0` | read | result of the last command, 0 = good |
+| `0xB1` | read | bytes in the buffer, 0 = no file |
+| `0xB2` | write | target address for command 2 |
 
-Befehl 1 öffnet den **Dateidialog des Macs** (`pc.py`, `bios_datei_waehlen`).
-Das ist der USB-Stick beim BIOS-Flashback eines echten Boards: die Datei
-kommt von außen, nicht aus dem laufenden System.
+Command 1 opens the **Mac's file dialog** (`pc.py`,
+`bios_datei_waehlen`). That's the equivalent of a USB stick during a
+real board's BIOS flashback: the file comes from outside, not from the
+running system.
 
-Der Baustein prüft **nichts**. Er nimmt jedes Byte, das man ihm gibt — genau
-wie ein echter Flash-Chip. Ob ein Abbild taugt, entscheidet die Firmware.
+The chip checks **nothing**. It accepts every byte it's given — exactly
+like a real flash chip. Whether an image is any good is up to the
+firmware to decide.
 
 ---
 
-Verwandt: [[13 BIOS-Dienste und was fehlt]], [[02 Speicherkarte und Ports]],
+Related: [[13 BIOS-Dienste und was fehlt]], [[02 Speicherkarte und Ports]],
 [[06 Bauen und Testen]], [[07 Fallstricke]]
 
 ---
 
-## Das Startbild gehört dem Board
+## The Boot Screen Belongs to the Board
 
-Beim Einschalten laufen fünf Sekunden, in denen die CPU noch keinen Strom
-hat (`EINSCHALT_HALT_S` in `pc.py`):
+At power-on there are five seconds during which the CPU has no power
+yet (`EINSCHALT_HALT_S` in `pc.py`):
 
-| Zeit | was passiert |
+| Time | What happens |
 |---|---|
-| 0,0–1,2 s | Blau füllt den Bildschirm von oben nach unten |
-| ab 1,5 s | der **Name aus dem BIOS-Kopf** steht in der Mitte |
-| ab 2,0 s | darunter `Press DEL to enter SETUP` |
-| 5,0 s | Strom aufs Board, das BIOS startet |
+| 0.0–1.2 s | Blue fills the screen from top to bottom |
+| from 1.5 s | the **name from the BIOS header** appears in the center |
+| from 2.0 s | below it, `Press DEL to enter SETUP` |
+| 5.0 s | power reaches the board, the BIOS starts |
 
-Das steht bewusst im Gehäuse und nicht in der Firmware. Ein Startbild im
-BIOS wäre genau dann weg, wenn jemand sein eigenes flasht — und dann gäbe
-es auch keine Stelle mehr, an der man DEL drücken könnte.
+This is deliberately in the housing, not the firmware. A boot screen in
+the BIOS would be gone exactly when someone flashes their own — and then
+there would also be no place left to press DEL.
 
-**Tasten aus dieser Zeit gehen nicht verloren.** Sie werden aufgehoben und
-dem Rechner gereicht, sobald die CPU läuft — erst dann, weil ein
-Tastatur-Interrupt bei stehender CPU verpufft.
+**Keys pressed during this time aren't lost.** They're buffered and
+handed to the machine as soon as the CPU is running — only then, because
+a keyboard interrupt fizzles out while the CPU is stopped.
 
-**Aber:** Das Board kann Zeit verschaffen, kein Menü herbeizaubern. Was beim
-DEL passiert, entscheidet die Firmware. Ein BIOS ohne Setup tut nichts.
+**But:** the board can buy time, not conjure up a menu. What happens on
+DEL is up to the firmware. A BIOS without a setup does nothing.

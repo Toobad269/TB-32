@@ -1,57 +1,60 @@
-# Desktop-Aufbau
+# Desktop Structure
 
-Alles in `system/gui.c`. Grafikmodus 640×400, gezeichnet über den Blitter der
-Grafikkarte (Ports `0x44`–`0x4C`) — nie Pixel für Pixel über den Bus, das ist
-hundertfach langsamer.
+Everything is in `system/gui.c`. Graphics mode 640×400, drawn via the
+graphics card's blitter (ports `0x44`–`0x4C`) — never pixel by pixel over
+the bus, that's a hundred times slower.
 
-## Zeichenfunktionen
+## Drawing functions
 
 `g_fill(x,y,w,h,farbe)`, `g_frame`, `g_char(x,y,zeichen,farbe,bg)`,
 `g_text`, `g_num`, `g_num2`, `g_panel(…,gedrueckt)`, `g_button`.
-`bg = 256` bedeutet durchsichtig.
+`bg = 256` means transparent.
 
-Der Zeichensatz kennt nur 32–127. Blockzeichen selbst als Rechteck malen.
+The character set only knows 32–127. Draw block characters as rectangles
+yourself.
 
-## Fenster
+## Windows
 
-`win_type[]` `win_x[] win_y[] win_w[] win_h[]`, `win_top` = vorderstes.
-`MAXWIN` = 6. `starte(typ, titel, w, h)` öffnet oder holt nach vorn und
-**begrenzt die Position auf den Bildschirm**.
+`win_type[]` `win_x[] win_y[] win_w[] win_h[]`, `win_top` = frontmost window.
+`MAXWIN` = 6. `starte(typ, titel, w, h)` opens a window or brings it to the
+front and **clamps the position to the screen**.
 
-Jedes Fenster hat in der Titelleiste zwei Knöpfe: **Vollbild** (12 px breit,
-bei `win_w - 30`) und **Schließen** (bei `win_w - 16`). `win_vollbild(i)`
-merkt sich die alten Maße in `win_ax/ay/aw/ah` und setzt `win_voll[i]`.
+Every window has two buttons in its title bar: **fullscreen** (12px wide,
+at `win_w - 30`) and **close** (at `win_w - 16`). `win_vollbild(i)`
+remembers the previous dimensions in `win_ax/ay/aw/ah` and sets
+`win_voll[i]`.
 
-Unten rechts sitzt der **Anfasser** zum Ziehen (12×12, nur wenn nicht
-Vollbild). Er wird **nach** dem Anwendungsinhalt gezeichnet, sonst malt die
-Anwendung darüber. Beim Ziehen hält `groesse_zieht` die Fensternummer;
-Mindestmaß 160×80, begrenzt auf Bildschirm und Startleiste.
+The **resize handle** for dragging sits in the bottom-right corner (12×12,
+only when not fullscreen). It's drawn **after** the application content,
+otherwise the application would paint over it. While dragging,
+`groesse_zieht` holds the window number; minimum size 160×80, clamped to
+the screen and the taskbar.
 
-Wichtig: Die Abfrage der Ecke steht **vor** allen anderen Treffern in der
-Klickkette — sonst fängt die Anwendung den Klick ab.
+Important: the hit test for the corner comes **before** all other hits in
+the click chain — otherwise the application would intercept the click.
 
-| Typ | Anwendung |
+| Type | Application |
 |---|---|
-| 1 | File Manager (Up/Move/Delete/**Open/Run**, Doppelklick öffnet) |
+| 1 | File Manager (Up/Move/Delete/**Open/Run**, double-click opens) |
 | 2 | Clock |
-| 3 | System Monitor (Prozesse, Platte, **Temperatur**) |
+| 3 | System Monitor (processes, disk, **temperature**) |
 | 4 | About |
-| 6 | Control Panel (CMOS + Lüftermodus) |
-| 7 | **Command Prompt** (siehe unten) |
+| 6 | Control Panel (CMOS + fan mode) |
+| 7 | **Command Prompt** (see below) |
 | 8 | **Editor** |
-| 9 | **Compiling** — Fortschrittsfenster, öffnet und schließt sich selbst |
-| 10 | **Paint** — Zeichenprogramm, `system/paint.c` |
-| 11 | **Word** — Textverarbeitung, `system/word.c` |
+| 9 | **Compiling** — progress window, opens and closes itself |
+| 10 | **Paint** — drawing program, `system/paint.c` |
+| 11 | **Word** — word processor, `system/word.c` |
 
-## Startleiste und Menü
+## Taskbar and start menu
 
-Links `Start` (öffnet das Menü), daneben je ein Knopf für jedes offene
-Fenster (vorderstes erscheint gedrückt), rechts die Uhr. Menüeinträge in
-`menu_text()`.
+`Start` on the left (opens the menu), followed by a button for each open
+window (the frontmost one appears pressed), and the clock on the right.
+Menu entries live in `menu_text()`.
 
-**Reihenfolge (MENU_ANZ = 10):**
+**Order (MENU_ANZ = 10):**
 
-| Nr | Eintrag |
+| No. | Entry |
 |---|---|
 | 0 | File Manager |
 | 1 | Command Prompt |
@@ -64,211 +67,221 @@ Fenster (vorderstes erscheint gedrückt), rechts die Uhr. Menüeinträge in
 | 8 | About TOOBAD-OS |
 | 9 | Exit desktop |
 
-**Achtung bei Klicktests:** Das Menü wächst nach **oben**. Die Position des
-*n*-ten Eintrags ist
+**Watch out in click tests:** The menu grows **upward**. The position of the
+*n*-th entry is
 
 ```
 MENU_TOP = BAR_Y - (MENU_ANZ * MENU_ZH + 10)      # 378 - (10*14 + 10) = 228
 y        = MENU_TOP + 6 + n * 14
 ```
 
-Jeder neue Menüpunkt verschiebt **alle** Klickkoordinaten um eine Zeile.
-`tools/selftest.py` rechnet sie deshalb aus `MENU_ANZ` aus, statt sie fest
-einzutragen — genau daran sind schon zweimal Tests gescheitert.
+Every new menu entry shifts **all** click coordinates by one row.
+`tools/selftest.py` therefore computes them from `MENU_ANZ` instead of
+hard-coding them — tests have already failed twice over exactly this.
 
-## Rechte Maustaste
+## Right mouse button
 
-Die Maus liefert in Port `0x62` Bit 0 links, Bit 1 Mitte, **Bit 2 rechts**.
-Der Schreibtisch merkt sich in `gui_taste`, welche Taste den letzten Klick
-ausgelöst hat. Word wertet das aus und klappt sein Farbmenü auf.
+The mouse reports in port `0x62` bit 0 left, bit 1 middle, **bit 2 right**.
+The desktop remembers in `gui_taste` which button triggered the last click.
+Word reads this and opens its color menu accordingly.
 
-## Zurückblättern im Terminalfenster
+## Scrolling back in the terminal window
 
-Die Zeilen, die oben herauslaufen, wandern in einen Ringpuffer bei
-`0x00124000` (200 Zeilen à 70×2 Byte). `term_sb_push()` sichert die oberste
-Zeile, bevor `term_scroll()` sie überschreibt.
+Lines that scroll off the top move into a ring buffer at `0x00124000`
+(200 lines of 70×2 bytes). `term_sb_push()` saves the topmost line before
+`term_scroll()` overwrites it.
 
-`term_sicht(i, view)` liefert die Adresse der *i*-ten sichtbaren Zeile.
-Die Rechnung läuft über einen gedachten Gesamtstrom aus Ringpuffer + aktuellem
-Bild — deshalb ist der Übergang nahtlos und es braucht keine Sonderfälle.
-Mausrad blättert (`term_view`), jede Taste holt nach vorn.
+`term_sicht(i, view)` returns the address of the *i*-th visible line. The
+calculation runs over a conceptual combined stream of ring buffer + current
+frame — that's why the transition is seamless and needs no special cases.
+The mouse wheel scrolls (`term_view`), and any keypress jumps back to the
+front.
 
-## Terminalfenster
+## Terminal window
 
-Die Shell läuft als **eigener Prozess** (`term_main` in `system/term.c`).
+The shell runs as its **own process** (`term_main` in `system/term.c`).
 
-- Ausgabe: `term_aktiv` schaltet in `lib.c` und `syscall.c` die Ausgabe in den
-  Puffer bei `0x120000` um
-- Eingabe: Die GUI-Schleife holt Tasten und schiebt sie mit `term_push_key()`
-  weiter, wenn das Terminalfenster vorn ist
-- Beim Verlassen des Desktops **muss** der Prozess beendet und `term_aktiv`
-  zurückgesetzt werden
-- Der Puffer ist fest 70×22. `app_term` malt nur so viele Zeilen und Spalten,
-  wie ins Fenster passen — sonst schreibt der Text über den Rand hinaus
-- `WIN` im Terminalfenster startet **keinen** zweiten Desktop: `kernel.c`
-  fragt `gui_running` ab. Deshalb muss `gui_main()` `gui_running = 0` auch
-  beim Verlassen mit ESC setzen, nicht nur beim Menüpunkt *Exit*
+- Output: `term_aktiv` switches output into the buffer at `0x120000`, in
+  `lib.c` and `syscall.c`
+- Input: the GUI loop fetches keys and forwards them with `term_push_key()`
+  when the terminal window is in front
+- When leaving the desktop, the process **must** be terminated and
+  `term_aktiv` reset
+- The buffer is a fixed 70×22. `app_term` draws only as many rows and
+  columns as fit into the window — otherwise the text writes past the edge
+- `WIN` inside the terminal window does **not** start a second desktop:
+  `kernel.c` checks `gui_running`. That's why `gui_main()` must also set
+  `gui_running = 0` when leaving via ESC, not only via the *Exit* menu item
 
-## Editorfenster
+## Editor window
 
-Nutzt die Editierfunktionen aus `system/edit.c` (`ed_insert`, `ed_backspace`,
-`ed_line_of` …). Eigen sind nur Zeichnen und Tastenverteilung.
+Uses the editing functions from `system/edit.c` (`ed_insert`,
+`ed_backspace`, `ed_line_of` …). Only drawing and key dispatch are specific
+to the window itself.
 
-## Symbole auf dem Schreibtisch
+## Desktop icons
 
-**„Auf dem Schreibtisch liegen" heißt: im Ordner `\DESKTOP` liegen.** Damit
-ist es kein Sonderfall — die Kommandozeile sieht den Ordner, die
-Dateiverwaltung sieht ihn, und Verschieben ist dieselbe `fs_move`-Funktion
-wie sonst. `desk_ordner()` legt ihn beim ersten Zeichnen an, falls er fehlt.
+**"Sitting on the desktop" means: sitting in the `\DESKTOP` folder.** That
+makes it not a special case at all — the command line sees the folder, the
+file manager sees it, and moving something is the same `fs_move` function
+used everywhere else. `desk_ordner()` creates the folder on first draw if
+it's missing.
 
-- `desk_index(n)` liefert den n-ten Eintrag, `desk_symbol` malt je nach Typ:
-  **Blatt** mit Eselsohr und farbigem Endungsstreifen (`.C` rot, `.ASM` gelb,
-  `.PY` grün, `.MD` türkis), **Ordner** mit Reiter und hellerer Vorderseite,
-  **Programm** als kleines Fenster mit Titelleiste und grünem Startpfeil.
-  Schräge Kanten entstehen als Treppe aus `g_fill`-Rechtecken
-- Der Name wird auf **11 Zeichen gekürzt** (`kurzname`) und links wie rechts
-  auf den Bildschirm geklemmt. Vorher rechnete nur die Mitte mit 10 Zeichen,
-  gezeichnet wurde der ganze Name — bei einem Symbol am linken Rand stand
-  dann „EADME.TXT" da
-- **Position:** `icon_pos[]` hat ein Wort je Verzeichniseintrag — unten `x`,
-  oben `y`, **0 heißt „nie angefasst"** und ergibt den Rasterplatz
-  (`desk_raster_x/y`, 7 Spalten à 84×62). `desk_setzen()` begrenzt auf den
-  Bildschirm und weicht dem Wert 0/0 aus, damit „gesetzt" eindeutig bleibt
-- Gespeichert wird die Tabelle als `\DESKTOP\ICONS.DAT` (512 Byte).
-  `icon_laden`/`icon_speichern` schalten `cwd` kurz auf den Schreibtischordner
-  um, weil `fs_read`/`fs_write` immer im aktuellen Ordner arbeiten. Die Datei
-  selbst wird in `desk_index` übersprungen, sonst läge sie als Symbol herum
-- `desk_treffer(mx,my)` sagt, auf welchem Symbol die Maus liegt
-- Symbole hinter einem Fenster sind nicht anklickbar — dafür fragt die
-  Klickkette zuerst `win_unter(mx,my)`
+- `desk_index(n)` returns the n-th entry, `desk_symbol` paints it depending
+  on type: **sheet** with a folded corner and a colored extension stripe
+  (`.C` red, `.ASM` yellow, `.PY` green, `.MD` teal), **folder** with a tab
+  and a lighter front face, **program** as a small window with a title bar
+  and a green start arrow. Diagonal edges are built as a staircase of
+  `g_fill` rectangles
+- The name is **truncated to 11 characters** (`kurzname`) and clamped to the
+  screen on both left and right. Previously only the centering used 10
+  characters while the whole name was still drawn — for an icon near the
+  left edge this produced "EADME.TXT"
+- **Position:** `icon_pos[]` has one word per directory entry — `x` in the
+  lower half, `y` in the upper half, **0 means "never touched"** and yields
+  the grid slot (`desk_raster_x/y`, 7 columns of 84×62). `desk_setzen()`
+  clamps to the screen and avoids the value 0/0 so that "placed" stays
+  unambiguous
+- The table is stored as `\DESKTOP\ICONS.DAT` (512 bytes). `icon_laden`/
+  `icon_speichern` briefly switch `cwd` to the desktop folder, because
+  `fs_read`/`fs_write` always operate on the current folder. The file itself
+  is skipped in `desk_index`, otherwise it would show up as an icon of its
+  own
+- `desk_treffer(mx,my)` reports which icon the mouse is over
+- Icons behind a window aren't clickable — the click chain checks
+  `win_unter(mx,my)` first
 
-## Grafische Programme bekommen den ganzen Schirm
+## Graphical programs get the whole screen
 
-Ein Programm, das den Bildschirmmodus umschaltet, kann nicht in ein Fenster
-passen — es malt auf dieselbe Fläche wie die Oberfläche. Deshalb tritt der
-Schreibtisch für die Dauer ab:
+A program that switches the screen mode can't fit inside a window — it
+paints onto the same surface as the desktop. So the desktop steps aside for
+its duration:
 
-- `syscall.c`, Funktion 17: schaltet ein Programm auf Grafik, während
-  `gui_running` gilt, wird `gui_fremd = 1` gesetzt und `term_aktiv = 0`.
-  Das zweite ist entscheidend — sonst holt sich das Programm seine Tasten aus
-  der Warteschlange des Terminalfensters, die aber die schlafende Oberfläche
-  füllt: es käme keine einzige Taste an
-- zurück in den Textmodus heißt „fertig" → `gui_fremd = 2`
-- die Hauptschleife zeichnet bei 1 gar nichts und liest keine Tasten, bei 2
-  stellt sie Grafikmodus, Zeichensatz und Mauszeiger wieder her und malt neu
-- `gui_selbst` schützt die eigenen Moduswechsel der Oberfläche davor, sich
-  selbst zu melden (`gui_ausfuehren` setzt es für seine ganze Dauer)
+- `syscall.c`, function 17: switches a program into graphics mode; while
+  `gui_running` holds, `gui_fremd = 1` is set and `term_aktiv = 0`. The
+  second part is essential — otherwise the program would pull its keys from
+  the terminal window's queue, which the sleeping desktop keeps filling: not
+  a single key would ever arrive
+- returning to text mode means "done" → `gui_fremd = 2`
+- the main loop draws nothing and reads no keys at 1; at 2 it restores
+  graphics mode, character set, and mouse cursor, and redraws
+- `gui_selbst` protects the desktop's own mode switches from triggering this
+  mechanism on themselves (`gui_ausfuehren` sets it for its entire duration)
 
-## Doppelklick und Ziehen
+## Double-click and dragging
 
-`klick_was` + `klick_zeit` merken den letzten Klick; zwei Klicks auf dasselbe
-Ziel innerhalb von **50 Ticks (0,5 s)** sind ein Doppelklick. Zeilen der
-Dateiverwaltung zählen ab 0, Schreibtischsymbole ab 1000 — so können sich
-die beiden nicht verwechseln.
+`klick_was` + `klick_zeit` remember the last click; two clicks on the same
+target within **50 ticks (0.5s)** count as a double-click. File manager rows
+are numbered from 0, desktop icons from 1000 — so the two can never be
+confused.
 
-`eintrag_oeffnen(idx)` ist die *eine* Stelle, die entscheidet, was „öffnen"
-heißt: Ordner betreten, `.TBX`/`.PY` **im Vollbild** starten (`gui_ausfuehren`),
-alles andere in den Editor. Im Fenster läuft nur, was man in der
-Kommandozeile selbst eintippt — dort *ist* das Fenster die Shell. **Vorher wird `cwd` auf den Ordner der Datei gesetzt** — der
-Programm-Suchpfad ist aktueller Ordner → `\SYSTEM` → `\PROGS`, und
-`\DESKTOP` steht nicht darin. Doppelklick in der Liste und auf dem Symbol rufen beide sie
-auf — es gibt keinen zweiten Weg, der auseinanderlaufen könnte.
+`eintrag_oeffnen(idx)` is the *single* place that decides what "open" means:
+entering a folder, launching `.TBX`/`.PY` **fullscreen** (`gui_ausfuehren`),
+everything else into the editor. Only what you type yourself into the
+command line runs inside a window — there, the window *is* the shell.
+**Before that, `cwd` is set to the file's folder** — the program search path
+is current folder → `\SYSTEM` → `\PROGS`, and `\DESKTOP` isn't part of it.
+Double-clicking in the list and on the icon both call this same function —
+there's no second path that could ever drift apart from it.
 
-**Ziehen:** `files_click` gibt **2** zurück, wenn der Klick auf einer Zeile
-lag; dann merkt sich die Hauptschleife `zieh_idx`. Auf dem Schreibtisch merkt
-sie zusätzlich `zieh_sym` und den Griffpunkt (`zieh_dx/dy`), damit das Symbol
-unter dem Zeiger bleibt und nicht springt. Beim Loslassen entscheidet
-`win_unter(mx,my)`:
+**Dragging:** `files_click` returns **2** when the click landed on a row;
+the main loop then remembers `zieh_idx`. On the desktop it also remembers
+`zieh_sym` and the grab point (`zieh_dx/dy`), so the icon stays under the
+cursor instead of jumping. On release, `win_unter(mx,my)` decides:
 
-| losgelassen über | Wirkung |
+| released over | effect |
 |---|---|
-| freiem Schreibtisch, Datei kam aus einem Fenster | `fs_move` nach `\DESKTOP` + Position setzen |
-| freiem Schreibtisch, Symbol lag schon dort | nur neue Position, `icon_speichern()` |
-| einem File-Manager-Fenster | `fs_move` in dessen Ordner, Position löschen |
+| empty desktop, file came from a window | `fs_move` to `\DESKTOP` + set position |
+| empty desktop, icon was already there | just a new position, `icon_speichern()` |
+| a File Manager window | `fs_move` into its folder, clear position |
 
-**Knopfleiste der Dateiverwaltung** steht in *einer* Tabelle
-(`fb_breite()`, `fb_x()`, `fb_text()`) — Zeichnen und Klicken lesen dieselbe,
-also können sie nicht auseinanderlaufen. Nur noch vier, nach Häufigkeit
-sortiert: `Up`, `Move`/`Drop`, `Delete`, `Open/Run` (letzterer nimmt den
-ganzen Bildschirm, für grafische Programme). Öffnen und Starten macht
-der Doppelklick; ein eigener Knopf dafür wäre eine Doppelung.
-Der **Text Viewer** (Fenstertyp 5) ist dabei weggefallen — er war nur noch
-über „Open" auf einer `.TBX` erreichbar und zeigte Maschinencode als Text. Knöpfe, die nicht mehr ins Fenster
-passen, werden weggelassen statt über den Rand gemalt.
+**File manager button bar** lives in a *single* table (`fb_breite()`,
+`fb_x()`, `fb_text()`) — drawing and click handling both read from it, so
+they can't drift apart. Only four buttons remain now, sorted by frequency:
+`Up`, `Move`/`Drop`, `Delete`, `Open/Run` (the latter takes over the whole
+screen, for graphical programs). Opening and launching are both handled by
+double-clicking; a separate button for that would just be a duplicate. The
+**Text Viewer** (window type 5) was dropped along the way — it was only
+reachable via "Open" on a `.TBX` and showed machine code as text. Buttons
+that no longer fit the window are left out rather than drawn past the edge.
 
-**Programme im Fenster** (`gui_im_fenster`): Das Terminalfenster *ist* eine
-echte Shell mit eigenem Bildspeicher und eigener Tastatur. Statt eine zweite
-Ausführungsumgebung zu bauen, öffnet die Funktion das Fenster und **tippt den
-Befehl hinein** (`term_push_key`). Die Shell startet das Programm als ihr
-Kind, die Ausgabe landet über `term_aktiv` von selbst im Fenster. Wichtig:
-Die Eingabetaste muss als `13 + (K_ENTER << 8)` kommen — die Shell prüft den
-**Tastencode**, ein blankes 13 erkennt sie nicht.
-Grafische Programme gehören *nicht* hierhin, die schalten den Bildschirmmodus
-um; dafür bleibt `Run` mit `gui_ausfuehren`.
+**Programs in a window** (`gui_im_fenster`): the terminal window *is* a real
+shell with its own screen buffer and its own keyboard. Instead of building a
+second execution environment, the function opens the window and **types the
+command into it** (`term_push_key`). The shell starts the program as its
+child, and the output ends up in the window automatically via `term_aktiv`.
+Important: the Enter key must arrive as `13 + (K_ENTER << 8)` — the shell
+checks the **key code**, and doesn't recognize a bare 13.
+Graphical programs do *not* belong here — they switch the screen mode; for
+those, `Run` with `gui_ausfuehren` remains the way.
 
-**Verschieben** (`fs_move` in `fs.c`): Elternordner im Verzeichniseintrag
-ändern, sonst nichts — keine Sektoren werden angefasst. Zwei Klicks:
-*Move* nimmt auf (`move_quelle`, die Pfadzeile zeigt „Moving: …", der Knopf
-heißt jetzt *Drop*), im Zielordner legt *Drop* ab. Schlägt es fehl (Name
-belegt, Ordner in sich selbst), bleibt die Datei aufgenommen.
+**Moving** (`fs_move` in `fs.c`): changes only the parent folder in the
+directory entry, nothing else — no sectors are touched. Two clicks: *Move*
+picks it up (`move_quelle`, the path line shows "Moving: …", the button
+becomes *Drop*), *Drop* in the target folder places it. If it fails (name
+already taken, folder moved into itself), the file stays picked up.
 
-**Dateiverwaltung:** `file_masse()` rechnet `file_rows` aus der Fensterhöhe
-aus, `file_top` ist die erste sichtbare Zeile, `file_sel` der ausgewählte
-Eintrag (Index in der *ganzen* Liste, nicht in der Anzeige — beim Zeichnen und
-beim Klicken also immer `file_top + zeile` rechnen). Mausrad blättert, rechts
-erscheint ein Rollbalken, sobald mehr Einträge da sind als Platz. Vorher
-standen dort fest 11 Zeilen ohne Blättern: alles darunter war unsichtbar,
-`\SOURCE` mit 14 Dateien zeigte die letzten drei nie an.
+**File manager:** `file_masse()` computes `file_rows` from the window
+height, `file_top` is the first visible row, `file_sel` is the selected
+entry (an index into the *whole* list, not the visible portion — so both
+drawing and click handling always compute `file_top + row`). The mouse
+wheel scrolls, and a scrollbar appears on the right once there are more
+entries than fit. It used to show a fixed 11 rows with no scrolling at
+all: anything below that was invisible, and `\SOURCE` with 14 files never
+showed the last three.
 
-**Startbildschirm:** `edg_screen` = 0 zeigt statt des Textes die Frage
-*„What do you want to do?"* — links vier Knöpfe für eine neue Datei (`.C`,
-`.ASM`, `.PY`, `.MD`, jeweils mit kleiner Vorlage), rechts die Liste des
-aktuellen Ordners (Ordner führen hinein, der `Up`-Knopf **direkt über der
-Liste** wieder heraus — unten in der Ecke hatte ihn niemand gefunden).
-`edg_liste_top` wird beim Rad **nach oben und nach unten** begrenzt, sonst
-scrollt man endlos in ein leeres Feld, unten der
-Ordner, in dem gespeichert wird. Der Knopf `< Back` in der Knopfleiste führt dorthin
-zurück — ohne ihn kam man aus einer offenen Datei nicht mehr heraus. `New`
-leert dagegen nur das Blatt und setzt den Namen auf `NEW.<Endung>`; den Namen
-mitzunehmen wäre gefährlich, weil `Save` dann die geöffnete Datei leeren
-würde. Es ist derselbe `cwd` wie in Dateiverwaltung und Kommandozeile —
-wer hier den Ordner wechselt, wechselt ihn überall.
+**Start screen:** `edg_screen` = 0 shows the question *"What do you want to
+do?"* instead of the text — four buttons on the left for a new file (`.C`,
+`.ASM`, `.PY`, `.MD`, each with a small template), the current folder's
+listing on the right (folders lead inward, and the `Up` button **directly
+above the list** leads back out — nobody ever found it tucked away in the
+corner). `edg_liste_top` is clamped **both upward and downward** on the
+wheel, otherwise you scroll endlessly into empty space; below that sits the
+folder where saving happens. The `< Back` button in the button bar leads
+back there — without it there was no way out of an open file. `New`, on the
+other hand, only clears the sheet and sets the name to `NEW.<extension>`;
+carrying the name over would be dangerous, because `Save` would then wipe
+out the already-open file. It's the same `cwd` as in the file manager and
+the command line — changing folders here changes it everywhere.
 
-**Größe passt sich an:** `edg_masse(w)` rechnet `edg_cols`/`edg_rows` aus
-`win_w`/`win_h` aus und muss vor jedem Zeichnen *und* vor jeder
-Mausumrechnung laufen. `EDG_COLS`/`EDG_ROWS` sind nur noch Aliase darauf.
+**Size adapts:** `edg_masse(w)` computes `edg_cols`/`edg_rows` from
+`win_w`/`win_h` and must run before every draw *and* before every mouse
+coordinate conversion. `EDG_COLS`/`EDG_ROWS` are now just aliases for it.
 
-**Maus:** `edg_pos_aus_maus()` rechnet Bildschirmpunkte in eine Textstelle um
-(`zeile = (my - texty - 3)/9 + edg_top`, `spalte = (mx - textx - 3)/8`) und
-begrenzt auf das Zeilenende. Klick setzt die Schreibmarke und beginnt eine
-Auswahl, `edg_zieht` hält sie beim Ziehen nach.
+**Mouse:** `edg_pos_aus_maus()` converts screen points into a text position
+(`zeile = (my - texty - 3)/9 + edg_top`, `spalte = (mx - textx - 3)/8`) and
+clamps to the end of the line. A click sets the cursor and starts a
+selection, `edg_zieht` extends it while dragging.
 
-**Auswahl und Zwischenablage:** `ed_sel_von`/`ed_sel_bis` (−1 = keine),
-invers gezeichnet. Puffer bei `CLIP_BUF = 0x130000`, Länge in `clip_len`.
-Strg+C kopieren, Strg+X ausschneiden, Strg+V einfügen (ersetzt die Auswahl),
-Strg+A alles. **`Strg+V` und `Cmd+V` sind dasselbe**: Liegt auf dem Mac etwas
-in der Zwischenablage, schreibt `pc.py` es vorher direkt in `CLIP_BUF` und
-setzt `clip_len` (`gast_clipboard_setzen`, Adressen aus `kernel.sym`). Tippen bei bestehender Auswahl ersetzt sie.
+**Selection and clipboard:** `ed_sel_von`/`ed_sel_bis` (−1 = none), drawn
+inverted. Buffer at `CLIP_BUF = 0x130000`, length in `clip_len`. Ctrl+C
+copies, Ctrl+X cuts, Ctrl+V pastes (replaces the selection), Ctrl+A selects
+all. **`Ctrl+V` and `Cmd+V` are the same thing**: if there's something in
+the clipboard on the Mac side, `pc.py` writes it directly into `CLIP_BUF`
+beforehand and sets `clip_len` (`gast_clipboard_setzen`, addresses taken
+from `kernel.sym`). Typing while a selection exists replaces it.
 
-**Mausrad:** Port `0x63` liefert die aufgelaufenen Rasten und setzt sich beim
-Lesen zurück. Beim Blättern wird `edg_folgen = 0` gesetzt — sonst zöge
-`app_editor` den Ausschnitt sofort wieder zur Schreibmarke zurück. Tippen und
-Klicken schalten das Nachführen wieder ein.
+**Mouse wheel:** Port `0x63` reports the accumulated notches and resets
+itself on read. Scrolling sets `edg_folgen = 0` — otherwise `app_editor`
+would immediately pull the viewport back to the cursor. Typing and clicking
+turn following back on.
 
-- Knopfleiste: `< Back  New  Save  Rename  Compile  Run`, rechts daneben das
-  Statusfeld (Ladebalken, „Saved.", „Compiled: …" oder der Kürzel-Hinweis)
-- `Compile` speichert, startet `CC`/`ASM` als **Hintergrundprozess** und
-  öffnet das Fenster `APP_BUILD`: Quell- und Zielname, Balken aus
-  `build_progress` (Syscall 28) und Statuszeile aus `build_status`
-  (Syscall 29, `cc.c` meldet dort seine drei Phasen). Die Hauptschleife
-  schließt das Fenster, sobald der Prozess weg ist — **außer bei Fehlern**:
-  dann bleibt es stehen, heißt „Compiler messages" und zeigt die
-  mitgeschriebene Ausgabe des Compilers (`cap_*` in `term.c`). Der
-  Mitschnitt sitzt in `syscall.c`, weil Programme über Systemaufrufe
-  ausgeben, nicht über die `print`-Funktionen des Kernels
-- `Run` übersetzt bei Quelltexten erst und startet danach automatisch
-  (`edg_run_danach`); `.PY` und `.TBX` laufen sofort
-- Programme laufen **im Textmodus** (`gui_ausfuehren`), danach zurück zum
-  Desktop — Textprogramme und Oberfläche vertragen sich sonst nicht
+- Button bar: `< Back  New  Save  Rename  Compile  Run`, with the status
+  field right next to it (progress bar, "Saved.", "Compiled: …", or the
+  shortcut hint)
+- `Compile` saves, starts `CC`/`ASM` as a **background process**, and opens
+  the `APP_BUILD` window: source and target name, a bar driven by
+  `build_progress` (syscall 28), and a status line from `build_status`
+  (syscall 29, `cc.c` reports its three phases there). The main loop closes
+  the window once the process is gone — **except on errors**: then it stays
+  open, is titled "Compiler messages," and shows the logged compiler output
+  (`cap_*` in `term.c`). The capture sits in `syscall.c`, because programs
+  produce output through system calls, not through the kernel's `print`
+  functions
+- `Run` compiles source files first and then launches automatically
+  (`edg_run_danach`); `.PY` and `.TBX` run immediately
+- Programs run **in text mode** (`gui_ausfuehren`), then return to the
+  desktop afterward — text programs and the desktop otherwise don't get
+  along
 
-Verwandt: [[07 Fallstricke]], [[03 Dateien und Zustaendigkeiten]]
+Related: [[07 Fallstricke]], [[03 Dateien und Zustaendigkeiten]]

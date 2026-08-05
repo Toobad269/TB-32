@@ -1,91 +1,91 @@
-# Architektur TB-32
+# Architecture TB-32
 
-Quelle der Wahrheit: `hardware/isa.py`. CPU und Assembler lesen beide von dort.
-Was die Kürzel bedeuten, steht in [[12 Abkuerzungen und Namen]].
+Source of truth: `hardware/isa.py`. Both CPU and assembler read from there.
+What the abbreviations mean is in [[12 Abkuerzungen und Namen]].
 
-## Grundzüge
+## Basics
 
-- 32 Bit, 16 Universalregister, **jeder Befehl genau 4 Byte**, RISC-artig
-- Flags Z, N, C, V; Interrupt-Freigabe als Bit 9
-- Interruptvektortabelle ab Adresse 0, 256 Einträge à 4 Byte (wie beim 8086)
-- 16 MB RAM, ROM ab `0x0F000000`, Reset springt dorthin
+- 32-bit, 16 general-purpose registers, **every instruction exactly 4 bytes**, RISC-like
+- Flags Z, N, C, V; interrupt enable as bit 9
+- Interrupt vector table starting at address 0, 256 entries of 4 bytes each (like the 8086)
+- 16 MB RAM, ROM starting at `0x0F000000`, reset jumps there
 
-## Wie schnell die Emulation ist
+## How fast the emulation is
 
-Der Solltakt aus dem BIOS-Setup ist ein **Wunsch**, kein Versprechen: wie
-viele Befehle wirklich durchgehen, hängt am Python-Interpreter des Wirts.
-Gemessen mit `tools/messen` bzw. dem Muster unten (Stand: nach der
-Optimierung, Compilerlauf als Last):
+The target clock from the BIOS setup is a **wish**, not a promise: how
+many instructions actually go through depends on the host's Python
+interpreter. Measured with `tools/messen` or the pattern below (as of:
+after the optimization, with a compiler run as load):
 
 | | |
 |---|---|
-| Rohdurchsatz der Emulation | **~3,0 Mio Befehle/s** |
-| davon im Fenster nutzbar | **~2,9 Mio/s bei 60 Bildern/s** |
-| 2 MHz (Standard) und 4 MHz (Turbo) | werden voll erreicht |
-| 8 MHz | wird **nicht** erreicht (~36 %) |
+| Raw emulation throughput | **~3.0 million instructions/s** |
+| usable in the window | **~2.9 million/s at 60 fps** |
+| 2 MHz (standard) and 4 MHz (turbo) | are fully reached |
+| 8 MHz | is **not** reached (~36%) |
 
-Höhere Taktstufen ins Setup zu schreiben brächte deshalb nichts — die Zahl
-würde steigen, die Maschine nicht.
+Writing higher clock steps into the setup would therefore accomplish
+nothing — the number would go up, the machine wouldn't.
 
-**Was den Emulator schnell macht** (alles in `hardware/cpu.py`):
+**What makes the emulator fast** (all in `hardware/cpu.py`):
 
-1. `self.words` — eine 32-Bit-Sicht auf den Arbeitsspeicher
-   (`memoryview(ram).cast("I")`). Ein Befehl ist damit **ein** Zugriff statt
-   vier Bytes plus Schieben und Verodern. Krumme Adressen fallen auf den
-   alten Weg zurück, damit auch ein verirrter Sprung noch stimmt
-2. Die Ausführungskette steht nach **gemessener** Häufigkeit — `push` und
-   `pop` sind zusammen 40 % aller Befehle. Nachmessen: `tools/opstat.py`
-3. `rb`, `imm` und `simm` holt sich nur der Zweig, der sie braucht
-4. `pc`, `flags`, anstehende Interrupts und die Haltepunktmenge liegen in
-   **lokalen** Variablen; jeder `self.x`-Zugriff kostet in Python ein
-   Vielfaches
-5. Ob die CPU angehalten ist, wird nicht mehr bei jedem Befehl geprüft,
-   sondern dort, wo ein Halt entstehen kann (`hlt`, `brk`, Interrupt ohne
-   Handler, ungültiger Befehl)
+1. `self.words` — a 32-bit view of the main memory
+   (`memoryview(ram).cast("I")`). An instruction is thus **one** access
+   instead of four bytes plus shifting and OR-ing. Misaligned addresses
+   fall back to the old path, so even a stray jump still works correctly
+2. The execution chain is ordered by **measured** frequency — `push` and
+   `pop` together make up 40% of all instructions. Re-measure with:
+   `tools/opstat.py`
+3. `rb`, `imm`, and `simm` are fetched only by the branch that needs them
+4. `pc`, `flags`, pending interrupts, and the breakpoint set live in
+   **local** variables; every `self.x` access costs a multiple in Python
+5. Whether the CPU is halted is no longer checked on every instruction,
+   but only where a halt can arise (`hlt`, `brk`, interrupt without
+   handler, invalid instruction)
 
-**Und die andere Hälfte** steckt in `pc.py`: die CPU bekommt nicht mehr feste
-8 ms je Bild, sondern alles, was das Zeichnen übrig lässt (gemessen und
-geglättet, gedeckelt auf 14 ms). Zeichnen kostet real ~1 ms.
+**And the other half** is in `pc.py`: the CPU no longer gets a fixed
+8 ms per frame, but whatever drawing leaves over (measured and smoothed,
+capped at 14 ms). Drawing actually costs ~1 ms.
 
-## Befehlsformate
+## Instruction formats
 
 ```
-R-Typ:  [31:24] op | [23:20] rd | [19:16] ra | [15:12] rb | Rest frei
-I-Typ:  [31:24] op | [23:20] rd | [19:16] ra | [15:0]  imm16
-J-Typ:  [31:24] op | [23:20] cond | [19:0] Sprungweite in Wörtern
-C-Typ:  [31:24] op | [23:0] Aufrufweite in Wörtern
+R-type:  [31:24] op | [23:20] rd | [19:16] ra | [15:12] rb | rest free
+I-type:  [31:24] op | [23:20] rd | [19:16] ra | [15:0]  imm16
+J-type:  [31:24] op | [23:20] cond | [19:0] jump distance in words
+C-type:  [31:24] op | [23:0] call distance in words
 ```
 
-Sprungziel = Adresse des Sprungbefehls + Weite × 4.
+Jump target = address of the jump instruction + distance × 4.
 
-## Befehle
+## Instructions
 
-| Gruppe | Befehle |
+| Group | Instructions |
 |---|---|
-| Steuerung | `nop hlt cli sti iret ret brk` |
-| Transfer | `mov movi movh`, Pseudo `li rd, 32bit` |
-| Speicher | `ldb ldsb ldh ldw stb sth stw` — immer `[reg + off16]` |
-| Rechnen | `add sub mul div mod and or xor shl shr sar not neg cmp tst udiv umod` |
-| mit Konstante | `addi subi muli divi modi andi ori xori shli shri sari cmpi tsti` |
+| Control | `nop hlt cli sti iret ret brk` |
+| Transfer | `mov movi movh`, pseudo `li rd, 32bit` |
+| Memory | `ldb ldsb ldh ldw stb sth stw` — always `[reg + off16]` |
+| Arithmetic | `add sub mul div mod and or xor shl shr sar not neg cmp tst udiv umod` |
+| with constant | `addi subi muli divi modi andi ori xori shli shri sari cmpi tsti` |
 | Stack | `push pop call callr pushf popf` |
-| Sprünge | `jmp` und `jz jnz jc jnc jn jbe ja jl jge jle jg`, `jmpr` |
-| Ein-/Ausgabe | `in out inr outr`, `int n` |
+| Jumps | `jmp` and `jz jnz jc jnc jn jbe ja jl jge jle jg`, `jmpr` |
+| I/O | `in out inr outr`, `int n` |
 
-**Wichtig:** `add`/`sub` setzen Flags, `addi`/`subi` **nicht**. Nach einer
-Zählschleife also `cmpi` einsetzen, sonst springt es falsch.
+**Important:** `add`/`sub` set flags, `addi`/`subi` **do not**. After a
+counting loop, use `cmpi`, otherwise the jump will be wrong.
 
-## Assembler-Besonderheiten
+## Assembler specifics
 
-- Lokale Label mit führendem Punkt gelten innerhalb des letzten globalen Labels
-- `ldwa`/`stwa`/`ldba`/`stba` sind Pseudobefehle für absolute Adressen und
-  zerstören dabei `r13` (`at`)
-- Direktiven: `.org .equ .db .dh .dw .string .space .align .fill .include`
-- Zwei Durchgänge; im ersten sind unbekannte Label 0
+- Local labels with a leading dot are scoped within the last global label
+- `ldwa`/`stwa`/`ldba`/`stba` are pseudo-instructions for absolute
+  addresses and clobber `r13` (`at`) in the process
+- Directives: `.org .equ .db .dh .dw .string .space .align .fill .include`
+- Two passes; in the first, unknown labels are 0
 
-## Geschwindigkeit
+## Speed
 
-Die Emulation schafft 1,5–3,5 Mio Befehle/s (abhängig vom Programm-Mix).
-Der im BIOS eingestellte Takt ist deshalb ein Wunsch. Details und Folgen:
-[[07 Fallstricke]], [[10 Temperatur]].
+The emulation manages 1.5–3.5 million instructions/s (depending on the
+program mix). The clock set in the BIOS is therefore a wish. Details and
+consequences: [[07 Fallstricke]], [[10 Temperatur]].
 
-Verwandt: [[02 Speicherkarte und Ports]], [[05 Konventionen]]
+Related: [[02 Speicherkarte und Ports]], [[05 Konventionen]]

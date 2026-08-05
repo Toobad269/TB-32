@@ -1,81 +1,81 @@
-# Dateien und Zuständigkeiten
+# Files and Responsibilities
 
-Wer macht was — damit Änderungen an der richtigen Stelle landen.
+Who does what — so changes land in the right place.
 
-## Auf dem Mac (Python)
+## On the Mac (Python)
 
-| Datei | Zuständig für |
+| File | Responsible for |
 |---|---|
-| `pc.py` | Fenster, Tastatur, Maus, Ton, **Scrollen im Fenster**, F12-Anzeige, Zeitbudget je Bild, **Fenstergröße/Vollbild**, **Brücke zur macOS-Zwischenablage** |
-| `hardware/isa.py` | **Befehlssatz, Speicherkarte, Portnummern** — einzige Wahrheit für CPU *und* Assembler |
-| `hardware/cpu.py` | Die CPU. Hauptschleife hält PC und Flags in lokalen Variablen (Geschwindigkeit) |
-| `hardware/bus.py` | Adressdekodierung, ROM-Schreibschutz, Portverteilung |
-| `hardware/devices.py` | Grafikkarte inkl. **Blitter**, Tastatur, Platte, Timer, CMOS, Lautsprecher, Maus, **Thermal**, Netzteil |
-| `hardware/machine.py` | Alles zusammenstecken, Zeitscheiben, Takt und Drosselung |
-| `tools/assembler.py` | Assembler (zwei Durchgänge, Labels, Direktiven, Pseudobefehle) |
-| `tools/tcc.py` | **C-Compiler auf dem Mac** — erzeugt den Kernel |
-| `tools/mkfont.py` | 8×8-Zeichensatz aus handgezeichneten 5×7-Mustern |
-| `tools/tbfs.py` | Dateisystem von außen (auch Ordner) |
-| `tools/opstat.py` | misst die Befehlshäufigkeit — Grundlage für die Reihenfolge der Ausführungskette |
-| `build.py` | Baut alles; schreibt **nur** Sektor 0 roh, der Kernel kommt als Datei `\SYSTEM\KERNEL.BIN` |
+| `pc.py` | Window, keyboard, mouse, sound, **scrolling in the window**, F12 overlay, per-frame time budget, **window size/fullscreen**, **bridge to the macOS clipboard** |
+| `hardware/isa.py` | **Instruction set, memory map, port numbers** — the single source of truth for both CPU *and* assembler |
+| `hardware/cpu.py` | The CPU. Main loop keeps PC and flags in local variables (for speed) |
+| `hardware/bus.py` | Address decoding, ROM write protection, port routing |
+| `hardware/devices.py` | Graphics card incl. **blitter**, keyboard, disk, timer, CMOS, speaker, mouse, **thermal**, power supply |
+| `hardware/machine.py` | Wires everything together, time slices, clock and throttling |
+| `tools/assembler.py` | Assembler (two passes, labels, directives, pseudo-instructions) |
+| `tools/tcc.py` | **C compiler on the Mac** — produces the kernel |
+| `tools/mkfont.py` | 8×8 font from hand-drawn 5×7 patterns |
+| `tools/tbfs.py` | Filesystem from the outside (including folders) |
+| `tools/opstat.py` | measures instruction frequency — basis for the execution chain's ordering |
+| `build.py` | Builds everything; writes **only** sector 0 raw, the kernel comes as the file `\SYSTEM\KERNEL.BIN` |
 
-## Firmware (TB-32-Assembler)
+## Firmware (TB-32 assembly)
 
-| Datei | Inhalt |
+| File | Contents |
 |---|---|
-| `firmware/const.inc` | Konstanten für alle Assemblerdateien |
-| `firmware/bios.asm` | Reset, Interruptvektoren, POST, Bootvorgang, BIOS-Dienste, Panik-Bildschirm |
-| `firmware/video.asm` | Bildschirmroutinen, **Scrollback-Ringpuffer** |
-| `firmware/setup.asm` | BIOS-Setup: vier Reiter, Feldeditor für die Uhr, Secure Boot |
-| `system/boot.asm` | Bootsektor, 512 Byte — **liest TBFS** und lädt `\SYSTEM\KERNEL.BIN` |
-| `firmware/minimal.asm` | Das kleinste BIOS, das den Rechner startet (3324 Byte) — Vorlage für ein eigenes, siehe [[16 Eigenes BIOS schreiben]] |
-| `system/start.asm` | Kernel-Einsprung, **Brücke C → BIOS**, Prozessumschalter, Systemaufruf-Eingang |
+| `firmware/const.inc` | Constants for all assembler files |
+| `firmware/bios.asm` | Reset, interrupt vectors, POST, boot process, BIOS services, panic screen |
+| `firmware/video.asm` | Screen routines, **scrollback ring buffer** |
+| `firmware/setup.asm` | BIOS setup: four tabs, field editor for the clock, secure boot |
+| `system/boot.asm` | Boot sector, 512 bytes — **reads TBFS** and loads `\SYSTEM\KERNEL.BIN` |
+| `firmware/minimal.asm` | The smallest BIOS that boots the machine (3324 bytes) — template for a custom one, see [[16 Eigenes BIOS schreiben]] |
+| `system/start.asm` | Kernel entry point, **bridge C → BIOS**, process switcher, syscall entry |
 
-## Betriebssystem (TC)
+## Operating system (TC)
 
-| Datei | Inhalt |
+| File | Contents |
 |---|---|
-| `system/kernel.c` | Befehlsinterpreter, alle Shell-Befehle, `main()` |
-| `system/lib.c` | Ausgabe (**Weiche Text/Terminalfenster**), Zeichenketten, Eingabe, Bildschirmsperre, Scrollback-Ansicht |
-| `system/fs.c` | TBFS: Superblock, Verzeichnis, **Ordner**, Suchpfad, **Verschieben** |
-| `system/edit.c` | Texteditor im Textmodus — die Editierlogik nutzt auch der GUI-Editor |
-| `system/proc.c` | Prozesse, Scheduler-Hälfte in C, `mt_enable` |
-| `system/syscall.c` | Gegenseite von `INT 0x40`, Programmlader, Fortschrittsmeldung |
-| `system/term.c` | Bildspeicher und Tastatur des **Terminalfensters** |
-| `system/diag.c` | Anzeigetest |
-| `emu/cpu.c` | TB-32-Prozessor in echtem C — alle 57 Befehle |
-| `emu/machine.c` | Bus und Geräte in C: Grafik, Blitter, Platte, Timer, DMA |
-| `emu/main.c` | kopfloser Start der C-Fassung zum Vergleichen |
-| `tools/emu_vergleich.py` | prüft C gegen Python, Befehl für Befehl |
-| `system/dialog.c` | Dateiauswahl-Fenster, von Coder, Paint und Word benutzt |
-| `system/word.c` | Textverarbeitung mit Absätzen, Formaten und Wortumbruch |
-| `system/coder.c` | Syntaxfarben, Zeilennummern, Suchen, Einrücken für den Editor |
-| `system/paint.c` | Zeichenprogramm als Fenster im Schreibtisch |
-| `system/gui.c` | **Desktop**: Fenster, Startmenü, alle Anwendungen |
-| `system/font8.c` | erzeugter Zeichensatz — nicht von Hand ändern |
+| `system/kernel.c` | Command interpreter, all shell commands, `main()` |
+| `system/lib.c` | Output (**soft switch text/terminal window**), strings, input, screen lock, scrollback view |
+| `system/fs.c` | TBFS: superblock, directory, **folders**, search path, **move** |
+| `system/edit.c` | Text editor in text mode — the GUI editor also uses this editing logic |
+| `system/proc.c` | Processes, scheduler half in C, `mt_enable` |
+| `system/syscall.c` | Counterpart of `INT 0x40`, program loader, progress reporting |
+| `system/term.c` | Framebuffer and keyboard of the **terminal window** |
+| `system/diag.c` | Display test |
+| `emu/cpu.c` | TB-32 processor in real C — all 57 instructions |
+| `emu/machine.c` | Bus and devices in C: graphics, blitter, disk, timer, DMA |
+| `emu/main.c` | headless startup of the C version for comparison |
+| `tools/emu_vergleich.py` | checks C against Python, instruction by instruction |
+| `system/dialog.c` | File-picker window, used by Coder, Paint, and Word |
+| `system/word.c` | Word processor with paragraphs, formatting, and word wrap |
+| `system/coder.c` | Syntax highlighting, line numbers, search, indentation for the editor |
+| `system/paint.c` | Drawing program as a desktop window |
+| `system/gui.c` | **Desktop**: windows, start menu, all applications |
+| `system/font8.c` | generated font — don't edit by hand |
 
-## Programme für den TB-32 (TC)
+## Programs for the TB-32 (TC)
 
-| Datei | Wird zu | Inhalt |
+| File | Becomes | Contents |
 |---|---|---|
-| `programs/proglib.c` | — | Bibliothek für Programme (Syscall-Verpackungen) |
-| `programs/gfxlib.c` | — | **Grafik für Programme**: Blitter, Schrift, große Schrift, Knöpfe, Maus |
-| `programs/prog_start.asm` | — | Startcode jedes Programms |
-| `programs/cc.c` | `\SYSTEM\CC.TBX` | **C-Compiler, der sich selbst übersetzt** |
+| `programs/proglib.c` | — | Library for programs (syscall wrappers) |
+| `programs/gfxlib.c` | — | **Graphics for programs**: blitter, text, large text, buttons, mouse |
+| `programs/prog_start.asm` | — | Startup code for every program |
+| `programs/cc.c` | `\SYSTEM\CC.TBX` | **C compiler that compiles itself** |
 | `programs/asm.c` | `\SYSTEM\ASM.TBX` | Assembler |
-| `programs/py.c` | `\SYSTEM\PY.TBX` | Python-Interpreter |
-| `programs/memtest.c` | `\PROGS\MEMTEST.TBX` | Speichertest |
-| `programs/bench.c` | `\PROGS\BENCH.TBX` | Leistungsmessung |
-| `programs/calc.c` | `\PROGS\CALC.TBX` | **Taschenrechner**, grafisch, Festkomma |
-| `programs/flappy.c` | `\PROGS\FLAPPY.TBX` | **Flappy Bird**, Physik in Sechzehnteln, mit Bildratenanzeige |
-| `programs/crash.c` | nur `\SOURCE\CRASH.C` | **Stresstest und Fehlerinjektor** — Burn-in bis zur Drosselung, Farbchaos, Flackern, dazu fünf echte Abstürze. Wird **absichtlich nicht** mitgebaut: Colin übersetzt ihn auf dem TB-32 selbst (`NUR_QUELLTEXT` in `build.py`) |
+| `programs/py.c` | `\SYSTEM\PY.TBX` | Python interpreter |
+| `programs/memtest.c` | `\PROGS\MEMTEST.TBX` | Memory test |
+| `programs/bench.c` | `\PROGS\BENCH.TBX` | Performance benchmark |
+| `programs/calc.c` | `\PROGS\CALC.TBX` | **Calculator**, graphical, fixed-point |
+| `programs/flappy.c` | `\PROGS\FLAPPY.TBX` | **Flappy Bird**, physics in sixteenths, with frame-rate display |
+| `programs/crash.c` | only `\SOURCE\CRASH.C` | **Stress test and fault injector** — burn-in until throttling kicks in, color chaos, flicker, plus five real crashes. **Deliberately not** built by default: Colin compiles it on the TB-32 himself (`NUR_QUELLTEXT` in `build.py`) |
 
-## Sonstiges
+## Miscellaneous
 
-- `diskfiles/` — wird beim Bauen 1:1 auf die virtuelle Platte gespiegelt
-- `disk/hd0.img` — die virtuelle Festplatte (Dateien überleben Neustarts)
-- `disk/cmos.bin` — die Knopfzelle; löschen setzt das BIOS-Setup zurück
-- `README.md` — Doku für Colin (erzählend)
-- `Doku/` — dieser Vault (Arbeitsreferenz)
+- `diskfiles/` — mirrored 1:1 onto the virtual disk during the build
+- `disk/hd0.img` — the virtual hard disk (files survive reboots)
+- `disk/cmos.bin` — the coin cell; deleting it resets the BIOS setup
+- `README.md` — docs for Colin (narrative)
+- `Doku/` — this vault (working reference)
 
-Verwandt: [[00 START HIER]], [[02 Speicherkarte und Ports]]
+Related: [[00 START HIER]], [[02 Speicherkarte und Ports]]

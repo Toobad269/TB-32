@@ -1,98 +1,103 @@
-# TOOBAD TB-32 — Einstieg
+# TOOBAD TB-32 — Getting Started
 
-Arbeitsreferenz für Claude. Bei Kontextverlust **zuerst diese Seite**, dann
-gezielt die verlinkte Detailseite. Alles hier ist Stand des laufenden Systems,
-nicht Wunschdenken — geprüft über `tools/selftest.py` (45/45 grün).
+Working reference for Claude. On context loss **read this page first**, then
+go straight to the linked detail page. Everything here reflects the current
+state of the running system, not wishful thinking — verified via
+`tools/selftest.py` (45/45 green).
 
-## Arbeitsregel
+## Working rule
 
-Nach jeder fertigen Änderung: **erst den Startbefehl nennen, dann sofort die
-Doku nachziehen** — und jeden gefundenen Fehler, jede Änderung und jede neue
-Funktion ins [[14 Aenderungsjournal]] eintragen, mit **Ursache**, nicht nur
-mit Symptom. Colins ausdrücklicher Wunsch; nachgereichte Doku zählt nicht.
+After every completed change: **first state the start command, then
+immediately update the docs** — and log every bug found, every change, and
+every new feature in [[14 Aenderungsjournal]], with **root cause**, not just
+symptom. This is Colin's explicit wish; docs added later don't count.
 
-## Was das Projekt ist
+## What the project is
 
-Ein vollständiger virtueller PC in `~/Desktop/Projekte/PyPC/`. Colins Challenge
-gegen andere KIs. **Kernprinzip: Python emuliert nur die Chips.** Alles Sichtbare
-— BIOS, Bootvorgang, OS, Editor, Desktop — ist echter Maschinencode auf der
-emulierten CPU. Wer das aufweicht, zerstört den Sinn des Projekts.
+A complete virtual PC in `~/Desktop/Projekte/PyPC/`. Colin's challenge
+against other AIs. **Core principle: Python only emulates the chips.**
+Everything visible — BIOS, boot process, OS, editor, desktop — is real
+machine code running on the emulated CPU. Anyone who waters that down
+destroys the point of the project.
 
-Der Compiler **übersetzt sich selbst** (Bootstrapping bewiesen, siehe
+The compiler **compiles itself** (bootstrapping proven, see
 [[09 Selbst-Compilierung]]).
 
-Seit August 2026 gibt es den Emulator **zusätzlich in echtem C** (`emu/`) —
-160-mal schneller und die Grundlage dafür, den Rechner auf einem Raspberry
-Pi ohne Linux zu starten. Der TB-32 bleibt dabei der Prozessor; getauscht
-wird nur, was die Chips nachbaut. Plan und Stand: [[15 Weg zum Raspberry Pi]].
+Since August 2026 the emulator also exists **in real C** (`emu/`) —
+160 times faster and the basis for booting the machine on a Raspberry
+Pi without Linux. The TB-32 remains the processor throughout; only what
+rebuilds the chips gets swapped out. Plan and status:
+[[15 Weg zum Raspberry Pi]].
 
-**Anwendungen im Schreibtisch:** File Manager, Command Prompt, Editor
-(= „Coder", mit Syntaxfarben), System Monitor, Control Panel, **Paint**,
-**Word**, Clock, About.
+**Applications on the desktop:** File Manager, Command Prompt, Editor
+(= "Coder", with syntax highlighting), System Monitor, Control Panel,
+**Paint**, **Word**, Clock, About.
 
-## Die drei Ebenen (nie verwechseln)
+## The three layers (never confuse them)
 
-| Ebene | Sprache | Läuft auf |
+| Layer | Language | Runs on |
 |---|---|---|
-| `hardware/`, `pc.py`, `tools/` | Python | dem Mac |
-| `emu/` | **echtes C** | dem Mac (später dem Pi) |
-| `firmware/*.asm`, `system/start.asm` | TB-32-Assembler | dem TB-32 |
-| `system/*.c`, `programs/*.c` | TC (eigene C-Variante) | dem TB-32 |
+| `hardware/`, `pc.py`, `tools/` | Python | the Mac |
+| `emu/` | **real C** | the Mac (later the Pi) |
+| `firmware/*.asm`, `system/start.asm` | TB-32 assembly | the TB-32 |
+| `system/*.c`, `programs/*.c` | TC (custom C variant) | the TB-32 |
 
-**`emu/` ist echtes C für den Wirtsrechner, `system/*.c` ist TC für den
-TB-32.** Beide heißen „C" und haben nichts miteinander zu tun. Verwechseln
-kostet Stunden.
+**`emu/` is real C for the host machine, `system/*.c` is TC for the
+TB-32.** Both are called "C" and have nothing to do with each other.
+Confusing them costs hours.
 
-`system/*.c` und `programs/*.c` sehen aus wie C, werden aber von
-**`tools/tcc.py`** übersetzt — dessen Grenzen stehen in
-[[04 Compiler TCC Grenzen]]. **Das ist die häufigste Fehlerquelle beim Coden.**
+`system/*.c` and `programs/*.c` look like C, but are compiled by
+**`tools/tcc.py`** — its limits are documented in
+[[04 Compiler TCC Grenzen]]. **This is the most common source of coding
+errors.**
 
-## Sofort-Befehle
+## Quick commands
 
 ```bash
 cd ~/Desktop/Projekte/PyPC
-python3 build.py            # BIOS + Kernel + Programme + Platte
-python3 pc.py               # starten (Fenster)
-python3 tools/selftest.py   # 41 Prüfungen, ~2 min
-python3 tools/ctest.py --selftest   # 11 Compilertests
-python3 tools/bootstrap.py  # Selbst-Compilierung, ~5 min
-python3 tools/emu_vergleich.py      # C-Emulator gegen Python-Fassung
+python3 build.py            # BIOS + kernel + programs + disk
+python3 pc.py               # start (window)
+python3 tools/selftest.py   # 41 checks, ~2 min
+python3 tools/ctest.py --selftest   # 11 compiler tests
+python3 tools/bootstrap.py  # self-compilation, ~5 min
+python3 tools/emu_vergleich.py      # C emulator vs. Python version
 ```
 
-Die C-Fassung des Emulators:
+The C version of the emulator:
 
 ```bash
 cd emu && make && cd ..
-./emu/tb32 4.0 "dir"        # kopflos booten und einen Befehl tippen
+./emu/tb32 4.0 "dir"        # boot headless and type a command
 ```
 
-Ohne Fenster testen (das Arbeitspferd):
+Testing without a window (the workhorse):
 
 ```bash
 python3 tools/headless.py 12 --keys "DIR,ENTER,TEMP,ENTER"
 python3 tools/screenshot.py /tmp/x.png 10 --keys "WIN,ENTER" --mouse "6:25:387:click"
 ```
 
-## Seiten
+## Pages
 
-- [[01 Architektur TB-32]] — Register, Befehlssatz, Kodierung
-- [[02 Speicherkarte und Ports]] — **alle Adressen**, Kollisionen vermeiden
-- [[03 Dateien und Zustaendigkeiten]] — wer macht was
-- [[04 Compiler TCC Grenzen]] — **vor jedem Coden lesen**
-- [[05 Konventionen]] — Register, Aufrufe, Syscalls
-- [[06 Bauen und Testen]] — Werkzeuge, GUI-Koordinaten für Klicktests
-- [[07 Fallstricke]] — teuer erkaufte Erkenntnisse, nicht wiederholen
-- [[08 Desktop Aufbau]] — Fenster, Menü, Knopfpositionen
-- [[09 Selbst-Compilierung]] — Bootstrap-Kette
-- [[10 Temperatur]] — Wärmemodell und Drosselung
-- [[11 Offene Punkte]] — was als Nächstes ansteht
-- [[12 Abkuerzungen und Namen]] — was TBX, TBFS, TC, CC … heißen sollen
-- [[13 BIOS-Dienste und was fehlt]] — Dienstliste, Setup, Secure Boot
-- [[14 Aenderungsjournal]] — **jede Änderung, jeder Fehler, jede neue Funktion**
-- [[15 Weg zum Raspberry Pi]] — Plan, Entscheidung und Stand für echte Hardware
+- [[01 Architektur TB-32]] — registers, instruction set, encoding
+- [[02 Speicherkarte und Ports]] — **all addresses**, avoid collisions
+- [[03 Dateien und Zustaendigkeiten]] — who does what
+- [[04 Compiler TCC Grenzen]] — **read before every coding session**
+- [[05 Konventionen]] — registers, calls, syscalls
+- [[06 Bauen und Testen]] — tools, GUI coordinates for click tests
+- [[07 Fallstricke]] — hard-won lessons, don't repeat them
+- [[08 Desktop Aufbau]] — windows, menu, button positions
+- [[09 Selbst-Compilierung]] — bootstrap chain
+- [[10 Temperatur]] — thermal model and throttling
+- [[11 Offene Punkte]] — what's next
+- [[12 Abkuerzungen und Namen]] — what TBX, TBFS, TC, CC … stand for
+- [[13 BIOS-Dienste und was fehlt]] — service list, setup, secure boot
+- [[14 Aenderungsjournal]] — **every change, every bug, every new feature**
+- [[15 Weg zum Raspberry Pi]] — plan, decision, and status for real hardware
 
-## Arbeitsweise mit Colin
+## Working with Colin
 
-Deutsch. Vor einem Fix **erst die verstandene Ursache schildern** und
-reproduzieren, nicht drauflosreparieren. Die Oberfläche des Systems ist
-**englisch**, die Quelltext-Kommentare **deutsch** — das ist so gewollt.
+German. Before a fix, **first describe the understood cause** and
+reproduce it — don't just dive in and repair. The system's user interface
+is **English**, the source code comments are **German** — that's
+intentional.

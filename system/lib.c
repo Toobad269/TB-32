@@ -1,12 +1,12 @@
 /* ==========================================================================
-   Systembibliothek von TOOBAD-OS
+   System library of TOOBAD-OS
 
-   Alles hier läuft im virtuellen Rechner. Die sys_*-Funktionen stecken in
-   start.asm und rufen die BIOS-Dienste auf -- so wie ein echtes C-Programm
-   unter DOS über Interrupts mit der Firmware spricht.
+   Everything here runs on the virtual machine. The sys_* functions live
+   in start.asm and call the BIOS services -- just like a real C program
+   under DOS talks to the firmware through interrupts.
    ========================================================================== */
 
-/* --- Brücke zum Assembler ------------------------------------------------ */
+/* --- Bridge to the assembler ---------------------------------------------- */
 int sys_putc(int ch, int attr);
 int sys_puts(char* s, int attr);
 int sys_setcursor(int x, int y);
@@ -27,7 +27,7 @@ int sys_diskwrite(int lba, int count, int addr);
 int sys_disksize();
 int sys_getkey();
 int sys_haskey();
-int net_bearbeiten();   /* steht in net.c, wird hier schon gebraucht */
+int net_bearbeiten();   /* lives in net.c, already needed here */
 int sys_flushkeys();
 int sys_ticks();
 int sys_clock();
@@ -42,7 +42,7 @@ int sys_memset(int dst, int val, int n);
 int sys_sbcount();
 int sys_sbline(int nr, int addr);
 
-/* --- Farben und Tasten --------------------------------------------------- */
+/* --- Colours and keys ----------------------------------------------------- */
 #define NORMAL   0x07
 #define BRIGHT   0x0F
 #define GREEN    0x0A
@@ -76,9 +76,9 @@ int sys_sbline(int nr, int addr);
 #define P_SPK_FREQ   0x50
 #define P_SPK_ON     0x51
 #define P_POWER      0x90
-/* Der BIOS-Chip. Siehe Doku 16 -- 5 holt den Puffer aus dem RAM, 6 meldet
-   ihn fuer genau einen Start an, 8 traegt einen dauerhaften Flashwunsch
-   ein, den die Firmware beim naechsten Start bestaetigen laesst. */
+/* The BIOS chip. See doc 16 -- 5 fetches the buffer from RAM, 6 registers
+   it for exactly one boot, 8 records a persistent flash request that the
+   firmware confirms on the next boot. */
 #define P_FLASH_CMD  0xB0
 #define P_FLASH_SIZE 0xB1
 #define P_FLASH_ADDR 0xB2
@@ -89,16 +89,16 @@ int sys_sbline(int nr, int addr);
 
 int text_attr = 0x07;
 
-/* --- Bildschirmsperre ----------------------------------------------------
-   Sobald mehrere Prozesse laufen, wollen sie alle auf denselben Bildschirm
-   schreiben -- und ihre Ausgaben landen mitten im Wort des anderen. Deshalb
-   holt sich jeder Prozess vor der Ausgabe kurz eine Sperre.
+/* --- Screen lock -----------------------------------------------------------
+   As soon as several processes are running, they all want to write to the
+   same screen -- and their output ends up in the middle of each other's
+   words. So every process grabs a brief lock before writing.
 
-   Das Prüfen und Setzen muss ununterbrechbar sein, sonst könnte der Timer
-   genau dazwischen umschalten und beide Prozesse hielten die Sperre. Wir
-   sperren dafür kurz die Interrupts -- auf einem Prozessor mit einem Kern ist
-   das genau der richtige Weg. Wer warten muss, gibt die Rechenzeit ab,
-   statt sie zu verbrennen.                                                  */
+   The check-and-set must be uninterruptible, or the timer could switch
+   contexts right in the middle and both processes would end up holding the
+   lock. We briefly disable interrupts for this -- on a single-core
+   processor that is exactly the right approach. Whoever has to wait gives
+   up its time slice instead of burning it.                                  */
 
 int screen_owner = 0;
 int screen_depth = 0;
@@ -114,7 +114,7 @@ void screen_lock() {
             return;
         }
         asm("sti");
-        asm("int 0x41");                  /* frei geben und später nochmal */
+        asm("int 0x41");                  /* yield and try again later */
     }
 }
 
@@ -127,14 +127,14 @@ void screen_unlock() {
     }
 }
 
-/* --- Ausgabe -------------------------------------------------------------
+/* --- Output ----------------------------------------------------------------
 
-   Laeuft die Kommandozeile in einem Fenster, gehen alle Ausgaben nicht auf
-   den Textbildschirm, sondern in den Puffer des Terminalfensters. Diese
-   Weiche steckt an genau einer Stelle -- alles andere merkt nichts davon.
+   If the command line is running in a window, all output does not go to
+   the text screen but into the terminal window's buffer. This switch sits
+   at exactly one place -- nothing else notices the difference.
 
-   (term_aktiv und die term_*-Funktionen stehen in term.c -- der Compiler
-   sammelt alle Namen vorab ein, deshalb genügt das.) */
+   (term_aktiv and the term_* functions live in term.c -- the compiler
+   collects all names up front, so that's enough.) */
 
 void putch(int c) {
     if (cap_aktiv) cap_putc(c);
@@ -206,13 +206,13 @@ void printnum(char* label, int n) {
     nl();
 }
 
-/* Zahl mit fester Stellenzahl, mit führenden Nullen */
+/* Number with a fixed digit count, zero-padded */
 void print2(int n) {
     if (n < 10) putch('0');
     printn(n);
 }
 
-/* --- Zeichenketten ------------------------------------------------------- */
+/* --- Strings --------------------------------------------------------------- */
 
 int strlen(char* s) {
     int n;
@@ -284,7 +284,7 @@ void itoa(int n, char* buf) {
     buf[j] = 0;
 }
 
-/* --- Speicher ------------------------------------------------------------ */
+/* --- Memory ----------------------------------------------------------------- */
 
 void memcpy(char* d, char* s, int n)  { sys_memcpy((int)d, (int)s, n); }
 void memset(char* d, int v, int n)    { sys_memset((int)d, v, n); }
@@ -292,20 +292,20 @@ void memset(char* d, int v, int n)    { sys_memset((int)d, v, n); }
 int  byte_get(int addr)        { char* p; p = (char*)addr; return *p & 255; }
 void byte_put(int addr, int v) { char* p; p = (char*)addr; *p = v; }
 
-/* Wortweise lesen und schreiben. Fuer Pruefsummen ueber ganze Abbilder --
-   byteweise waere dieselbe Rechnung viermal so lang. */
+/* Read and write a whole word at a time. For checksums over whole images --
+   doing it byte by byte would take four times as long for the same result. */
 int  word_get(int addr)        { int* p; p = (int*)addr; return *p; }
 void word_put(int addr, int v) { int* p; p = (int*)addr; *p = v; }
 
-/* --- Eingabe ------------------------------------------------------------- */
+/* --- Input ------------------------------------------------------------------- */
 
 int getkey() {
     if (term_aktiv) return term_getkey();
-    /* Waehrend niemand tippt, wird die Post bearbeitet. Nur so antwortet
-       der Rechner auf ARP und PING, ohne dass jemand davor sitzt -- genau
-       das erwartet man von einem Rechner im Netz. Das sys_halt() dazwischen
-       haelt ihn dabei ruhig: es weckt der naechste Interrupt, also der
-       Zeitgeber oder ein ankommender Rahmen. */
+    /* While nobody is typing, the mail gets handled. This is the only way
+       the machine answers ARP and PING without anyone sitting in front of
+       it -- exactly what you'd expect from a machine on the network. The
+       sys_halt() in between keeps it quiet while doing so: it is woken by
+       the next interrupt, i.e. the timer or an incoming frame. */
     while (sys_haskey() == 0) {
         net_bearbeiten();
         sys_halt();
@@ -317,11 +317,11 @@ int keycode(int k)  { return (k >> 8) & 255; }
 
 void sleep(int ticks) {
     int ziel;
-    /* Ohne dieses sti steht der ganze Rechner, sobald ein Programm ueber
-       einen Systemaufruf hier landet: Bei INT 0x40 sperrt die CPU die
-       Interrupts bis zum iret. Das hlt unten wartet dann auf einen
-       Timer-Interrupt, der nie kommt. Wer in einem Interrupt wartet, muss
-       die Interrupts selbst freigeben -- wie in proc_exit(). */
+    /* Without this sti the whole machine would hang as soon as a program
+       ends up here through a system call: with INT 0x40 the CPU disables
+       interrupts until the iret. The hlt below would then wait for a timer
+       interrupt that never comes. Whoever waits inside an interrupt has to
+       re-enable interrupts itself -- as in proc_exit(). */
     asm("sti");
     ziel = sys_ticks() + ticks;
     while (sys_ticks() < ziel) sys_halt();
@@ -334,8 +334,8 @@ void beep(int freq, int dauer) {
     sys_out(P_SPK_ON, 0);
 }
 
-/* Liest eine Zeile mit Echo, Backspace und Escape. Gibt die Länge zurück,
-   oder -1 wenn ESC gedrückt wurde. */
+/* Reads a line with echo, backspace and escape. Returns the length,
+   or -1 if ESC was pressed. */
 int readline(char* buf, int max) {
     int n; int k; int c; int code;
     n = 0;
@@ -349,7 +349,7 @@ int readline(char* buf, int max) {
             if (n > 0) { n--; putch(8); }
             continue;
         }
-        if (code == K_PGUP) {                    /* zurueckblaettern */
+        if (code == K_PGUP) {                    /* scroll back */
             scrollback();
             continue;
         }
@@ -361,13 +361,13 @@ int readline(char* buf, int max) {
     }
 }
 
-/* --- Zurueckblaettern in der Bildschirmhistorie -------------------------
-   Alles, was oben aus dem Bild gelaufen ist, hat das BIOS in einem
-   Ringpuffer aufgehoben. Hier wird daraus eine Ansicht zum Blaettern --
-   genau wie der Scrollback eines echten Terminals.                        */
+/* --- Scrolling back through the screen history ----------------------------
+   Everything that has scrolled off the top has been kept by the BIOS in a
+   ring buffer. Here that becomes a scrollable view -- just like the
+   scrollback of a real terminal.                                          */
 
 #define VRAM_TEXT_ADDR 0x02000000
-#define SB_SAVE        0x00114000        /* Sicherung des aktuellen Bildes */
+#define SB_SAVE        0x00114000        /* backup of the current screen */
 
 void scrollback() {
     int count; int pos; int k; int code; int i;
@@ -377,7 +377,7 @@ void scrollback() {
         printc("Nothing in the scrollback buffer yet.\n", NORMAL);
         return;
     }
-    sys_memcpy(SB_SAVE, VRAM_TEXT_ADDR, 4000);   /* aktuelles Bild sichern */
+    sys_memcpy(SB_SAVE, VRAM_TEXT_ADDR, 4000);   /* save the current screen */
     pos = count - 24;
     if (pos < 0) pos = 0;
 
@@ -406,10 +406,10 @@ void scrollback() {
         if (pos > count - 1) pos = count - 1;
         if (pos < 0) pos = 0;
     }
-    sys_memcpy(VRAM_TEXT_ADDR, SB_SAVE, 4000);   /* Bild zurueckholen */
+    sys_memcpy(VRAM_TEXT_ADDR, SB_SAVE, 4000);   /* restore the screen */
 }
 
-/* Wartet auf eine beliebige Taste */
+/* Waits for any key */
 void anykey() {
     printc("  -- press any key --", 0x08);
     getkey();

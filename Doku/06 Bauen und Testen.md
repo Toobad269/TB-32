@@ -1,76 +1,76 @@
-# Bauen und Testen
+# Building and Testing
 
-## Der Bauvorgang
+## The Build Process
 
-`python3 build.py` macht der Reihe nach:
+`python3 build.py` does, in order:
 
-1. `firmware/bios.asm` → `bios.bin` (ROM, max 64 KB). Danach trägt
-   `bios_kopf_stempeln` Länge und Prüfsumme in den Kopf ein — ohne die
-   nimmt das Mainboard das Abbild nicht an, siehe [[16 Eigenes BIOS schreiben]].
-   Dasselbe für `firmware/minimal.asm` → `minimal.bin`, das kleine BIOS zum
-   Selberumbauen
-2. `system/boot.asm` → Bootsektor (max 512 Byte)
-3. `system/kernel.c` → TCC → `+ start.asm` → Assembler → `kernel.bin`
-   (aktuell ~250 KB). `build.py` prüft, dass der Kernel im RAM nicht bis
-   `0xB0000` reicht — dort beginnen die festen Puffer des Dateisystems,
-   siehe [[07 Fallstricke]]
-4. **Nur Sektor 0** ins Abbild schreiben. Das Dateisystem ab Sektor 512
-   bleibt unangetastet — sonst verliert ein nebenher laufender Emulator
-   seine Dateien, siehe [[07 Fallstricke]]
-5. `programs/*.c` übersetzen und einsortieren:
-   `CC/ASM/PY.TBX` → `\SYSTEM`, Rest → `\PROGS`,
-   `cc.c` + `proglib.c` → `\SOURCE`, alles aus `diskfiles/` 1:1 aufs Laufwerk
-6. Der **Kernel selbst als Datei** `\SYSTEM\KERNEL.BIN`, dazu `BIOS.BIN` und
-   `KERNEL.SYM`. Das ist keine Kopie zum Ansehen: **der Bootsektor sucht
-   genau diese Datei.** Löscht man sie, startet der Rechner nicht mehr —
-   `python3 build.py` legt sie wieder hin
+1. `firmware/bios.asm` → `bios.bin` (ROM, max 64 KB). Afterward
+   `bios_kopf_stempeln` writes length and checksum into the header — without
+   that the mainboard won't accept the image, see [[16 Eigenes BIOS schreiben]].
+   Same for `firmware/minimal.asm` → `minimal.bin`, the small BIOS meant for
+   hands-on rebuilding
+2. `system/boot.asm` → boot sector (max 512 bytes)
+3. `system/kernel.c` → TCC → `+ start.asm` → assembler → `kernel.bin`
+   (currently ~250 KB). `build.py` checks that the kernel in RAM doesn't reach
+   `0xB0000` — that's where the filesystem's fixed buffers begin,
+   see [[07 Fallstricke]]
+4. Write **only sector 0** into the image. The filesystem from sector 512
+   onward is left untouched — otherwise an emulator running alongside would
+   lose its files, see [[07 Fallstricke]]
+5. Compile `programs/*.c` and sort them in:
+   `CC/ASM/PY.TBX` → `\SYSTEM`, everything else → `\PROGS`,
+   `cc.c` + `proglib.c` → `\SOURCE`, everything from `diskfiles/` copied 1:1 onto the drive
+6. The **kernel itself as a file** `\SYSTEM\KERNEL.BIN`, plus `BIOS.BIN` and
+   `KERNEL.SYM`. This isn't a copy for viewing: **the boot sector looks for
+   exactly this file.** Delete it and the machine won't boot anymore —
+   `python3 build.py` puts it back
 
-Zwischenergebnisse zum Nachsehen: `system/kernel.asm` (erzeugter Assembler),
-`system/kernel.sym` (**Symboltabelle — Adressen aller Variablen**, sehr
-nützlich zum Debuggen).
+Intermediate results worth checking: `system/kernel.asm` (generated assembly),
+`system/kernel.sym` (**symbol table — addresses of all variables**, very
+useful for debugging).
 
-## Testwerkzeuge
+## Test Tools
 
-| Werkzeug | Zweck | Dauer |
+| Tool | Purpose | Duration |
 |---|---|---|
-| `tools/selftest.py` | 55 Prüfungen vom Einschalten bis zum Desktop, inklusive BIOS-Flashen auf einer Kopie des Chips | ~2 min |
-| `tools/ctest.py --selftest` | 11 Sprachtests für TCC | Sekunden |
-| `tools/bootstrap.py` | Compiler übersetzt sich selbst | ~5 min |
-| `tools/headless.py` | bootet ohne Fenster, gibt den Bildschirm als Text | frei |
-| `tools/screenshot.py` | PNG, mit Tasten- und Mausskript | frei |
-| `tools/tbfs.py` | Dateien aufs virtuelle Laufwerk schieben | — |
-| `tools/opstat.py` | misst die Befehlshäufigkeit — Grundlage für die Reihenfolge der Ausführungskette | ~1 min |
+| `tools/selftest.py` | 55 checks from power-on to the desktop, including flashing the BIOS onto a copy of the chip | ~2 min |
+| `tools/ctest.py --selftest` | 11 language tests for TCC | seconds |
+| `tools/bootstrap.py` | compiler compiles itself | ~5 min |
+| `tools/headless.py` | boots without a window, returns the screen as text | free |
+| `tools/screenshot.py` | PNG, with a key/mouse script | free |
+| `tools/tbfs.py` | push files onto the virtual drive | — |
+| `tools/opstat.py` | measures instruction frequency — basis for the ordering of the dispatch chain | ~1 min |
 
-`tools/screenshot.py` kann außerdem zu bestimmten Zeiten tippen:
-`--type "10.0:int main() {|ENTER, 11.0:}"` — Sondertastennamen wie bei
-`--keys`, mehrere Stücke mit `|` getrennt.
+`tools/screenshot.py` can also type at specific times:
+`--type "10.0:int main() {|ENTER, 11.0:}"` — special key names as with
+`--keys`, multiple pieces separated by `|`.
 
 ### headless
 
 ```bash
 python3 tools/headless.py 12 --keys "DIR,ENTER,TEMP,ENTER"
-python3 tools/headless.py 8 --keys "DEL" --after 0.9      # ins BIOS-Setup
+python3 tools/headless.py 8 --keys "DEL" --after 0.9      # into BIOS setup
 ```
 
-Tastennamen: `ENTER ESC DEL F1 F2 F5 F10 UP DOWN LEFT RIGHT BACKSPACE TAB
-SPACE PGUP PGDN HOME END`. Alles andere wird Zeichen für Zeichen getippt.
-`--after` legt fest, ab welcher Sekunde getippt wird (Standard 2.4, damit der
-POST nicht dazwischenfunkt).
+Key names: `ENTER ESC DEL F1 F2 F5 F10 UP DOWN LEFT RIGHT BACKSPACE TAB
+SPACE PGUP PGDN HOME END`. Anything else is typed character by character.
+`--after` determines the second at which typing begins (default 2.4, so it
+doesn't interfere with POST).
 
-### screenshot mit Maus
+### screenshot with mouse
 
 ```bash
 python3 tools/screenshot.py /tmp/x.png 14 --keys "WIN,ENTER" \
     --mouse "6.0:25:387:click, 7.5:60:290:click"
 ```
 
-Format: `sekunde:x:y:aktion`, Aktionen `click move down up`.
-Koordinaten in Bildschirmpunkten (640×400), **nicht** in Fensterpixeln.
+Format: `second:x:y:action`, actions `click move down up`.
+Coordinates are in screen points (640×400), **not** window pixels.
 
-### Eigene Prüfskripte
+### Custom test scripts
 
-Für alles Feinere ein Python-Schnipsel schreiben, das `Machine` direkt
-steuert. Muster:
+For anything finer, write a Python snippet that drives `Machine` directly.
+Pattern:
 
 ```python
 import os, sys
@@ -88,10 +88,10 @@ def tippe(t):
     m.keyboard.push(13, dev.KEY_ENTER); run(0.8)
 def klick(x, y):
     m.mouse.move(x,y,0); run(0.15); m.mouse.move(x,y,1); run(0.3); m.mouse.move(x,y,0); run(0.9)
-run(3.5)                      # bis zur Eingabeaufforderung
+run(3.5)                      # up to the prompt
 ```
 
-**Variablen des laufenden Systems auslesen** (Gold wert beim Debuggen):
+**Reading variables of the running system** (worth gold for debugging):
 
 ```python
 adr = {n: int(a,16) for a, n in (z.split() for z in open('system/kernel.sym'))}
@@ -100,60 +100,60 @@ def gw(name, i=0): return struct.unpack_from('<i', m.bus.ram, adr[name] + i*4)[0
 print(gw('p_switches'), gw('edg_build'), gw('p_state', 1))
 ```
 
-Die Ausgabe eines Programms, das im Grafikmodus unsichtbar läuft, steht im
-Textbildspeicher — `screen_text(m)` zeigt sie trotzdem.
+The output of a program running invisibly in graphics mode sits in the
+text screen buffer — `screen_text(m)` shows it anyway.
 
-## Koordinaten für Klicktests
+## Coordinates for Click Tests
 
-Bildschirm 640×400, Leiste ab y = 378.
+Screen 640×400, taskbar starting at y = 378.
 
-| Ziel | Klickpunkt |
+| Target | Click point |
 |---|---|
-| Start-Knopf | 25, 387 |
-| Erstes Schreibtischsymbol | 50, 55 (nur wenn kein Fenster darüber liegt) |
-| Startmenü Eintrag *n* (0 = File Manager) | 60, 262 + n·14 |
-| Fensterknopf 1 in der Leiste | 90, 387 |
+| Start button | 25, 387 |
+| First desktop icon | 50, 55 (only if no window is on top of it) |
+| Start menu entry *n* (0 = File Manager) | 60, 262 + n·14 |
+| Taskbar window button 1 | 90, 387 |
 
-Startmenü: 0 File Manager, 1 Command Prompt, 2 Editor, 3 System Monitor,
+Start menu: 0 File Manager, 1 Command Prompt, 2 Editor, 3 System Monitor,
 4 Control Panel, 5 Clock, 6 About, 7 Exit.
 
-**Der Selbsttest hängt nicht mehr an der Startgeschwindigkeit:** `Lauf`
-sammelt in `gesehen` alles mit, was seit dem Einschalten auf dem Schirm
-stand — ein Blick zu einem festen Zeitpunkt genügt nicht.
+**The self-test no longer depends on boot speed:** `Lauf` collects in
+`gesehen` everything that has appeared on screen since power-on — a single
+glance at a fixed point in time is not enough.
 
-**Wie lange der Start dauert:** ohne *Quick Boot* rund **4 Sekunden** bis
-zur Eingabeaufforderung (POST mit sichtbar hochzählendem Speicher ~1,5 s,
-dann 2 s Bedenkzeit für DEL). Mit *Quick Boot* im CMOS sind es **0,6 s**.
-Wer Tests schreibt, muss lang genug warten.
+**How long booting takes:** without *Quick Boot*, about **4 seconds** to
+reach the prompt (POST with visibly counting-up memory ~1.5s, then 2s of
+waiting for DEL). With *Quick Boot* enabled in CMOS it's **0.6s**. Anyone
+writing tests has to wait long enough.
 
-Editorfenster liegt bei (40, 82), 596×292 — Knopfleiste bei y = 348:
+Editor window sits at (40, 82), 596×292 — button bar at y = 348:
 New 44–88, Save 94–146, Rename 152–224, Compile 230–306, Run 312–360.
 
-## Wenn ein Test scheitert
+## When a Test Fails
 
-1. Reicht die Wartezeit? Kompilierläufe brauchen simulierte Sekunden.
-2. Läuft die Maschine überhaupt noch? `m.cpu.halted`, `m.cpu.last_fault`.
-3. Steht der Scheduler? `gw('p_switches')` zweimal messen — siehe
+1. Is the wait time long enough? Compile runs need simulated seconds.
+2. Is the machine still running at all? `m.cpu.halted`, `m.cpu.last_fault`.
+3. Is the scheduler stuck? Measure `gw('p_switches')` twice — see
    [[07 Fallstricke]].
-4. Bildschirm ansehen: `screen_text(m)` oder Screenshot.
+4. Look at the screen: `screen_text(m)` or a screenshot.
 
-Verwandt: [[00 START HIER]], [[07 Fallstricke]]
+Related: [[00 START HIER]], [[07 Fallstricke]]
 
-## Die C-Fassung des Emulators
+## The C Version of the Emulator
 
 ```bash
-cd emu && make          # baut emu/tb32
-./emu/tb32 4.0 "dir"    # kopflos booten und einen Befehl tippen
+cd emu && make          # builds emu/tb32
+./emu/tb32 4.0 "dir"    # boot headless and type a command
 ```
 
-Geprüft wird sie gegen die Python-Fassung:
+Checked against the Python version:
 
 ```bash
 python3 tools/emu_vergleich.py
 ```
 
-Der Test führt in **beiden** Emulatoren einzelne Befehle aus und vergleicht
-nach jedem Programmzähler und Flags — die erste Abweichung wird mit
-Umgebung ausgegeben. Danach wird der ganze Bootvorgang Zeichen für Zeichen
-verglichen. Wer an `hardware/cpu.py` oder `emu/cpu.c` etwas ändert, lässt
-diesen Test laufen.
+The test runs individual instructions in **both** emulators and compares
+program counter and flags after each one — the first discrepancy is printed
+along with its context. After that, the entire boot process is compared
+character by character. Anyone who changes anything in `hardware/cpu.py` or
+`emu/cpu.c` should run this test.

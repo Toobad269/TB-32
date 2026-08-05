@@ -1,20 +1,21 @@
-# Selbst-Compilierung (Bootstrapping)
+# Self-Compilation (Bootstrapping)
 
-**Bewiesen.** `programs/cc.c` liegt als `\SOURCE\CC.C` auf der virtuellen
-Platte und wird vom eigenen Compiler übersetzt.
+**Proven.** `programs/cc.c` sits on the virtual drive as `\SOURCE\CC.C` and
+gets compiled by its own compiler.
 
-## Die Kette
+## The chain
 
-| Stufe | Wer baut | Ergebnis |
+| Stage | Who builds | Result |
 |---|---|---|
-| 1 | `tools/tcc.py` auf dem Mac | `\SYSTEM\CC.TBX` |
-| 2 | `CC.TBX` auf dem TB-32 | `CC2.TBX` |
-| 3 | `CC2.TBX` auf dem TB-32 | `CC3.TBX` |
+| 1 | `tools/tcc.py` on the Mac | `\SYSTEM\CC.TBX` |
+| 2 | `CC.TBX` on the TB-32 | `CC2.TBX` |
+| 3 | `CC2.TBX` on the TB-32 | `CC3.TBX` |
 
-Stufe 2 und 3 sind **byte-identisch** (66224 Byte). Damit ist der Compiler ein
-Fixpunkt. Stufe 1 darf abweichen — sie stammt von einem anderen Compiler.
+Stages 2 and 3 are **byte-identical** (66224 bytes). That makes the compiler
+a fixed point. Stage 1 is allowed to differ — it comes from a different
+compiler.
 
-Nachprüfen: `python3 tools/bootstrap.py` (~5 min), oder von Hand:
+Verify: `python3 tools/bootstrap.py` (~5 min), or by hand:
 
 ```
 CD SOURCE
@@ -23,41 +24,41 @@ CC2 CC.C CC3.TBX
 FC  CC2.TBX CC3.TBX      -> "no differences encountered"
 ```
 
-## Was CC dafür können musste
+## What CC had to be able to do for this
 
-- `#define` (Makrotabelle im Lexer) und `#include` (lädt **vom eigenen
-  Dateisystem**, eine Ebene tief)
-- Typumwandlungen `(char*)x` — erkannt am Typwort direkt nach der Klammer
-- konstante Ausdrücke in Arraygrößen (`char n[MAX * LEN]`)
-- globale Variablen mit Startwert — die Zuweisungen laufen als erzeugter Code
-  vor `main()`, aufgerufen über eine nachgetragene Sprungmarke
-- `sc()` als eingebauter Systemaufruf, damit `proglib.c` unverändert
-  funktioniert
-- `portout()` / `portin()` ebenfalls eingebaut (Nummern 98 und 97): sie
-  erzeugen `outr` bzw. `inr` **direkt an der Aufrufstelle**, ohne Kernel.
-  Auf dem Mac liefert `prog_start.asm` dieselben zwei Funktionen — beide
-  Compiler kommen also aufs Gleiche, und `gfxlib.c` bleibt eine Datei für
-  beide
-- größere Tabellen: 256 Globale, 192 Funktionen, 3000 offene Sprünge
+- `#define` (macro table in the lexer) and `#include` (loads **from its own
+  filesystem**, one level deep)
+- type casts `(char*)x` — recognized by the type keyword right after the
+  parenthesis
+- constant expressions in array sizes (`char n[MAX * LEN]`)
+- global variables with an initial value — the assignments run as generated
+  code before `main()`, invoked via an appended jump label
+- `sc()` as a built-in system call, so `proglib.c` works unchanged
+- `portout()` / `portin()` also built in (numbers 98 and 97): they generate
+  `outr` and `inr` **directly at the call site**, without going through the
+  kernel. On the Mac, `prog_start.asm` provides the same two functions —
+  so both compilers end up doing the same thing, and `gfxlib.c` stays a
+  single file for both
+- larger tables: 256 globals, 192 functions, 3000 pending jumps
 
-## Bauart von CC
+## How CC is built
 
-Ein-Durchgang-Compiler mit direkter Codeerzeugung, ohne Syntaxbaum. Vier
-Dinge werden nachgetragen (*Backpatching*): Vorwärtssprünge, Aufrufe später
-definierter Funktionen, Adressen der Zeichenketten, Größe des Stackrahmens.
+A single-pass compiler with direct code generation, no syntax tree. Four
+things get backpatched: forward jumps, calls to functions defined later,
+string addresses, and stack frame size.
 
-Der **lvalue-Trick**: Beim Parsen eines Namens ist noch unklar, ob gleich
-`x = 5` (Adresse gebraucht) oder `y = x` (Wert gebraucht) folgt. Also bleibt
-immer die *Adresse* in `r0` und ein Flag merkt sich das; `rvalue()` lädt den
-Wert erst nach, wenn er wirklich gebraucht wird.
+The **lvalue trick**: while parsing a name, it's still unclear whether
+`x = 5` (address needed) or `y = x` (value needed) follows. So the
+*address* always stays in `r0`, tracked by a flag; `rvalue()` only loads the
+value once it's actually needed.
 
-## Wenn `cc.c` geändert wird
+## When `cc.c` is changed
 
-Danach **beides** prüfen:
+Then check **both**:
 
 ```bash
-python3 build.py                  # TCC muss es noch übersetzen
-python3 tools/bootstrap.py        # und es muss sich selbst noch übersetzen
+python3 build.py                  # TCC still has to compile it
+python3 tools/bootstrap.py        # and it still has to compile itself
 ```
 
-Verwandt: [[04 Compiler TCC Grenzen]], [[06 Bauen und Testen]]
+Related: [[04 Compiler TCC Grenzen]], [[06 Bauen und Testen]]
