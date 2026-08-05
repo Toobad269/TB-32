@@ -6,6 +6,8 @@ with its own name, its own source, and its own test.
 | | |
 |---|---|
 | [`TB-LOCK/`](TB-LOCK/) | The stock BIOS plus a **Setup password**. Without the password, nobody gets into Setup anymore |
+| [`COMPANY-OS/`](COMPANY-OS/) | A **company BIOS**: power-on password, owner entry, blocked programs, event log, Secure Boot in three stages, flash lock in the chip itself |
+| [`TB-HACK/`](TB-HACK/) | The other direction — a **tinkerer's BIOS**: hex monitor, port console, raw CMOS editor, sector editor, free choice of boot sector, boot patches, and a disassembler that reads a `.TBX` off the host without its source. In green phosphor instead of BIOS blue |
 
 ## Why this works
 
@@ -18,6 +20,9 @@ structured is fully documented in
 the smallest working template is `firmware/minimal.asm`.
 
 ## Building and using a custom BIOS
+
+Every folder works the same way — `bauen.py` builds, `pruefen.py` boots the
+machine with the result and checks it:
 
 ```bash
 python3 "Custom BIOS/TB-LOCK/bauen.py"      # produces TB-LOCK.bin
@@ -39,7 +44,10 @@ since only the debugger needs that.
 ## Adding another one
 
 New folder, source files inside, `bauen.py` alongside them. The folders
-are independent of each other: `TB-LOCK` has its own copy of `bios.asm`,
+are independent of each other: each one has its own copy of `bios.asm`,
 `setup.asm`, `video.asm`, and `const.inc` and doesn't touch `firmware/`.
 Anyone changing the stock BIOS has to deliberately bring the change
 over — which means nothing tried in here can break the regular machine.
+
+That independence is also why `TB-LOCK` and `TB-HACK` can be opposites
+without either one having to know about the other.
