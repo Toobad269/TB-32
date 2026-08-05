@@ -9,7 +9,7 @@
 .equ SET_X,        4
 .equ SET_Y,        6
 .equ SET_ENTSIZE,  16
-.equ SET_TABS,     8                 ; + Company, + Event Log
+.equ SET_TABS,     9                 ; + Company, + Event Log, + Exit
 .equ A_BG,         0x17              ; grau auf blau
 .equ A_TITLE,      0x1E              ; gelb auf blau
 .equ A_SEL,        0x70              ; schwarz auf grau
@@ -27,6 +27,9 @@
 .equ REG_INVSER,   0xC9            ; nur Anzeige: Seriennummer
 .equ REG_INVBOOT,  0xCA            ; nur Anzeige: Anzahl Starts
 .equ REG_INVMIN,   0xCB            ; nur Anzeige: Betriebsminuten
+.equ REG_DELAY,    0xCC            ; Startverzoegerung in Sekunden
+.equ REG_EXITSAVE, 0xCD            ; Knopf: sichern und verlassen
+.equ REG_EXITDROP, 0xCE            ; Knopf: verwerfen und verlassen
 .equ REG_BIOSLEN,  0xE0            ; nur Anzeige: Groesse des BIOS-Chips
 .equ REG_BIOSSUM,  0xE1            ; nur Anzeige: Pruefsumme des Chips
 .equ REG_FLASH,    0xE2            ; Knopf: BIOS aus einer Datei neu brennen
@@ -71,6 +74,8 @@ setup_main:
     push r9
 
     call setup_backup
+    movi r6, 0
+    stwa SETUP_ENDE, r6               ; Merkzeichen des Reiters Exit
     movi r6, 0                        ; r6 = markierte Zeile
     movi r9, 0                        ; r9 = aktiver Reiter
     stwa SETUP_TAB, r9
@@ -143,6 +148,13 @@ setup_main:
     mov r1, r6
     movi r2, 1
     call setup_change
+    ; Der Reiter Exit setzt beim Druck auf seine Knoepfe ein Merkzeichen.
+    ; setup_change kann nicht selbst aus setup_main herausspringen -- also
+    ; wird hier nachgesehen, direkt nach dem Knopfdruck. In der Tastenkette
+    ; weiter unten kaeme man nie an: .inc springt gleich zurueck in .loop.
+    ldwa r8, SETUP_ENDE
+    cmpi r8, 0
+    jnz .exit
     jmp .loop
 .dec:
     mov r1, r6
@@ -333,6 +345,12 @@ setup_change:
     jz .pwuclr
     cmpi r7, REG_EVCLR
     jz .evclr
+    cmpi r7, REG_DELAY
+    jz .delay
+    cmpi r7, REG_EXITSAVE
+    jz .xsave
+    cmpi r7, REG_EXITDROP
+    jz .xdrop
     cmpi r7, REG_POL0
     jl .kein_pol
     cmpi r7, REG_POL4
@@ -387,6 +405,41 @@ setup_change:
 .bootgesperrt:
     li r1, s_a6_fest
     call setup_message
+    jmp .done
+.delay:
+    movi r10, CM_BOOTDELAY
+    push r2
+    call cmos_read
+    pop r2
+    add r0, r0, r2
+    cmpi r0, 0
+    jge .delay_max
+    movi r0, 9
+    jmp .delay_setzen
+.delay_max:
+    cmpi r0, 9
+    jle .delay_setzen
+    movi r0, 0
+.delay_setzen:
+    movi r10, CM_BOOTDELAY
+    mov r11, r0
+    call cmos_write
+    jmp .done
+.xsave:
+    movi r10, CM_SAVE
+    movi r11, 1
+    call cmos_write
+    li r1, s_set_saved
+    call setup_message
+    movi r0, 1
+    stwa SETUP_ENDE, r0
+    jmp .done
+.xdrop:
+    call setup_restore
+    li r1, s_set_cancel
+    call setup_message
+    movi r0, 1
+    stwa SETUP_ENDE, r0
     jmp .done
 .evclr:
     call ev_leeren
@@ -1049,6 +1102,12 @@ setup_value:
     jz .pwustate
     cmpi r6, REG_EVCLR
     jz .action
+    cmpi r6, REG_EXITSAVE
+    jz .action
+    cmpi r6, REG_EXITDROP
+    jz .action
+    cmpi r6, REG_DELAY
+    jz .delayv
     cmpi r6, REG_INVSER
     jz .invser
     cmpi r6, REG_INVBOOT
@@ -1175,6 +1234,18 @@ setup_value:
     mov r1, r0
     mov r2, r4
     call vid_putn
+    jmp .done
+.delayv:
+    movi r10, CM_BOOTDELAY
+    push r4
+    call cmos_read
+    pop r4
+    mov r1, r0
+    mov r2, r4
+    call vid_putn
+    li r1, s_sekunden
+    mov r2, r4
+    call vid_puts
     jmp .done
 .invmin:
     push r4
@@ -1583,7 +1654,7 @@ setup_message:
 ; --- Die vier Reiter -----------------------------------------------------
 ;  je Reiter: Zeiger auf die Eintragstabelle, Anzahl der Zeilen
 setup_tabs:
-    .dw tab_main,     7
+    .dw tab_main,     8
     .dw tab_hardware, 5
     .dw tab_cooling,  6
     .dw tab_security, 4
@@ -1591,9 +1662,10 @@ setup_tabs:
     .dw tab_company,  12
     .dw tab_events,   10
     .dw tab_firmware, 5
+    .dw tab_exit,     4
 
 setup_tabnamen:
-    .dw s_tab_main, s_tab_hw, s_tab_cool, s_tab_sec, s_tab_pw, s_tab_comp, s_tab_ev, s_tab_fw
+    .dw s_tab_main, s_tab_hw, s_tab_cool, s_tab_sec, s_tab_pw, s_tab_comp, s_tab_ev, s_tab_fw, s_tab_exit
 
 ;  je Eintrag: Beschriftung, CMOS-Register, Anzahl Werte, Klartexttabelle
 tab_main:
@@ -1603,6 +1675,7 @@ tab_main:
     .dw s_e_beep,  CM_BEEP,      2, opts_onoff
     .dw s_e_verb,  CM_VERBOSE,   2, opts_verb
     .dw s_e_boot2, CM_BOOTMODE,  2, opts_boot2
+    .dw s_e_delay, REG_DELAY,    0, 0
     .dw s_e_def,   REG_DEFAULTS, 0, 0
 
 tab_hardware:
@@ -1669,6 +1742,12 @@ tab_firmware:
     .dw s_e_frest, REG_RESTORE,  0, 0
     .dw s_e_finfo, REG_INFO,     0, 0
 
+tab_exit:
+    .dw s_e_xsave, REG_EXITSAVE, 0, 0
+    .dw s_e_xdrop, REG_EXITDROP, 0, 0
+    .dw s_e_def,   REG_DEFAULTS, 0, 0
+    .dw s_e_xinfo, REG_INFO,     0, 0
+
 ; Feldtabellen: CMOS-Register, kleinster Wert, groesster Wert, Name
 felder_zeit:
     .dw CM_HOUR,  0, 23, s_f_std
@@ -1709,6 +1788,10 @@ s_e_boot2:   .db "Boot To", 0
 s_bm0:       .db "Desktop", 0
 s_bm1:       .db "Console", 0
 s_e_def:     .db "Load Setup Defaults", 0
+s_e_delay:   .db "Boot Delay", 0
+s_e_xsave:   .db "Save Changes and Exit", 0
+s_e_xdrop:   .db "Discard Changes and Exit", 0
+s_e_xinfo:   .db "The same as F10 and ESC -- here so you can see them", 0
 s_e_mem:     .db "Installed Memory", 0
 s_e_disk:    .db "Primary Master", 0
 s_e_vga:     .db "Display Adapter", 0
@@ -1739,6 +1822,7 @@ s_co_no:     .db "No", 0
 s_a6_fest:   .db "Boot source is locked by system policy (Company > Boot From Internal Disk Only).", 0
 s_ev_geleert:.db "Event log cleared.", 0
 s_minuten:   .db " min", 0
+s_sekunden:  .db " s", 0
 s_e_ev1:     .db "1", 0
 s_e_ev2:     .db "2", 0
 s_e_ev3:     .db "3", 0
@@ -1786,6 +1870,7 @@ s_tab_sec:   .db " Security ", 0
 s_tab_pw:    .db " Password ", 0
 s_tab_comp:  .db " Company ", 0
 s_tab_ev:    .db " Event Log ", 0
+s_tab_exit:  .db " Exit ", 0
 s_tab_fw:    .db " Firmware ", 0
 
 s_fan0:      .db "Automatic", 0

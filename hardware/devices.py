@@ -539,6 +539,10 @@ KEY_UP, KEY_DOWN, KEY_LEFT, KEY_RIGHT = 0x48, 0x50, 0x4B, 0x4D
 KEY_F1, KEY_F2, KEY_F10, KEY_DEL = 0x3B, 0x3C, 0x44, 0x53
 KEY_HOME, KEY_END, KEY_PGUP, KEY_PGDN = 0x47, 0x4F, 0x49, 0x51
 KEY_INS, KEY_F5 = 0x52, 0x3F
+# F8 ist der klassische Weg ins Startmenue eines BIOS. F12 waere der
+# andere -- die Taste gehoert hier aber dem Fenster (Einblendung mit Takt
+# und Bildrate) und erreicht den virtuellen Rechner nie.
+KEY_F8 = 0x42
 
 
 # ---------------------------------------------------------------------------

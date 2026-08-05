@@ -1120,3 +1120,175 @@ firma_laenge:                         ; r1 = Zeiger -> r0 = Laenge
     pop r6
     ret
 .align 4
+
+; ===========================================================================
+;  B4 -- das Startmenue
+;
+;  Einmal von woanders starten, OHNE die Einstellung zu aendern. Bei echten
+;  Rechnern liegt es auf F12 oder F8; hier muss es F8 sein, denn F11 und F12
+;  gehoeren dem Fenster (Vollbild und Einblendung) und erreichen den
+;  virtuellen Rechner gar nicht.
+;
+;  Steht A6 ("nur von der eigenen Platte"), verlangt das Menue vorher das
+;  Supervisor-Passwort. Damit ist es das Werkzeug des Administrators und
+;  nicht das Schlupfloch, das die Sperre aushebelt -- ohne diese Abfrage
+;  waere A6 mit einem Tastendruck erledigt.
+; ===========================================================================
+.equ BM_X,         22
+.equ BM_Y,         8
+.equ BM_W,         36
+.equ BM_H,         10
+
+boot_menue:
+    push r6
+    push r7
+
+    movi r1, POL_INTDISK              ; bei gesetzter Sperre erst das Passwort
+    call pol_frage
+    cmpi r0, 0
+    jz .offen
+    call pw_gesetzt
+    cmpi r0, 0
+    jz .offen                         ; kein Passwort gesetzt: nichts zu fragen
+    movi r1, ATTR_NORMAL
+    call vid_clear
+    li r1, s_bm_locked
+    call pw_pruefen
+    cmpi r0, 1
+    jz .offen
+    li r1, s_pw_wrong
+    call pw_melden
+    movi r1, ATTR_NORMAL
+    call vid_clear
+    pop r7
+    pop r6
+    ret
+
+.offen:
+    movi r6, 0                        ; markierte Zeile
+.zeichnen:
+    movi r1, ATTR_NORMAL
+    call vid_clear
+    movi r1, BM_X
+    movi r2, BM_Y
+    movi r3, BM_W
+    movi r4, BM_H
+    movi r5, A_SEL
+    call vid_fillrect
+    movi r1, BM_X
+    movi r2, BM_Y
+    movi r3, BM_W
+    movi r4, BM_H
+    movi r5, A_SEL
+    call vid_box
+    movi r1, BM_X+3
+    movi r2, BM_Y
+    li r3, s_bm_head
+    movi r4, A_SEL
+    call vid_putsat
+    movi r1, BM_X+3
+    movi r2, BM_Y+BM_H-2
+    li r3, s_bm_keys
+    movi r4, A_SEL
+    call vid_putsat
+
+    movi r7, 0
+.zeile:
+    cmpi r7, 3
+    jge .zeilen_fertig
+    shli r10, r7, 2
+    li r11, bm_namen
+    add r10, r10, r11
+    ldw r3, [r10]
+    movi r1, BM_X+3
+    addi r2, r7, BM_Y+2
+    movi r4, A_SEL
+    cmp r7, r6
+    jnz .normal
+    movi r4, A_BG
+.normal:
+    call vid_putsat
+    addi r7, r7, 1
+    jmp .zeile
+.zeilen_fertig:
+
+    call kbd_getkey
+    shri r10, r0, 8
+    cmpi r10, K_UP
+    jz .hoch
+    cmpi r10, K_DOWN
+    jz .runter
+    cmpi r10, K_ENTER
+    jz .waehlen
+    cmpi r10, K_ESC
+    jz .raus
+    jmp .zeichnen
+.hoch:
+    subi r6, r6, 1
+    cmpi r6, 0
+    jge .zeichnen
+    movi r6, 2
+    jmp .zeichnen
+.runter:
+    addi r6, r6, 1
+    cmpi r6, 3
+    jl .zeichnen
+    movi r6, 0
+    jmp .zeichnen
+
+.waehlen:
+    cmpi r6, 0
+    jz .raus                          ; die eigene Platte: einfach weiter
+    li r1, s_bm_fehlt                 ; Floppy und Netz gibt es (noch) nicht
+    call pw_melden
+    jmp .zeichnen
+.raus:
+    movi r1, ATTR_NORMAL
+    call vid_clear
+    pop r7
+    pop r6
+    ret
+
+.align 4
+bm_namen:  .dw s_bm_disk, s_bm_floppy, s_bm_net
+s_bm_head:   .db " Boot Menu ", 0
+s_bm_keys:   .db "ENTER starts      ESC cancels", 0
+s_bm_disk:   .db "Hard Disk 0  (internal)", 0
+s_bm_floppy: .db "Floppy       (not installed)", 0
+s_bm_net:    .db "Network      (not installed)", 0
+s_bm_fehlt:  .db "That boot source is not installed on this machine.", 0
+s_bm_locked: .db " Boot Menu is locked ", 0
+.align 4
+
+; ===========================================================================
+;  C -- die Startverzoegerung
+;
+;  Sekunden warten, bevor gebootet wird, damit man DEL sicher trifft. Auf
+;  langsamen Anzeigen hilft das wirklich, und bei einem Rechner mit Quick
+;  Boot ist die Bedenkzeit sonst eine Viertelsekunde.
+; ===========================================================================
+boot_verzoegern:
+    push r6
+    push r7
+    movi r10, CM_BOOTDELAY
+    call cmos_read
+    cmpi r0, 0
+    jz .nichts
+    cmpi r0, 9
+    jle .ok
+    movi r0, 9                        ; ein verbogenes CMOS nicht ewig warten lassen
+.ok:
+    muli r6, r0, 100                  ; Ticks: 100 je Sekunde
+    ldwa r7, BDA_TICKS
+    add r6, r6, r7
+.warten:
+    ldwa r7, BDA_TICKS
+    cmp r7, r6
+    jae .nichts
+    hlt
+    jmp .warten
+.nichts:
+    pop r7
+    pop r6
+    ret
+.align 4

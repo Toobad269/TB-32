@@ -20,6 +20,7 @@ KEYNAMES = {
     "ESC": (dev.KEY_ESC, 27), "ENTER": (dev.KEY_ENTER, 13),
     "DEL": (dev.KEY_DEL, 0), "F10": (dev.KEY_F10, 0),
     "F1": (dev.KEY_F1, 0), "F2": (dev.KEY_F2, 0), "F5": (dev.KEY_F5, 0),
+    "F8": (dev.KEY_F8, 0),
     "UP": (dev.KEY_UP, 0), "DOWN": (dev.KEY_DOWN, 0),
     "LEFT": (dev.KEY_LEFT, 0), "RIGHT": (dev.KEY_RIGHT, 0),
     "BACKSPACE": (dev.KEY_BACKSPACE, 8), "TAB": (dev.KEY_TAB, 9),

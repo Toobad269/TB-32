@@ -93,6 +93,7 @@
 .equ TE_BUF,        0x00000768      ; wohin getippt wird
 .equ TXT_BUF,       0x00000770      ; 32 Byte Arbeitsplatz fuer den Firmentext
 .equ NV_WAR_DA,     0x00000790      ; war das NVRAM schon eingerichtet?
+.equ SETUP_ENDE,    0x00000798      ; Reiter Exit: Setup verlassen
 .equ INTRUSION_FLAG,0x00000794      ; wurde die Knopfzelle gezogen? (nur dieser Start)
 .equ BDA_SBHEAD,    0x000004A8      ; Ringpuffer der Bildschirmhistorie
 .equ BDA_SBCOUNT,   0x000004AC
@@ -250,6 +251,7 @@
 ; laege, fiele aus der Pruefsumme heraus -- es ueberlebte zwar den Neustart,
 ; aber ein leergeraeumtes CMOS fiele niemandem mehr auf.
 .equ CM_INTRUSION,  0x1E            ; 0xC7 = von COMPANY-OS eingerichtet
+.equ CM_BOOTDELAY,  0x1F            ; zusaetzliche Sekunden Bedenkzeit (0..9)
 .equ CM_POLICY,     0x25            ; Schalterwort, Bits siehe unten
 .equ CM_BLOCK0,     0x26            ; gesperrte Programme, Bits 0-7
 .equ CM_BLOCK1,     0x27            ; ... Bits 8-15
@@ -281,6 +283,7 @@
 .equ K_F1,          0x3B
 .equ K_F2,          0x3C
 .equ K_F5,          0x3F
+.equ K_F8,          0x42
 .equ K_F10,         0x44
 .equ K_HOME,        0x47
 .equ K_UP,          0x48

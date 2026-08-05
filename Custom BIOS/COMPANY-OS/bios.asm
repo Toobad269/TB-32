@@ -750,6 +750,7 @@ post:
     call cmos_read
     cmpi r0, 0
     jnz .quick
+    call boot_verzoegern              ; C: zusaetzliche Sekunden aus dem Setup
     movi r6, 200                      ; 2 Sekunden Bedenkzeit
     jmp .wait
 .quick:
@@ -767,6 +768,8 @@ post:
     jz .setup
     cmpi r10, K_F2
     jz .setup
+    cmpi r10, K_F8                    ; B4: das Startmenue
+    jz .bootmenue
     call kbd_getkey                   ; andere Taste: wegwerfen
 .nokey:
     ldwa r7, BDA_TICKS
@@ -774,6 +777,10 @@ post:
     jae .fertig
     hlt
     jmp .loop
+.bootmenue:
+    call kbd_getkey
+    call boot_menue
+    jmp .fertig
 .setup:
     call kbd_getkey
     call setup_tor                    ; TB-LOCK: erst das Passwort

@@ -440,6 +440,75 @@ def main():
     pruefe("Der Firmentext steht schon beim Einschalten da",
            "ACME GmbH" in B6.gesehen, B6.bild())
 
+    # === B4 und die C-Punkte ============================================
+    print("\n--- B4: das Startmenue -----------------------------------------")
+    bmcmos = os.path.join(tmp, "cmos_bm.bin")
+    M = Lauf(chip, bmcmos, platte)
+    for _ in range(16):
+        M.eingabe("F8", 0.15)
+        if "Boot Menu" in M.bild():
+            break
+    pruefe("F8 oeffnet das Startmenue", "Boot Menu" in M.bild(), M.bild())
+    pruefe("Die eigene Platte steht drin", "Hard Disk 0" in M.bild(), M.bild())
+    pruefe("Floppy und Netz stehen als nicht vorhanden da",
+           "not installed" in M.bild(), M.bild())
+    M.eingabe("DOWN", 0.2)
+    M.eingabe("ENTER", 0.8)
+    pruefe("Eine fehlende Quelle sagt das auch",
+           "not installed on this machine" in M.gesehen, M.bild())
+    M.eingabe("ESC", 2.0)
+
+    # Mit A6 verlangt das Menue das Supervisor-Passwort -- sonst waere die
+    # Sperre mit einem Tastendruck erledigt.
+    M2 = Lauf(chip, bmcmos, platte)
+    M2.ins_setup()
+    M2.reiter(4)
+    M2.eingabe("DOWN", 0.0)
+    M2.warte(0.2)
+    M2.eingabe("ENTER", 0.5)
+    M2.eingabe("chef", 0.2)
+    M2.eingabe("ENTER", 0.4)
+    M2.eingabe("chef", 0.2)
+    M2.eingabe("ENTER", 0.8)
+    M2.reiter(1)                             # Company
+    for _ in range(5):
+        M2.eingabe("DOWN", 0.0)
+    M2.warte(0.3)
+    M2.eingabe("ENTER", 0.4)                 # Boot From Internal Disk Only
+    M2.eingabe("F10", 1.0)
+
+    M3 = Lauf(chip, bmcmos, platte)
+    for _ in range(16):
+        M3.eingabe("F8", 0.15)
+        if "Boot Menu is locked" in M3.bild():
+            break
+    pruefe("Mit A6 verlangt das Startmenue das Supervisor-Passwort",
+           "Boot Menu is locked" in M3.bild(), M3.bild())
+    pruefe("... und zeigt die Liste noch nicht",
+           "Hard Disk 0" not in M3.bild(), M3.bild())
+    M3.eingabe("chef", 0.2)
+    M3.eingabe("ENTER", 1.0)
+    pruefe("Mit dem Passwort geht es auf", "Boot Menu" in M3.bild(), M3.bild())
+
+    print("\n--- C: Startverzoegerung und Reiter Exit -----------------------")
+    C1 = Lauf(chip, os.path.join(tmp, "cmos_c.bin"), platte)
+    C1.ins_setup()
+    for _ in range(6):
+        C1.eingabe("DOWN", 0.0)
+    C1.warte(0.3)
+    b = C1.bild()
+    pruefe("Boot Delay steht im Reiter Main", "Boot Delay" in b, b)
+    C1.eingabe("ENTER", 0.4)
+    C1.eingabe("ENTER", 0.4)
+    pruefe("Die Sekunden lassen sich hochzaehlen", "2 s" in C1.bild(), C1.bild())
+    C1.reiter(8)                             # Reiter Exit
+    b = C1.bild()
+    pruefe("Der Reiter Exit ist da",
+           "Save Changes and Exit" in b and "Discard Changes and Exit" in b, b)
+    C1.eingabe("ENTER", 1.2)
+    pruefe("Save Changes and Exit verlaesst das Setup wirklich",
+           "SETUP UTILITY" not in C1.bild(), C1.bild())
+
     # === 5. A7: die Flash-Sperre ========================================
     print("\n--- A7: der Chip laesst sich aus dem System nicht brennen -------")
     T = Lauf(chip, cmos, platte)
@@ -484,9 +553,8 @@ def main():
     shutil.rmtree(tmp, ignore_errors=True)
 
     print("\n--- Noch nicht gebaut, deshalb hier nicht geprueft -------------")
-    for offen in ("B4     F12-Startmenue",
-                  "B5     Netzwerkstart",
-                  "C      Numlock, POST-Zeit, Startverzoegerung, Reiter Exit"):
+    for offen in ("B5     Netzwerkstart -- eigenes Projekt",
+                  "C      Numlock und AC Power Recovery: keine Hardware dafuer da"):
         print(f"  [ offen ] {offen}")
 
     farbe = GRUEN if FEHLT == 0 else ROT

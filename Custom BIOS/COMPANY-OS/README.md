@@ -72,16 +72,28 @@ from File* macht es richtig (Befehl 3).
 | **B1** Ereignisspeicher mit eigenem Reiter | `ev_log`, `ev_zeile_zeigen` |
 | **B2** Secure Boot dreistufig: Off / Audit / Enforce | `secure_pruefen` |
 | **B3** Inventar im Setup und im Speicher | `REG_INVSER`, `BDA_INVENT` |
+| **B4** Startmenue auf F8, mit Passwort wenn A6 steht | `boot_menue` |
 | **B6** Firmentext schon beim Einschalten | `firma_startbild` |
+| **C** Startverzoegerung, Reiter *Exit* | `boot_verzoegern`, `tab_exit` |
 | `build.py` lässt ein fremdes BIOS in Ruhe | `fremdes_bios()` |
 | `pc.py --bios <datei>` | `pc.py` |
 | Systemseite: Sperren durchsetzen, grau im Startmenü | `system/gui.c`, `gesperrt()` |
 
-**55 Prüfungen** laufen auf der echten Maschine: `python3 "Custom BIOS/COMPANY-OS/pruefen.py"`
+**66 Prüfungen** laufen auf der echten Maschine: `python3 "Custom BIOS/COMPANY-OS/pruefen.py"`
 
-**Der A-Teil steht vollständig, von B fehlen noch B4 und B5.** Offen sind:
-**B4** F12-Startmenü, **B5** Netzwerkstart und die **C**-Punkte (Numlock,
-POST-Zeit, Startverzögerung, Reiter *Exit*).
+**A, B und C sind bis auf B5 gebaut.** Offen bleibt allein **B5**
+Netzwerkstart -- das eigene Projekt, als das die Liste unten es selbst
+beschreibt.
+
+Zwei C-Punkte sind bewusst weggelassen, weil die Hardware dafuer fehlt:
+**Numlock beim Start** (der TB-32 hat keinen Ziffernblock und kein
+Statusbyte dafuer) und **AC Power Recovery** (das Netzteil kennt keinen
+Stromausfall, nur Aus und An).
+
+Zu B4: das Menue liegt auf **F8**, nicht auf F12. F11 und F12 gehoeren dem
+Fenster (Vollbild und Einblendung) und erreichen den virtuellen Rechner
+gar nicht -- F8 ist der andere Klassiker fuer Startmenues und war deshalb
+die einzige ehrliche Wahl.
 
 B3 zeigt das Inventar im Setup und legt es unter `BDA_INVENT` ab; die
 Anzeige im Systemmonitor wäre der nächste kleine Schritt auf der
