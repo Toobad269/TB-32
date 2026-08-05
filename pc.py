@@ -621,7 +621,17 @@ def main():
     pygame.key.start_text_input()        # Zeichen über das Text-Ereignis holen
     monitor = Monitor(scale)
     speaker = PCSpeaker()
-    m = Machine(ROOT)
+    # --bios <datei> startet den Rechner mit einem anderen ROM-Baustein, ohne
+    # den Chip anzufassen. Zum Ausprobieren eines eigenen BIOS ist das der
+    # richtige Weg: Machine kann das laengst, pc.py hat es nur nie
+    # durchgereicht. Geflasht wird erst, wenn es gefaellt.
+    rom = None
+    if "--bios" in sys.argv:
+        rom = sys.argv[sys.argv.index("--bios") + 1]
+        if not os.path.exists(rom):
+            raise SystemExit(f"--bios: {rom} gibt es nicht.")
+        print(f"Startet mit {rom} -- der Chip selbst bleibt unberührt.")
+    m = Machine(ROOT, rom=rom)
     m.gehaeuse = True                         # Neustarts gehen durchs Startbild
     m.flash.waehler = bios_datei_waehlen      # Setup > Firmware > Flash BIOS
 

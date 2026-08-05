@@ -205,22 +205,35 @@ pw_fenster:
     ret
 
 ; ---------------------------------------------------------------------------
-;  r1 Sterne in das Eingabefeld zeichnen
+;  te_zeichnen(r1 = Anzahl Zeichen): den Inhalt des Eingabefelds malen
+;
+;  Sterne oder Klartext, je nach TE_SICHTBAR. Der Puffer steht in TE_BUF und
+;  nicht in einem Register: vid_putat darf sonst nichts ueberschreiben, und
+;  mit zwei Registern kommt die Schleife sicher aus.
 ; ---------------------------------------------------------------------------
-pw_sterne:
+te_zeichnen:
     push r6
     push r7
-    mov r6, r1
-    movi r7, 0
+    mov r7, r1
+    movi r6, 0
 .loop:
-    cmp r7, r6
+    cmp r6, r7
     jge .done
-    addi r1, r7, PWD_X+3
-    movi r2, PWD_Y+3
+    ldwa r10, TE_SICHTBAR
+    cmpi r10, 0
+    jz .stern
+    ldwa r10, TE_BUF
+    add r10, r10, r6
+    ldb r3, [r10]
+    jmp .malen
+.stern:
     movi r3, 0x2A                     ; '*'
+.malen:
+    addi r1, r6, PWD_X+3
+    movi r2, PWD_Y+3
     movi r4, A_SEL
     call vid_putat
-    addi r7, r7, 1
+    addi r6, r6, 1
     jmp .loop
 .done:
     pop r7
@@ -228,17 +241,20 @@ pw_sterne:
     ret
 
 ; ---------------------------------------------------------------------------
-;  pw_eingabe(r1 = Puffer, r2 = Frage) -> r0 = Laenge, oder -1 bei ESC
+;  text_eingabe(r1 = Puffer, r2 = Frage) -> r0 = Laenge, oder -1 bei ESC
 ;
-;  Zeigt Sterne statt der Zeichen, genau wie die Anmeldung von TOOBAD-OS.
+;  Die Tippschleife gibt es nur EINMAL -- fuer Passwoerter (Sterne) und fuer
+;  den Firmentext (sichtbar). Vorher TE_MAX und TE_SICHTBAR setzen; dafuer
+;  gibt es die beiden Einstiege pw_eingabe und txt_eingabe darunter.
 ;  Das Fragefenster muss schon stehen (pw_fenster).
 ; ---------------------------------------------------------------------------
-pw_eingabe:
+text_eingabe:
     push r6
     push r7
     push r8
     push r9
     mov r6, r1                        ; r6 = Puffer
+    stwa TE_BUF, r6
     mov r8, r2                        ; r8 = Frage, nur bis zum Zeichnen
     movi r7, 0                        ; r7 = Anzahl Zeichen
 
@@ -249,14 +265,15 @@ pw_eingabe:
     call vid_putsat
 
 .loop:
-    movi r1, PWD_X+3                  ; Feldboden, dann die Sterne darauf
+    movi r1, PWD_X+3                  ; Feldboden, dann der Inhalt darauf
     movi r2, PWD_Y+3
-    movi r3, PW_MAX+2
+    ldwa r3, TE_MAX
+    addi r3, r3, 2
     movi r4, 0x5F                     ; '_'
     movi r5, A_SEL
     call vid_hline
     mov r1, r7
-    call pw_sterne
+    call te_zeichnen
 
     call kbd_getkey
     shri r8, r0, 8                    ; Scancode
@@ -273,7 +290,8 @@ pw_eingabe:
     jl .loop
     cmpi r9, 127
     jge .loop
-    cmpi r7, PW_MAX
+    ldwa r10, TE_MAX
+    cmp r7, r10
     jge .loop
     add r10, r6, r7
     stb [r10], r9
@@ -302,6 +320,23 @@ pw_eingabe:
     pop r7
     pop r6
     ret
+
+; --- Die beiden Einstiege -------------------------------------------------
+;  Beide springen weiter statt aufzurufen: text_eingabe endet mit ret, und
+;  der bringt uns gleich zum urspruenglichen Aufrufer zurueck. r1 und r2
+;  stehen dabei schon richtig.
+pw_eingabe:                           ; r1 = Puffer, r2 = Frage -- mit Sternen
+    movi r10, PW_MAX
+    stwa TE_MAX, r10
+    movi r10, 0
+    stwa TE_SICHTBAR, r10
+    jmp text_eingabe
+
+txt_eingabe:                          ; r1 = Puffer, r2 = Frage, r3 = max
+    stwa TE_MAX, r3
+    movi r10, 1
+    stwa TE_SICHTBAR, r10
+    jmp text_eingabe
 
 ; ---------------------------------------------------------------------------
 ;  pw_fragen(r1 = Puffer, r2 = Frage, r3 = Ueberschrift) -> r0 wie pw_eingabe

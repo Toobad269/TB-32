@@ -262,6 +262,15 @@ PORT_MOUSE_WHEEL = 0x0063   # Mausrad: liest den Ausschlag und setzt ihn zurueck
 PORT_CMOS_IDX    = 0x0070   # CMOS/Echtzeituhr: Adresse wählen
 PORT_CMOS_DATA   = 0x0071   # ... und lesen/schreiben
 
+# Der zweite, groessere batteriegepufferte Speicher.
+#
+# Die Uhr-CMOS hat 64 Byte und ist damit voll -- Passwoerter, Schalter und
+# Sperrliste passen gerade so hinein, Firmentext, Ereignisspeicher und
+# Inventar nicht mehr. Echte Mainboards haben denselben Weg genommen: die
+# 64 Byte an der Uhr blieben, alles Weitere zog in einen eigenen Baustein um.
+PORT_NVRAM_IDX   = 0x0072   # NVRAM: Adresse waehlen (0..255)
+PORT_NVRAM_DATA  = 0x0073   # ... und lesen/schreiben
+
 # Temperatursensor und Lüftersteuerung -- wie der Chipsatz eines echten
 # Mainboards. Wird es zu heiß, drosselt die Hardware den Takt von selbst.
 PORT_TEMP        = 0x00A0   # aktuelle Temperatur in Zehntelgrad

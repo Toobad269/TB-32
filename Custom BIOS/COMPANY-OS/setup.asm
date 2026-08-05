@@ -9,7 +9,7 @@
 .equ SET_X,        4
 .equ SET_Y,        6
 .equ SET_ENTSIZE,  16
-.equ SET_TABS,     6                 ; Main, Hardware, Cooling, Security, Password, Firmware
+.equ SET_TABS,     7                 ; + Company
 .equ A_BG,         0x17              ; grau auf blau
 .equ A_TITLE,      0x1E              ; gelb auf blau
 .equ A_SEL,        0x70              ; schwarz auf grau
@@ -26,6 +26,17 @@
 .equ REG_PWSTATE,  0xE4            ; nur Anzeige: Installed / Not Installed
 .equ REG_PWSET,    0xE5            ; Knopf: Passwort setzen oder aendern
 .equ REG_PWCLR,    0xE6            ; Knopf: Passwort loeschen
+; COMPANY-OS: die fuenf Schalter des Schalterworts. Sie liegen absichtlich
+; luekenlos hintereinander -- setup_change rechnet die Bitnummer aus der
+; Registernummer aus, statt fuenfmal dasselbe zu schreiben.
+.equ REG_POL0,     0xE7            ; Owner Tag                 (Bit 0)
+.equ REG_POL1,     0xE8            ; Block Compiler            (Bit 1)
+.equ REG_POL2,     0xE9            ; Block Network             (Bit 2)
+.equ REG_POL3,     0xEA            ; Require Login Password    (Bit 3)
+.equ REG_POL4,     0xEB            ; Boot From Internal Disk   (Bit 4)
+.equ REG_COTEXT,   0xEC            ; Knopf: Firmentext tippen
+.equ REG_COBLK,    0xED            ; Knopf: Programme abhaken
+.equ REG_COCLR,    0xEE            ; nur Anzeige: war das CMOS geleert?
 .equ REG_TIME,     0xF0            ; Uhrzeit, mit ENTER editierbar
 .equ REG_DATE,     0xF1            ; Datum, mit ENTER editierbar
 .equ REG_DEFAULTS, 0xF2            ; Knopf: Standardwerte laden
@@ -291,6 +302,15 @@ setup_change:
     jz .pwset
     cmpi r7, REG_PWCLR
     jz .pwclr
+    cmpi r7, REG_COTEXT
+    jz .cotext
+    cmpi r7, REG_COBLK
+    jz .coblk
+    cmpi r7, REG_POL0
+    jl .kein_pol
+    cmpi r7, REG_POL4
+    jle .polbit
+.kein_pol:
     cmpi r7, 0xE0
     jae .done                         ; reine Anzeigezeilen
     ldw r8, [r6+8]                    ; r8 = Anzahl moeglicher Werte
@@ -324,6 +344,20 @@ setup_change:
     jmp .done
 .pwclr:
     call pw_loeschen
+    jmp .done
+.cotext:
+    call firma_text_setzen
+    jmp .done
+.coblk:
+    call firma_sperrliste
+    jmp .done
+.polbit:
+    subi r7, r7, REG_POL0             ; Registernummer -> Bitnummer
+    movi r1, 1
+    shl r1, r1, r7
+    call pol_umschalten
+    call pw_sichern                   ; Richtlinien gelten sofort
+    call firma_veroeffentlichen
     jmp .done
 .trust:
     call secure_summe                 ; aktuelles Abbild durchrechnen
@@ -959,6 +993,17 @@ setup_value:
     jz .action
     cmpi r6, REG_PWSTATE
     jz .pwstate
+    cmpi r6, REG_COTEXT
+    jz .action
+    cmpi r6, REG_COBLK
+    jz .action
+    cmpi r6, REG_COCLR
+    jz .coclr
+    cmpi r6, REG_POL0
+    jl .kein_polv
+    cmpi r6, REG_POL4
+    jle .polv
+.kein_polv:
     cmpi r6, REG_BIOSLEN
     jz .bioslen
     cmpi r6, REG_BIOSSUM
@@ -1017,6 +1062,43 @@ setup_value:
     jmp .done
 .pw_nein:
     li r1, s_pw_notinst
+    mov r2, r4
+    call vid_puts
+    jmp .done
+
+; --- Ein Bit des Schalterworts als Enabled/Disabled ----------------------
+.polv:
+    subi r6, r6, REG_POL0
+    movi r1, 1
+    shl r1, r1, r6
+    push r4
+    call pol_frage
+    pop r4
+    cmpi r0, 0
+    jz .polv_aus
+    li r1, s_on
+    mov r2, r4
+    call vid_puts
+    jmp .done
+.polv_aus:
+    li r1, s_off
+    mov r2, r4
+    call vid_puts
+    jmp .done
+
+; --- Wurde die Knopfzelle gezogen? --------------------------------------
+.coclr:
+    push r4
+    call intrusion_frage
+    pop r4
+    cmpi r0, 0
+    jz .coclr_nein
+    li r1, s_co_yes
+    mov r2, r4
+    call vid_puts
+    jmp .done
+.coclr_nein:
+    li r1, s_co_no
     mov r2, r4
     call vid_puts
     jmp .done
@@ -1383,10 +1465,11 @@ setup_tabs:
     .dw tab_cooling,  6
     .dw tab_security, 4
     .dw tab_password, 4
+    .dw tab_company,  9
     .dw tab_firmware, 5
 
 setup_tabnamen:
-    .dw s_tab_main, s_tab_hw, s_tab_cool, s_tab_sec, s_tab_pw, s_tab_fw
+    .dw s_tab_main, s_tab_hw, s_tab_cool, s_tab_sec, s_tab_pw, s_tab_comp, s_tab_fw
 
 ;  je Eintrag: Beschriftung, CMOS-Register, Anzahl Werte, Klartexttabelle
 tab_main:
@@ -1424,6 +1507,17 @@ tab_password:
     .dw s_e_pwset,   REG_PWSET,   0, 0
     .dw s_e_pwclr,   REG_PWCLR,   0, 0
     .dw s_e_pwinfo,  REG_INFO,    0, 0
+
+tab_company:
+    .dw s_e_cotag,  REG_POL0,   0, 0
+    .dw s_e_cotext, REG_COTEXT, 0, 0
+    .dw s_e_cocc,   REG_POL1,   0, 0
+    .dw s_e_conet,  REG_POL2,   0, 0
+    .dw s_e_copw,   REG_POL3,   0, 0
+    .dw s_e_codisk, REG_POL4,   0, 0
+    .dw s_e_coblk,  REG_COBLK,  0, 0
+    .dw s_e_coclr,  REG_COCLR,  0, 0
+    .dw s_e_coinfo, REG_INFO,   0, 0
 
 tab_firmware:
     .dw s_e_blen,  REG_BIOSLEN,  0, 0
@@ -1484,6 +1578,17 @@ s_e_sec:     .db "Secure Boot", 0
 s_e_sum:     .db "Boot Image Checksum", 0
 s_e_trust:   .db "Trust Current Boot Image", 0
 s_e_secinfo: .db "Halts at boot if BIOS or kernel were changed", 0
+s_e_cotag:   .db "Owner Tag", 0
+s_e_cotext:  .db "Owner Text", 0
+s_e_cocc:    .db "Block Compiler", 0
+s_e_conet:   .db "Block Network", 0
+s_e_copw:    .db "Require Login Password", 0
+s_e_codisk:  .db "Boot From Internal Disk Only", 0
+s_e_coblk:   .db "Blocked Programs", 0
+s_e_coclr:   .db "Configuration Cleared", 0
+s_e_coinfo:  .db "The system reads these at every start", 0
+s_co_yes:    .db "Yes -- settings were reset", 0
+s_co_no:     .db "No", 0
 s_e_pwstate: .db "Supervisor Password", 0
 s_e_pwset:   .db "Set / Change Password", 0
 s_e_pwclr:   .db "Clear Password", 0
@@ -1515,6 +1620,7 @@ s_tab_hw:    .db " Hardware ", 0
 s_tab_cool:  .db " Cooling ", 0
 s_tab_sec:   .db " Security ", 0
 s_tab_pw:    .db " Password ", 0
+s_tab_comp:  .db " Company ", 0
 s_tab_fw:    .db " Firmware ", 0
 
 s_fan0:      .db "Automatic", 0

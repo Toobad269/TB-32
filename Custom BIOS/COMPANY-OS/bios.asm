@@ -49,6 +49,18 @@ bios_start:                           ; 0x30  ab hier der Code
     sti
     call flash_pruefen                ; liegt ein Flashwunsch an?
     call post
+    call intrusion_melden             ; wurde die Knopfzelle gezogen?
+    ; --- A7: den Chip zusperren, als LETZTES vor dem Booten ---------------
+    ; Bis hierher durfte die Firmware selbst noch flashen (Setup > Firmware).
+    ; Ab jetzt kommt niemand mehr an den Baustein -- auch kein Programm im
+    ; laufenden System, das einfach auf P_FLASH_CMD schreibt. Das Latch sitzt
+    ; im Bauteil und nicht im Setup, und es loest ausschliesslich der
+    ; naechste Neustart. Genau so macht es das Lock-Bit eines echten
+    ; Chipsatzes.
+    movi r10, FLASH_LOCK
+    out P_FLASH_CMD, r10
+    movi r1, EV_BOOT
+    call ev_log
     call boot
     ; Kommen wir hier an, gab es kein bootfaehiges Medium.
     li r1, s_nosys
@@ -587,28 +599,16 @@ print:
 ; ===========================================================================
 
 post:
-    ; --- Der Eigentuemer-Eintrag ------------------------------------------
-    ; Er wandert aus dem Abbild in den Speicher, damit das Betriebssystem
-    ; ihn findet. Bei echten PCs macht das SMBIOS genauso: die Firmware legt
-    ; eine Tabelle hin, das System liest sie.
-    li r10, s_firma
-    li r11, BDA_FIRMA
-    movi r12, 0
-.firma_kopieren:
-    ldb r13, [r10]
-    stb [r11], r13
-    cmpi r13, 0
-    jz .firma_fertig
-    addi r10, r10, 1
-    addi r11, r11, 1
-    addi r12, r12, 1
-    cmpi r12, 31
-    jl .firma_kopieren
-    movi r13, 0
-    stb [r11], r13
-.firma_fertig:
-    movi r2, 1                        ; Bit 0: Eintrag anzeigen
-    stwa BDA_POLICY, r2
+    ; --- Die Firmenangaben ------------------------------------------------
+    ; Der Eigentuemer-Eintrag, das Schalterwort, die Sperrliste und das
+    ; Inventar wandern in den Speicher, damit das Betriebssystem sie findet.
+    ; Bei echten PCs macht das SMBIOS genauso: die Firmware legt eine Tabelle
+    ; hin, das System liest sie. Der Text steht dabei nicht mehr fest im
+    ; Abbild, sondern im NVRAM -- einstellbar unter Setup > Company.
+    call nv_init
+    call intrusion_pruefen
+    call inv_start_zaehlen
+    call firma_veroeffentlichen
 
     push r6
     push r7
@@ -1026,6 +1026,7 @@ panic:
 .include "video.asm"
 .include "setup.asm"
 .include "passwort.asm"
+.include "firma.asm"
 
 ; ===========================================================================
 ;  Texte

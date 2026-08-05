@@ -15,7 +15,8 @@ from collections import deque
 from hardware.isa import (
     GFX_H, GFX_W, IRQ_KBD, IRQ_MOUSE, IRQ_TIMER, PORT_BLT_BG, PORT_BLT_CHR,
     PORT_BLT_CMD, PORT_BLT_COL, PORT_BLT_H, PORT_BLT_SRC, PORT_BLT_W,
-    PORT_BLT_X, PORT_BLT_Y, PORT_CMOS_DATA, PORT_CMOS_IDX, PORT_DISK_ADDR,
+    PORT_BLT_X, PORT_BLT_Y, PORT_CMOS_DATA, PORT_CMOS_IDX,
+    PORT_NVRAM_IDX, PORT_NVRAM_DATA, PORT_DISK_ADDR,
     PORT_DISK_CMD, PORT_DISK_COUNT, PORT_DISK_LBA, PORT_DISK_SIZE,
     PORT_DISK_STATUS, PORT_FAN, PORT_FANMODE, PORT_GFX_DOPPEL,
     PORT_GFX_TAUSCH, PORT_BLT_ZOOM, PORT_DMA_SRC, PORT_DMA_DST,
@@ -843,6 +844,60 @@ class CMOS:
 
 
 # ---------------------------------------------------------------------------
+# NVRAM -- der zweite batteriegepufferte Speicher
+# ---------------------------------------------------------------------------
+
+class NVRAM:
+    """256 Byte, die einen Neustart überleben. Eigene Datei, eigene Ports.
+
+    Warum ein zweiter Baustein und nicht einfach ein größeres CMOS: Die 64
+    Byte an der Uhr sind ein Stück echter PC-Geschichte -- Adressbreite,
+    Prüfsumme und Registerbelegung hängen daran, und ein Firmen-BIOS braucht
+    Platz für Dinge, die dort nie hineinpassen (32 Byte Firmentext, acht
+    Ereignisse, Inventarangaben). Echte Mainboards haben genau denselben
+    Schritt gemacht.
+
+    Gespeichert wird sofort bei jedem Schreibzugriff. Das ist unbequemer als
+    ein Sammelbefehl wie CM_SAVE, aber hier richtig: der Ereignisspeicher
+    protokolliert Dinge wie „Secure Boot hat angehalten", und danach kommt
+    kein geordnetes Sichern mehr.
+    """
+
+    GROESSE = 256
+
+    def __init__(self, path):
+        self.path = path
+        self.data = bytearray(self.GROESSE)
+        self.index = 0
+        if os.path.exists(path):
+            with open(path, "rb") as f:
+                d = f.read(self.GROESSE)
+                self.data[:len(d)] = d
+
+    def save(self):
+        try:
+            os.makedirs(os.path.dirname(self.path), exist_ok=True)
+            with open(self.path, "wb") as f:
+                f.write(self.data)
+        except OSError:
+            pass                      # ein volles Laufwerk darf den PC nicht anhalten
+
+    def port_out(self, port, value):
+        if port == PORT_NVRAM_IDX:
+            self.index = value & 0xFF
+        elif port == PORT_NVRAM_DATA:
+            self.data[self.index] = value & 0xFF
+            self.save()
+
+    def port_in(self, port):
+        if port == PORT_NVRAM_IDX:
+            return self.index
+        if port == PORT_NVRAM_DATA:
+            return self.data[self.index]
+        return 0
+
+
+# ---------------------------------------------------------------------------
 # Temperatur und Kühlung
 # ---------------------------------------------------------------------------
 
@@ -1080,6 +1135,7 @@ class Flash:
     ZU_GROSS    = 3
     KEINE_SICHERUNG = 4
     SCHREIBFEHLER   = 5
+    GESPERRT        = 6
 
     def __init__(self, rom_path):
         self.rom_path = rom_path
@@ -1098,6 +1154,16 @@ class Flash:
         # Ein angemeldeter dauerhafter Flashvorgang. Die Firmware fragt beim
         # naechsten Start in Rot nach, bevor irgendetwas geschrieben wird.
         self.wunsch = False
+        # Das Sperr-Latch (Befehl 10). Solange es steht, verweigern Brennen
+        # und Zuruecksetzen den Dienst -- und zwar HIER im Baustein, nicht im
+        # Setup. Das ist der Unterschied, auf den es ankommt: P_FLASH_CMD ist
+        # ein ganz normaler Port, und der TB-32 kennt keine Portrechte. Ein
+        # Schalter im Setup wuerde nur das Setup binden; jedes Programm im
+        # laufenden System koennte weiter brennen. Ein Latch im Bauteil bindet
+        # alle. Geloescht wird es ausschliesslich durch power_on(), also durch
+        # einen echten Neustart -- genauso macht es das Lock-Bit eines echten
+        # Chipsatzes.
+        self.gesperrt = False
 
     def port_out(self, port, value):
         if port == PORT_FLASH_ADDR:
@@ -1129,7 +1195,16 @@ class Flash:
             self.bus.write_block(self.ziel, self.puffer)
             return self.OK
 
+        if cmd == 10:                                  # Chip sperren, bis zum Neustart
+            self.gesperrt = True
+            return self.OK
+
+        if cmd == 11:                                  # ist er gesperrt?
+            return 1 if self.gesperrt else 0
+
         if cmd == 3:                                   # brennen
+            if self.gesperrt:
+                return self.GESPERRT
             if not self.puffer:
                 return self.KEIN_PUFFER
             if len(self.puffer) > ROM_SIZE:
@@ -1155,6 +1230,11 @@ class Flash:
             return self.OK
 
         if cmd == 6:                                   # nur fuer den naechsten Start
+            # Auch das faellt unter die Sperre. Sonst waere sie in einem Zug
+            # zu umgehen: Abbild fuer den naechsten Start anmelden, Reset --
+            # und beim Hochfahren ist das Latch ja wieder offen.
+            if self.gesperrt:
+                return self.GESPERRT
             if not self.puffer:
                 return self.KEIN_PUFFER
             self.einmal = self.puffer
@@ -1166,6 +1246,8 @@ class Flash:
             return self.OK
 
         if cmd == 8:                                   # dauerhaft flashen wollen
+            if self.gesperrt:                          # derselbe Weg ueber den Neustart
+                return self.GESPERRT
             if not self.puffer:
                 return self.KEIN_PUFFER
             self.wunsch = True
@@ -1175,6 +1257,8 @@ class Flash:
             return 1 if self.wunsch else 0
 
         if cmd == 4:                                   # Sicherung zurueck
+            if self.gesperrt:
+                return self.GESPERRT
             if not os.path.exists(self.backup_path):
                 return self.KEINE_SICHERUNG
             try:
