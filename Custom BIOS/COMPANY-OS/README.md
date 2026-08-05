@@ -65,7 +65,7 @@ from File* macht es richtig (Befehl 3).
 | **A3** Eigentümer-Eintrag, einstellbar im Setup | `firma_text_setzen`, NVRAM |
 | **A4** Programme sperren, 16 zum Abhaken | `firma_sperrliste`, `blk_*` |
 | **A5** Compiler und Netz sperren | `POL_NOCC`, `POL_NONET`, `gesperrt()` |
-| **A6** Schalter „nur von der eigenen Platte" | `POL_INTDISK` — Schalter da, Wirkung fehlt |
+| **A6** Nur von der eigenen Platte starten | `boot_quelle_sichern`, `POL_INTDISK` |
 | **A7** Flash-Sperre im Bauteil | `hardware/devices.py`, `FLASH_LOCK` |
 | **A8** Chassis Intrusion | `intrusion_pruefen` |
 | NVRAM, 256 Byte, eigener Baustein | `hardware/devices.py`, `nv_*` |
@@ -75,12 +75,18 @@ from File* macht es richtig (Befehl 3).
 | `pc.py --bios <datei>` | `pc.py` |
 | Systemseite: Sperren durchsetzen, grau im Startmenü | `system/gui.c`, `gesperrt()` |
 
-**37 Prüfungen** laufen auf der echten Maschine: `python3 "Custom BIOS/COMPANY-OS/pruefen.py"`
+**43 Prüfungen** laufen auf der echten Maschine: `python3 "Custom BIOS/COMPANY-OS/pruefen.py"`
 
-Was noch offen ist: **A6** (der Schalter steht, die Startquelle wird noch
-nicht wirklich verweigert), **B1** Reiter *Event Log*, **B2** Secure Boot
-dreistufig, **B3** Inventar im Systemmonitor, **B4** F12-Startmenü, **B6**
-Startbild, die **C**-Punkte und **B5** Netzwerkstart.
+**Der ganze A-Teil steht.** Offen sind: **B1** Reiter *Event Log*, **B2**
+Secure Boot dreistufig, **B3** Inventar im Systemmonitor, **B4**
+F12-Startmenü, **B6** Startbild, die **C**-Punkte und **B5** Netzwerkstart.
+
+Zu A6 eine Einordnung: `boot` liest heute immer Sektor 0, und Floppy wie
+Netz stehen als *not installed* — es gibt noch keine zweite Startquelle,
+die man verweigern könnte. Das Bit nagelt deshalb die Einstellung fest,
+an zwei Stellen: das Setup verweigert die Änderung, und ein von außen
+verstelltes CMOS wird beim Start zurückgesetzt und protokolliert. Kommt
+später der Netzwerkstart (B5), bewacht dasselbe Bit ihn schon.
 
 ---
 
