@@ -68,6 +68,52 @@ cell, in two bytes — one would have stopped at 255, and the disk has 16384.
 The `55 AA` at the end of a boot sector is a convention, not a property of
 the disk, so it can be switched off for a sector you wrote yourself.
 
+## The *Code* tab — reading a program without its source
+
+The second tab is a disassembler. It pulls a `.TBX` off the **host
+machine** and turns it back into instructions.
+
+| Row | |
+|---|---|
+| **Load Program from Host File** | opens the host's file dialog and fetches the file |
+| **Loaded** | how many bytes came back |
+| **Program Load Address** | from the TBX header, or *no TBX header* |
+| **Show Code** | the listing |
+| **Disassemble Any Address** | the same listing, anywhere in memory |
+
+```
+ ADDRESS   WORD      INSTRUCTION
+ 0F000030  11F0FFF0  movi    sp, 0xFFF0
+ 0F000034  13F00007  movh    sp, 0x0007
+ 0F000038  02000000  cli
+ 0F00003C  420000A2  call    0x0F0002C4
+```
+
+That is `bios_start` — this BIOS showing itself, with the call landing
+exactly on `bda_init`. `pruefen.py` checks precisely that: it reads
+`TB-HACK.sym` and asserts the branch targets are the symbols' addresses.
+
+**Why this works at all.** The host's file dialog has *no type filter* —
+the reasoning is written down in `pc.py`, `bios_datei_waehlen`. It was
+built for BIOS images, but it takes any file. So it takes a `.TBX` too,
+and the flash controller stops being only the door for new firmware.
+
+**Why it's cheap.** Every instruction on the TB-32 is exactly four bytes
+and sits at an address divisible by four. No prefixes, no variable
+lengths, no guessing where the next instruction starts. A disassembler
+that would be a project on a real PC is a table and a dozen branches here.
+
+The table in `code.asm` mirrors `INSTRUCTIONS` in `hardware/isa.py` and
+deliberately says so a second time — the firmware cannot read a Python
+file. Anyone extending the instruction set has to update both. An unknown
+opcode is not a crash; it becomes a `.word` line.
+
+A TBX header is eight bytes: the tag, then the address the program wants
+to live at. Read as a 32-bit word the tag is `0x54425850`, which in the
+byte stream spells **`PXBT`** — the comment in `system/syscall.c` writes
+it the other way round, and the bytes on disk settle the argument. Without
+the tag the file is plain code, and the system loads it to `PROG_ADDR`.
+
 ## What it looks like
 
 Green phosphor on black, not BIOS blue — POST, Setup and all four tools.
@@ -96,9 +142,10 @@ Four of the five files are copies from `firmware/`. Only `hack.asm` is new.
 | File | |
 |---|---|
 | `hack.asm` | **new** — monitor, ports, CMOS, sectors, patches, hex input |
+| `code.asm` | **new** — the disassembler, the host-file loader, the opcode table |
 | `bios.asm` | five places: name in the header and in the POST line, one `.include`, the boot sector from CMOS, the skippable signature check, the call to `hk_patch_anwenden` |
-| `setup.asm` | the *Hack* tab, six `REG_` numbers, the dispatch branches, F5, the four colour attributes |
-| `const.inc` | `HK_*` scratch addresses, `CM_HKBSEC0`…`CM_HKP2V`, the `ATTR_*` colours |
+| `setup.asm` | the *Hack* and *Code* tabs, eleven `REG_` numbers, the dispatch branches, F5, the four colour attributes |
+| `const.inc` | `HK_*` and `CD_*` scratch addresses, `CM_HKBSEC0`…`CM_HKP2V`, the `ATTR_*` colours |
 | `video.asm` | unchanged |
 
 ### Why F5 resets the boot settings
@@ -144,7 +191,32 @@ doesn't tell you the difference between "zero" and "nothing there". The
 memory map is in [`Doku/02`](../../Doku/02%20Speicherkarte%20und%20Ports.md);
 that's the map, this is only the window.
 
-## A pitfall when rebuilding this
+## Two pitfalls when rebuilding this
+
+### `cmpi` and `andi` disagree about their own immediate
+
+Both take a 16-bit value, and they read it differently:
+
+```python
+elif op == 0x3D:                   # cmpi
+    imm = word & 0xFFFF
+    simm = imm - 0x10000 if imm & 0x8000 else imm     # sign-extended
+
+elif op == 0x35:                   # andi
+    imm = word & 0xFFFF
+    r[rd] = r[ra] & imm                               # taken raw
+```
+
+So `andi r6, r6, 0xFFFF` masks to sixteen bits exactly as you'd expect,
+while `cmpi r6, 0x8000` compares against **−32768** — and then every
+positive value is *greater* instead of less. Testing the sign bit of a
+memory offset that way silently inverts it: `[sp+8]` came out as
+`[sp-65528]` on the first build. Shift the bit out and test it directly.
+
+This isn't specific to TB-HACK — it applies to any assembly on this
+machine, and it probably belongs in `Doku/07 Fallstricke.md`.
+
+### Alignment before the first instruction
 
 Instructions on the TB-32 are a fixed four bytes wide and are fetched from
 an address divisible by four. `hack.asm` is included **after** `setup.asm`,

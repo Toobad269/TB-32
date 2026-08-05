@@ -9,7 +9,7 @@
 .equ SET_X,        4
 .equ SET_Y,        6
 .equ SET_ENTSIZE,  16
-.equ SET_TABS,     6                 ; Main, Hardware, Cooling, Security, Firmware, Hack
+.equ SET_TABS,     7                 ; Main, Hardware, Cooling, Security, Firmware, Hack, Code
 ; TB-HACK sieht anders aus als ein serienmaessiges BIOS, und das mit Absicht:
 ; kein Blau, sondern der gruene Phosphor eines alten Terminals. Ein Attribut
 ; ist Hintergrund<<4 | Vordergrund, beides Palettenindizes -- 0 ist schwarz,
@@ -39,6 +39,12 @@
 .equ REG_HKSEC,    0xE7            ; Knopf: Sektor holen und anzeigen
 .equ REG_HKBSEC,   0xE8            ; Startsektor, vierstellig hex einzutippen
 .equ REG_HKPATCH,  0xE9            ; Knopf: Startpatches
+; TB-HACK: der Reiter Code
+.equ REG_CDLOAD,   0xEA            ; Knopf: Datei vom Wirtsrechner holen
+.equ REG_CDLEN,    0xEB            ; nur Anzeige: wie viel geholt wurde
+.equ REG_CDORG,    0xEC            ; nur Anzeige: Ladeadresse aus dem Kopf
+.equ REG_CDSHOW,   0xED            ; Knopf: das Listing zeigen
+.equ REG_CDADDR,   0xEE            ; Knopf: irgendeine Adresse zeigen
 .equ REG_TIME,     0xF0            ; Uhrzeit, mit ENTER editierbar
 .equ REG_DATE,     0xF1            ; Datum, mit ENTER editierbar
 .equ REG_DEFAULTS, 0xF2            ; Knopf: Standardwerte laden
@@ -329,6 +335,12 @@ setup_change:
     jz .hkbsec
     cmpi r7, REG_HKPATCH
     jz .hkpatch
+    cmpi r7, REG_CDLOAD
+    jz .cdload
+    cmpi r7, REG_CDSHOW
+    jz .cdshow
+    cmpi r7, REG_CDADDR
+    jz .cdaddr
     cmpi r7, 0xE0
     jae .done                         ; reine Anzeigezeilen
     ldw r8, [r6+8]                    ; r8 = Anzahl moeglicher Werte
@@ -384,6 +396,19 @@ setup_change:
 .hkpatch:
     call hk_patches
     call setup_frame
+    jmp .done
+
+; --- TB-HACK: der Rueckuebersetzer ----------------------------------------
+;  cd_zeigen und cd_adresse raeumen selbst hinter sich auf, weil sie auch
+;  dann den Rahmen brauchen, wenn gar kein Listing aufging.
+.cdload:
+    call cd_laden
+    jmp .done
+.cdshow:
+    call cd_zeigen
+    jmp .done
+.cdaddr:
+    call cd_adresse
     jmp .done
 .trust:
     call secure_summe                 ; aktuelles Abbild durchrechnen
@@ -1025,6 +1050,16 @@ setup_value:
     jz .action
     cmpi r6, REG_HKBSEC
     jz .hkbsec
+    cmpi r6, REG_CDLOAD
+    jz .action
+    cmpi r6, REG_CDSHOW
+    jz .action
+    cmpi r6, REG_CDADDR
+    jz .action
+    cmpi r6, REG_CDLEN
+    jz .cdlen
+    cmpi r6, REG_CDORG
+    jz .cdorg
     cmpi r6, REG_BIOSLEN
     jz .bioslen
     cmpi r6, REG_BIOSSUM
@@ -1079,6 +1114,40 @@ setup_value:
     mov r2, r4
     movi r3, 4
     call vid_puthex
+    jmp .done
+
+; --- TB-HACK: was gerade vom Wirtsrechner daliegt ------------------------
+.cdlen:
+    ldwa r1, CD_LEN
+    cmpi r1, 0
+    jz .cd_nichts
+    mov r2, r4
+    call vid_putn
+    li r1, s_setbyte
+    mov r2, r4
+    call vid_puts
+    jmp .done
+.cd_nichts:
+    li r1, s_cd_nothing
+    mov r2, r4
+    call vid_puts
+    jmp .done
+.cdorg:
+    ldwa r10, CD_LEN
+    cmpi r10, 0
+    jz .cd_nichts
+    ldwa r10, CD_HDR
+    cmpi r10, 0
+    jz .cd_kopflos
+    ldwa r1, CD_ORG
+    mov r2, r4
+    movi r3, 8
+    call vid_puthex
+    jmp .done
+.cd_kopflos:
+    li r1, s_cd_noheader
+    mov r2, r4
+    call vid_puts
     jmp .done
 
 ; --- Der BIOS-Chip beschreibt sich selbst --------------------------------
@@ -1444,9 +1513,11 @@ setup_tabs:
     .dw tab_security, 4
     .dw tab_firmware, 5
     .dw tab_hack,     9
+    .dw tab_code,     6
 
 setup_tabnamen:
     .dw s_tab_main, s_tab_hw, s_tab_cool, s_tab_sec, s_tab_fw, s_tab_hack
+    .dw s_tab_code
 
 ;  je Eintrag: Beschriftung, CMOS-Register, Anzahl Werte, Klartexttabelle
 tab_main:
@@ -1499,6 +1570,14 @@ tab_hack:
     .dw s_e_hkpon,  CM_HKPATCHON, 2, opts_onoff
     .dw s_e_hkpat,  REG_HKPATCH,  0, 0
     .dw s_e_hkinfo, REG_INFO,     0, 0
+
+tab_code:
+    .dw s_e_cdload, REG_CDLOAD,   0, 0
+    .dw s_e_cdlen,  REG_CDLEN,    0, 0
+    .dw s_e_cdorg,  REG_CDORG,    0, 0
+    .dw s_e_cdshow, REG_CDSHOW,   0, 0
+    .dw s_e_cdaddr, REG_CDADDR,   0, 0
+    .dw s_e_cdinfo, REG_INFO,     0, 0
 
 ; Feldtabellen: CMOS-Register, kleinster Wert, groesster Wert, Name
 felder_zeit:
@@ -1561,6 +1640,14 @@ s_e_hknos:   .db "Ignore Boot Signature", 0
 s_e_hkpon:   .db "Apply Boot Patches", 0
 s_e_hkpat:   .db "Edit Boot Patches", 0
 s_e_hkinfo:  .db "Nothing here is guarded. F10 saves, ESC does not undo it", 0
+s_e_cdload:  .db "Load Program from Host File", 0
+s_e_cdlen:   .db "Loaded", 0
+s_e_cdorg:   .db "Program Load Address", 0
+s_e_cdshow:  .db "Show Code", 0
+s_e_cdaddr:  .db "Disassemble Any Address", 0
+s_e_cdinfo:  .db "Reads a .TBX without its source. Works on memory too", 0
+s_cd_nothing:  .db "nothing loaded", 0
+s_cd_noheader: .db "no TBX header", 0
 s_e_blen:    .db "BIOS Image Size", 0
 s_e_bsum:    .db "BIOS Image Checksum", 0
 s_e_flash:   .db "Flash BIOS from File", 0
@@ -1589,6 +1676,7 @@ s_tab_cool:  .db " Cooling ", 0
 s_tab_sec:   .db " Security ", 0
 s_tab_fw:    .db " Firmware ", 0
 s_tab_hack:  .db " Hack ", 0
+s_tab_code:  .db " Code ", 0
 
 s_fan0:      .db "Automatic", 0
 s_fan1:      .db "Quiet", 0

@@ -41,6 +41,9 @@ FEHLT = 0
 Z_MONITOR, Z_PORTS, Z_CMOS, Z_SEKTOR = 0, 1, 2, 3
 Z_BOOTSEK, Z_NOSIG, Z_PATCHON, Z_PATCHES = 4, 5, 6, 7
 
+# Im Reiter Code: die Zeilennummern der sechs Zeilen
+Z_CDLOAD, Z_CDLEN, Z_CDORG, Z_CDSHOW, Z_CDADDR = 0, 1, 2, 3, 4
+
 # Der Text, den der Bootsektor beim Starten ausgibt, steht an dieser Stelle
 # im Sektor 0 -- und damit ab 0x7C00 an dieser Adresse im Speicher. Ein
 # Startpatch darauf ist auf dem Bildschirm sofort zu sehen.
@@ -114,10 +117,22 @@ class Lauf:
         return False
 
     def zum_reiter_hack(self):
-        """Von Main aus fuenf Reiter nach rechts -- Hack ist der letzte."""
+        """Von Main aus fuenf Reiter nach rechts."""
         for _ in range(5):
             self.eingabe("RIGHT", 0.0)
         self.warte(0.4)
+
+    def zum_reiter_code(self):
+        """Von Main aus sechs Reiter nach rechts -- Code ist der letzte."""
+        for _ in range(6):
+            self.eingabe("RIGHT", 0.0)
+        self.warte(0.4)
+
+    def datei_anbieten(self, daten):
+        """Was der Wirtsrechner herausgibt, wenn das BIOS nach einer Datei
+        fragt. Auf dem echten Geraet macht das der Dateidialog (pc.py setzt
+        flash.waehler); hier legen wir die Datei einfach hin."""
+        self.m.flash.waehler = lambda: daten
 
     def zur_zeile(self, n):
         """Sicher auf Zeile n des Reiters Hack.
@@ -126,7 +141,8 @@ class Lauf:
         Reiter hat genau neun Zeilen -- neunmal UP landet exakt wieder da, wo
         man angefangen hat. Ein Reiterwechsel dagegen setzt die markierte
         Zeile auf 0 zurueck (setup_main, .tab_setzen), und das ist hier der
-        einzige verlaessliche Nullpunkt."""
+        einzige verlaessliche Nullpunkt. Links-dann-rechts landet dabei
+        wieder auf demselben Reiter, egal auf welchem man steht."""
         self.eingabe("LEFT", 0.0)
         self.eingabe("RIGHT", 0.0)
         for _ in range(n):
@@ -438,7 +454,122 @@ def main():
     pruefe("... und ohne Patch steht der Bootsektor wieder im Original",
            Z.speicher(textadresse) == ord("B"))
 
-    # === 9. Der Chip nennt sich beim Namen ===============================
+    # === 9. Der Rueckuebersetzer =========================================
+    #     Zuerst am ROM, weil sich das gegenpruefen laesst: die Sprungziele
+    #     muessen genau die Adressen sein, die in der Symboltabelle stehen.
+    print("\n--- Der Rueckuebersetzer am eigenen ROM ------------------------")
+    symbole = {}
+    with open(os.path.join(HIER, "TB-HACK.sym")) as f:
+        for zeile in f:
+            adr, name = zeile.split()
+            symbole[name] = int(adr, 16)
+
+    C = Lauf(chip, cmos, platte)
+    C.ins_setup()
+    C.zum_reiter_code()
+    b = C.bild()
+    pruefe("Der Reiter Code ist da", "Load Program from Host File" in b, b)
+    pruefe("... und meldet, dass noch nichts geholt wurde",
+           b.count("nothing loaded") == 2, b)
+
+    C.zur_zeile(Z_CDADDR)
+    C.eingabe("ENTER", 0.5)
+    C.hex_eingeben(f"{symbole['bios_start']:X}")
+    b = C.bild()
+    pruefe("Das Listing geht auf", "TB-HACK CODE VIEWER" in b, b)
+    pruefe("li sp, BIOS_STACK wird zu movi/movh",
+           "movi    sp, 0xFFF0" in b and "movh    sp, 0x0007" in b, b)
+    pruefe("cli und sti stehen ohne Argumente da",
+           " cli" in b and " sti" in b, b)
+    pruefe("out P_TIMER_HZ, r10 kommt mit Port und Register zurueck",
+           "out     0x0010, r10" in b, b)
+    for name in ("bda_init", "ivt_init", "post", "boot"):
+        pruefe(f"call {name} zeigt auf {symbole[name]:08X}",
+               f"call    0x{symbole[name]:08X}" in b, b)
+    C.eingabe("ESC", 0.6)
+
+    # === 10. Eine .TBX vom Wirtsrechner ==================================
+    #     Ein gebautes Programm mit Kopf, dessen Befehle wir kennen -- so
+    #     laesst sich jede Formatart einzeln nachrechnen.
+    print("\n--- Eine .TBX vom Wirtsrechner ---------------------------------")
+    from hardware.isa import encode_i, encode_r, encode_j, encode_c
+
+    CODE = 0x00500008                    # CD_PUFFER + 8 Byte Kopf
+    befehle = [
+        encode_i(0x11, 1, 0, 0x1234),    # movi r1, 0x1234
+        encode_r(0x20, 2, 3, 4),         # add  r2, r3, r4
+        encode_i(0x1B, 5, 14, 0xFFFC),   # ldw  r5, [fp-4]
+        encode_i(0x1E, 6, 15, 8),        # stw  [sp+8], r6
+        encode_i(0x62, 7, 0, 0x0050),    # out  0x0050, r7
+        encode_i(0x60, 8, 0, 0x00A0),    # in   r8, 0x00A0
+        encode_i(0x64, 0, 0, 0x40),      # int  0x40
+        encode_j(0x50, 2, -2),           # jnz  zurueck
+        encode_c(0x42, 4),               # call vorwaerts
+        encode_r(0x05),                  # ret
+        0xFFFFFFFF,                      # kein Befehl -> .word
+    ]
+    tbx = b"PXBT" + (0x00200000).to_bytes(4, "little")
+    tbx += b"".join(w.to_bytes(4, "little") for w in befehle)
+
+    T = Lauf(chip, cmos, platte)
+    T.datei_anbieten(tbx)
+    T.ins_setup()
+    T.zum_reiter_code()
+    T.zur_zeile(Z_CDLOAD)
+    T.eingabe("ENTER", 1.2)
+    b = T.bild()
+    pruefe("Die Datei kommt an", f"{len(tbx)} bytes" in b, b)
+    pruefe("Der TBX-Kopf wird gelesen", "00200000" in b, b)
+
+    T.zur_zeile(Z_CDSHOW)
+    T.eingabe("ENTER", 0.8)
+    b = T.bild()
+    pruefe("Show Code zeigt das geholte Programm",
+           "TB-HACK CODE VIEWER" in b and "TBX program" in b, b)
+    erwartet = [
+        ("movi    r1, 0x1234",       "movi mit Direktwert"),
+        ("add     r2, r3, r4",       "add mit drei Registern"),
+        ("ldw     r5, [fp-4]",       "ldw mit negativem Versatz und fp statt r14"),
+        ("stw     [sp+8], r6",       "stw dreht Ziel und Quelle um"),
+        ("out     0x0050, r7",       "out nennt erst den Port"),
+        ("in      r8, 0x00A0",       "in nennt erst das Register"),
+        ("int     0x40",             "int mit Nummer"),
+        (f"jnz     0x{CODE + 7 * 4 - 8:08X}", "jnz rechnet rueckwaerts richtig"),
+        (f"call    0x{CODE + 8 * 4 + 16:08X}", "call rechnet vorwaerts richtig"),
+        (" ret",                     "ret ohne Argumente"),
+        (".word   0xFFFFFFFF",       "kein Befehl wird als Wort gezeigt, nicht verschluckt"),
+    ]
+    for text, was in erwartet:
+        pruefe(was, text in b, b)
+    T.eingabe("ESC", 0.6)
+
+    # Eine Datei ohne Kopf ist roher Code -- und wird auch so genannt
+    R = Lauf(chip, cmos, platte)
+    R.datei_anbieten(b"".join(w.to_bytes(4, "little") for w in befehle))
+    R.ins_setup()
+    R.zum_reiter_code()
+    R.zur_zeile(Z_CDLOAD)
+    R.eingabe("ENTER", 1.2)
+    b = R.bild()
+    pruefe("Eine Datei ohne Kennung heisst 'no TBX header'",
+           "no TBX header" in b, b)
+    R.zur_zeile(Z_CDSHOW)
+    R.eingabe("ENTER", 0.8)
+    pruefe("... und wird trotzdem ab dem ersten Byte gezeigt",
+           "movi    r1, 0x1234" in R.bild(), R.bild())
+    R.eingabe("ESC", 0.6)
+
+    # Zu gross: mehr als ein Programm sein darf
+    G = Lauf(chip, cmos, platte)
+    G.datei_anbieten(b"\x00" * (0x80000 + 4))
+    G.ins_setup()
+    G.zum_reiter_code()
+    G.zur_zeile(Z_CDLOAD)
+    G.eingabe("ENTER", 1.2)
+    pruefe("Eine zu grosse Datei wird abgelehnt",
+           "larger than 512 KB" in G.gesehen, G.bild())
+
+    # === 11. Der Chip nennt sich beim Namen ==============================
     print("\n--- Das Abbild selbst ------------------------------------------")
     pruefe("Der POST nennt TB-HACK", "TB-HACK BIOS" in Z.gesehen, Z.bild())
     with open(rom, "rb") as f:

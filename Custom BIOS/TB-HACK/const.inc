@@ -58,6 +58,16 @@
 ; Boot den Kernel durchrechnet) und FLASH_PUFFER (3 MB, wo ein BIOS-Abbild zum
 ; Pruefen liegt). Der Rechner hat 16 MB.
 .equ HK_SEKPUF,     0x00400000      ; 512 Byte, ein Sektor
+; Der Rueckuebersetzer (code.asm). CD_ZEILE, CD_WORT und CD_BEFADR sind
+; Zwischenablagen waehrend des Zeichnens einer Zeile: cd_decode ruft dabei
+; vid_puts und vid_puthex auf, und die duerfen r10..r12 zerstoeren.
+.equ CD_ADDR,       0x00000638      ; oberste im Listing gezeigte Adresse
+.equ CD_LEN,        0x0000063C      ; Groesse der geholten Datei, 0 = keine
+.equ CD_ORG,        0x00000640      ; Ladeadresse aus dem TBX-Kopf
+.equ CD_HDR,        0x00000644      ; 1 = die Datei hatte eine Kennung
+.equ CD_ZEILE,      0x00000648      ; Bildzeile, die gerade geschrieben wird
+.equ CD_WORT,       0x0000064C      ; das Befehlswort dieser Zeile
+.equ CD_BEFADR,     0x00000650      ; die Adresse dieses Befehls
 .equ BDA_SBHEAD,    0x000004A8      ; Ringpuffer der Bildschirmhistorie
 .equ BDA_SBCOUNT,   0x000004AC
 

@@ -1024,6 +1024,7 @@ panic:
 .include "video.asm"
 .include "setup.asm"
 .include "hack.asm"
+.include "code.asm"
 
 ; ===========================================================================
 ;  Texte
