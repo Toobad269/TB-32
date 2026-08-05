@@ -1,2389 +1,2451 @@
-# Änderungsjournal
+# Changelog
 
-Jede Änderung, jeder gefundene Fehler und jede neue Funktion — **neueste
-Einträge oben**. Bei Fehlern steht die *Ursache* dabei, nicht nur das
-Symptom; das Symptom hilft beim nächsten Mal nicht weiter.
+Every change, every bug found, and every new feature — **newest entries
+on top**. For bugs, the *cause* is included, not just the symptom; the
+symptom won't help next time.
 
-Die tiefer liegenden Fallen haben zusätzlich einen ausführlichen Eintrag in
+The deeper traps additionally have a detailed entry in
 [[07 Fallstricke]].
 
 ---
 
-## COMPANY-OS: das Pflichtenheft steht, und der Flash-Spuk ist erklaert
+## COMPANY-OS: the requirements spec is done, and the flash mystery is explained
 
-Colin baut den Firmen-Reiter selbst. Also nicht coden, sondern aufschreiben,
-was das BIOS koennen soll -- in `Custom BIOS/COMPANY-OS/README.md`.
+Colin is building the company tab himself. So this isn't coding, it's
+writing down what the BIOS should be able to do — in
+`Custom BIOS/COMPANY-OS/README.md`.
 
-**Der Fund dabei ist der eigentliche Ertrag.** Sein „mal ist das geflashte
-BIOS da, mal nicht" ist kein Fehler im BIOS: `build.py` baut
-`firmware/bios.bin` bei JEDEM Durchlauf neu -- und genau diese Datei ist der
-ROM-Baustein. Wer COMPANY-OS flasht und danach einmal baut, hat wieder das
-Serien-BIOS auf dem Chip. Bei einem echten Mainboard kann das nicht
-passieren, weil der Compiler nicht an den Flash kommt; bei uns liegt beides
-im selben Ordner.
+**The find along the way is the real payoff.** His "sometimes the
+flashed BIOS is there, sometimes it isn't" is not a bug in the BIOS:
+`build.py` rebuilds `firmware/bios.bin` on EVERY run — and that exact
+file is the ROM chip. Whoever flashes COMPANY-OS and then builds once
+has the stock BIOS back on the chip. On a real mainboard this can't
+happen, because the compiler can't reach the flash chip; for us, both
+live in the same folder.
 
-Drei Auswege stehen in der README: `build.py` den Chip in Ruhe lassen, wenn
-im Kopf ein fremder BIOS-Name steht; ein `--bios <datei>` in `pc.py` zum
-Ausprobieren ohne Flashen (`Machine(rom=...)` kann es schon, `pc.py` reicht
-es nur nicht durch); oder beides.
+The README lays out three ways around it: have `build.py` leave the chip
+alone when a foreign BIOS name is in the header; a `--bios <file>` flag
+in `pc.py` for trying things out without flashing (`Machine(rom=...)`
+already supports it, `pc.py` just doesn't pass it through); or both.
 
-Im Pflichtenheft ausserdem: die sechs Zeilen des Reiters *Company*, wo die
-Einstellungen liegen koennen (im CMOS sind unter der Pruefsumme genau elf
-Byte frei -- Schalter und Sperrliste passen, die 32 Byte Firmentext nicht,
-dafuer NVRAM-Baustein oder selbstbeschreibender Chip), der Weg ins System
-ueber den BIOS-Datenbereich samt neuer Sperrliste ab 0x528, die vier
-Anfasspunkte in `system/gui.c`, und zwei Fallen, die man nur einmal erlebt:
-die Kopfpruefsumme nach dem Patchen neu rechnen, und den Firmenblock hinter
-die ersten 16 KB legen, weil Secure Boot genau die misst.
+Also in the requirements spec: the six lines of the *Company* tab and
+where the settings can live (under the checksum in the CMOS there are
+exactly eleven free bytes — switches and a block list fit, the 32 bytes
+of company text don't, so an NVRAM chip or a self-writing chip is
+needed instead), the path into the system via the BIOS data area
+including a new block list starting at 0x528, the four touch points in
+`system/gui.c`, and two traps you only experience once: recomputing the
+header checksum after patching, and putting the company block behind
+the first 16 KB, because that's exactly what Secure Boot measures.
 
-**Nachgetragen: die volle Funktionsliste.** Colin wollte wissen, was so ein
-BIOS ueberhaupt alles koennen sollte. Jetzt stehen sie in vier Gruppen in der
-README -- Pflicht, sehr sinnvoll, nett, weglassen -- jede mit Reiter,
-Speicherplatz und Aufwand, dazu eine Reihenfolge zum Bauen.
+**Added afterward: the full feature list.** Colin wanted to know
+everything such a BIOS could conceivably do. Now they're listed in four
+groups in the README — mandatory, very useful, nice-to-have, skip —
+each with tab, storage location, and effort, plus a build order.
 
-Zwei Funde beim Durchgehen:
+Two findings while going through it:
 
-* **Das BIOS-Passwort schuetzt heute nur das Setup.** Ein Firmenrechner
-  braucht ein zweites, das VOR dem Booten gefragt wird -- sonst schaltet man
-  den Rechner einfach ein und benutzt ihn.
-* **`pw_tor` zaehlt die Fehlversuche in einem Register.** Drei Versuche, dann
-  abgewiesen -- aber ein Druck auf Reset faengt bei drei wieder an. Man kann
-  also in Ruhe raten. Echte BIOSe zaehlen in der Knopfzelle; ein Byte, und es
-  aendert alles.
-* **`P_FLASH_CMD` ist ein normaler Port, und der TB-32 kennt keine
-  Portrechte.** Jedes Programm im laufenden System kann den BIOS-Chip
-  ueberschreiben. Ein Schalter im Setup hilft dagegen nicht -- die Sperre
-  muss ins Bauteil: ein Latch in `Flash`, gesetzt von der Firmware kurz vor
-  dem Booten, geloescht nur durch einen Neustart. Genau so machen es echte
-  Chipsaetze mit ihrem Lock-Bit.
+* **The BIOS password today only protects setup.** A company machine
+  needs a second one that's asked BEFORE booting — otherwise you just
+  switch the machine on and use it.
+* **`pw_tor` counts failed attempts in a register.** Three attempts,
+  then rejected — but a press of Reset starts back at three. So you can
+  guess at your leisure. Real BIOSes count in the button cell; one
+  byte, and it changes everything.
+* **`P_FLASH_CMD` is an ordinary port, and the TB-32 has no concept of
+  port permissions.** Any program in the running system can overwrite
+  the BIOS chip. A switch in setup doesn't help against that — the
+  lock has to live in the component itself: a latch in `Flash`, set by
+  the firmware shortly before booting, cleared only by a restart.
+  That's exactly how real chipsets do it with their lock bit.
 
-Programme sperrt das BIOS ueber eine feste Namenstabelle mit einem Bit pro
-Programm -- so wie ein echtes BIOS „USB Ports: Enabled/Disabled" kennt. Weil
-das BIOS die Namen hat, legt es sie im Klartext in den Speicher; das System
-muss dann keine Bits deuten.
-
----
-
-## Paint speichert -- der Fehler war die Meldung
-
-Paint konnte die ganze Zeit speichern. Ich hatte beim Testen auf **Open**
-statt auf **Save** gedrückt, und Paint sagte dazu *„no such file / name
-missing"* -- derselbe Satz für zwei völlig verschiedene Lagen:
-
-* die Datei zum Öffnen gibt es nicht
-* das Speichern hat nicht geklappt
-
-Also suchte ich den Fehler beim Speichern, wo keiner war. Jetzt gibt es zwei
-Sätze: **„no such file"** und **„could not save"**. Eine Fehlermeldung, die
-zwei Ursachen zusammenwirft, schickt den Suchenden in die falsche Richtung
--- das hat mich hier eine halbe Stunde gekostet.
-
-Nachgewiesen mit dem ganzen Weg: malen → Save → Ordner und Namen im Dialog
-wählen → *saved* → Open → dieselbe Datei → *loaded*, und das Bild ist wieder
-da.
-
-**Nebenbei zwei Kleinigkeiten:** Die Statuszeile wurde vor dem Schreiben
-nicht gewischt, „saved" und „loaded" standen übereinander und ergaben
-Buchstabensalat. Und `pt_dialog_pruefen()` stand vor der Deklaration von
-`pt_name` -- das geht bei diesem Ein-Durchgang-Compiler zwar, ist aber genau
-die Sorte Anordnung, bei der er stillschweigend eine zweite Variable anlegt.
-Jetzt steht sie dahinter.
+The BIOS locks programs via a fixed name table with one bit per
+program — the same way a real BIOS has "USB Ports: Enabled/Disabled."
+Because the BIOS has the names, it places them in plain text in memory;
+the system then doesn't have to interpret bits.
 
 ---
 
-## Die Rückgabe des Dateidialogs trägt
+## Paint Saves — the Bug Was the Message
 
-Der Dialog gab sein Ergebnis längst zurück, und das Programm handelte auch
-richtig -- **es malte sich nur nicht neu.** Die Abfrage steht in der
-Leerlaufschleife, und die zeichnet sonst nichts; das Fenster zeigte deshalb
-weiter den alten Auswahlschirm, obwohl der Coder innerlich schon im Editor
-war.
+Paint could save the whole time. While testing, I had pressed **Open**
+instead of **Save**, and Paint responded with *"no such file / name
+missing"* — the same sentence for two completely different situations:
 
-Das war schwer zu sehen, weil alles andere stimmte: Der Dialog nahm Tasten
-an, `dlg_status` wurde gesetzt, das Programm holte es ab. Erst ein Zähler im
-Kernel („wie oft fragt das Programm nach?") zeigte, dass die Kette
-vollständig lief -- 110 Abfragen bei offenem Dialog. Damit war klar: der
-Fehler liegt **hinter** der Rückgabe, nicht davor.
+* the file to open doesn't exist
+* saving didn't work
 
-`*_dialog_pruefen()` meldet jetzt, ob sich etwas geändert hat, und die
-Hauptschleife zeichnet dann nach. In Word, Paint und im Coder gleichermaßen.
+So I went looking for the bug in saving, where there was none. Now there
+are two messages: **"no such file"** and **"could not save."** An error
+message that lumps two causes together sends whoever's searching in the
+wrong direction — this one cost me half an hour.
 
-Nachgewiesen: Im Coder „C program" anklicken → der Dialog kommt, man wählt
-Ordner und Namen → der Editor öffnet sich mit der Vorlage, und in der
-Statuszeile steht **saved**. Die Datei liegt da, wo man sie hingelegt hat.
+Verified with the full path: draw → Save → choose folder and name in
+the dialog → *saved* → Open → same file → *loaded*, and the picture is
+back.
 
-**Noch offen:** Paint meldet beim Speichern eines neuen Bildes „no such file
-/ name missing", obwohl der Name aus dem Dialog richtig ankommt. Der Dialog
-ist es nicht -- der Fehler steckt im Schreiben der 125 KB großen Bilddatei.
+**Two minor things along the way:** the status line wasn't cleared
+before writing, so "saved" and "loaded" overlapped into letter salad.
+And `pt_dialog_pruefen()` was placed before the declaration of
+`pt_name` — that works with this single-pass compiler, but it's exactly
+the kind of ordering where it silently creates a second variable. It
+now sits behind it.
 
 ---
 
-## Der Dateidialog ist zurück -- als Dienst des Kernels
+## The File Dialog's Return Value Carries Through
 
-Colin: *„früher musste man beim Erstellen einer Datei den Pfad auswählen --
-bitte wieder hinzufügen, und bei jedem Programm die Kernel-Brücke."*
+The dialog had long returned its result, and the program acted on it
+correctly too — **it just never redrew.** The check sits in the idle
+loop, which otherwise draws nothing; the window kept showing the old
+selection screen even though the Coder had already switched to the
+editor internally.
 
-`system/dialog.c` ist wieder da, aber an der richtigen Stelle: **im Kernel,
-für jedes Programm**. So sieht er überall gleich aus, kennt den aktuellen
-Ordner und lässt einen den Platz aussuchen, bevor eine Datei entsteht --
-genau dafür haben die großen Systeme ihren gemeinsamen Öffnen-Dialog.
+This was hard to spot because everything else was correct: the dialog
+accepted keys, `dlg_status` was set, the program picked it up. Only a
+counter in the kernel ("how often does the program ask?") showed that
+the chain ran completely — 110 queries while the dialog was open. That
+made it clear: the bug is **after** the return value, not before it.
 
-**Der Rückweg musste umgebaut werden.** Früher rief der Dialog beim
-Auftraggeber eine Funktion auf -- das ging, solange Editor, Paint und Word im
-Kernel standen. Ein eigenständiges Programm kann man nicht anspringen. Jetzt
-legt der Dialog sein Ergebnis hin, und wer gefragt hat, holt es sich ab:
+`*_dialog_pruefen()` now reports whether something changed, and the main
+loop redraws accordingly. In Word, Paint, and the Coder alike.
 
-| Aufruf | Bedeutung |
+Verified: in the Coder, click "C program" → the dialog appears, pick a
+folder and name → the editor opens with the template, and the status
+line shows **saved**. The file is where it was placed.
+
+**Still open:** Paint reports "no such file / name missing" when saving
+a new image, even though the name arrives correctly from the dialog.
+The dialog isn't at fault — the bug is in writing the 125 KB image file.
+
+---
+
+## The File Dialog Is Back — As a Kernel Service
+
+Colin: *"you used to have to pick a path when creating a file — please
+add it back, and the kernel bridge for every program."*
+
+`system/dialog.c` is back, but in the right place: **in the kernel, for
+every program**. So it looks the same everywhere, knows the current
+folder, and lets you choose the location before a file is created —
+that's exactly why the big systems have a shared Open dialog.
+
+**The return path had to be rebuilt.** Previously the dialog called a
+function on the requester — that worked as long as the editor, Paint,
+and Word lived in the kernel. You can't jump into a standalone program.
+Now the dialog stores its result, and whoever asked picks it up:
+
+| Call | Meaning |
 |---|---|
-| `datei_dialog(modus, endung, vorschlag)` | aufmachen (öffnen / speichern / Bild) |
-| `datei_gewaehlt(puffer)` | 0 = noch offen, 1 = ausgewählt, 2 = abgebrochen |
+| `datei_dialog(mode, extension, suggestion)` | open it (open / save / image) |
+| `datei_gewaehlt(buffer)` | 0 = still open, 1 = chosen, 2 = cancelled |
 
-**Noch nicht fertig:** Der Dialog erscheint, listet die Ordner, nimmt einen
-Namen an und schließt sich -- aber die Übergabe **zurück ins Programm**
-greift noch nicht: der Coder bleibt danach im Auswahlschirm stehen, statt in
-den Editor zu wechseln. Das ist die eine Stelle, die noch fehlt.
-
----
-
-## Nachlese zum Speicherfehler -- und drei Kleinigkeiten
-
-Vieles, was Colin an Word meldete („die Größe lässt sich nicht mehr
-einstellen, nichts speichert"), war **derselbe Speicherfehler**: Words Text
-liegt bei 7,2 MB, und der Speichertest schrieb genau dort seine Muster hin.
-Nach der Trennung der Programmplätze funktionieren die Knöpfe wieder --
-nachgeprüft: A+ setzt die große Schrift, Speichern schreibt die Datei und
-meldet *saved*.
-
-Drei echte Fehler blieben übrig:
-
-**Der Coder öffnete beim Start stumm eine fremde Datei.** Er liest seit dem
-Umzug einen Dateinamen aus dem Argumentfeld -- und dort stand noch der Name
-des zuletzt gestarteten Programms (`PROMPT.TBX`). Wer den Coder aus dem Menü
-öffnete, landete sofort im Editor statt im Auswahlschirm. Das Argumentfeld
-wird jetzt geleert, bevor ein Programm aus dem Menü startet.
-
-**Speichern in Word führte ins Nichts.** Der Dateidialog des Kernels ist
-weggefallen; das Namensfeld war da, aber ENTER schloss es nur. Jetzt
-speichert ENTER auch -- beziehungsweise öffnet oder fügt ein Bild ein, je
-nachdem, wofür der Name gedacht war.
-
-**Ein Fenster brauchte eine Sekunde zum Erscheinen.** `fw_neu` füllte den
-Bildpuffer Byte für Byte -- bei bis zu 100000 Bytes in TB-32-Code ist das
-genau die Wartezeit, die man sah. Jetzt macht das der Blockkopierer, und das
-Fenster ist sofort da.
+**Not yet done:** the dialog appears, lists the folders, accepts a name,
+and closes — but the handoff **back into the program** doesn't work yet:
+the Coder stays on the selection screen afterward instead of switching
+to the editor. That's the one piece still missing.
 
 ---
 
-## Der Fehler hinter allen anderen: jedes Programm lud an dieselbe Adresse
+## Follow-up on the Save Bug — and Three Minor Things
 
-Colin meldete vier Dinge auf einmal: Paint bekam wirre Striche, sobald der
-Speichertest lief; Paint ließ sich danach nicht mehr schließen; BENCH war
-grau; und als Flappy dazukam, fror alles ein. **Das war ein einziger
-Fehler.**
+A lot of what Colin reported about Word ("the size can't be set
+anymore, nothing saves") was **the same memory bug**: Word's text sits
+at 7.2 MB, and the memory test wrote its patterns exactly there. After
+separating the program slots, the buttons work again — verified: A+
+sets the large font, Save writes the file and reports *saved*.
 
-In `prog_start.asm` stand `.org 0x00200000`. Jedes Programm wurde also an
-dieselbe Stelle geladen und lief dort. Solange nur eines lief, war das in
-Ordnung -- so hat es jahrzehntelang funktioniert. Seit die Programme aus dem
-Kernel ausgezogen sind und **mehrere gleichzeitig in Fenstern laufen**,
-überschreibt das zweite dem ersten den Code unter den Füßen weg.
+Three real bugs remained:
 
-Dazu kam die zweite Hälfte: `MEMTEST` prüfte den Bereich **3 bis 9 MB** --
-und genau dort liegen die Leinwand von Paint (6 MB) und der Text von Word
-(7,2 MB). Der Speichertest schrieb ihnen ihre Daten mit Prüfmustern voll.
-Die „schrägen Mini-Striche" in Paint waren wörtlich die Muster des
-Speichertests.
+**The Coder silently opened a foreign file on startup.** Since the
+move, it reads a file name from the argument field — and that still
+held the name of the last-started program (`PROMPT.TBX`). Whoever
+opened the Coder from the menu landed straight in the editor instead of
+the selection screen. The argument field is now cleared before a
+program is launched from the menu.
 
-**Die Lösung ist die, die frühe Systeme auch hatten, lange bevor es
-Speicherverwaltung gab: jedes Programm bekommt seinen Platz beim Bauen
-zugewiesen.**
+**Saving in Word led nowhere.** The kernel's file dialog was gone; the
+name field was there, but ENTER just closed it. Now ENTER also saves —
+or opens, or inserts an image, depending on what the name field was for.
 
-* `build.py` teilt zu: Werkzeuge (CC, ASM, PY) laufen allein und behalten den
-  alten Platz mit 512 KB; Fensterprogramme bekommen je 128 KB ab 2,5 MB.
-* Jedes Programm trägt im Kopf `"TBXP"` und seine Adresse. Der Lader liest
-  sie, schiebt das Programm mit dem Blockkopierer dorthin und startet es da.
-* Programme **ohne** diesen Kopf -- etwa auf dem Gerät selbst übersetzte --
-  landen wie früher an der ersten Stelle. Alte Dateien laufen weiter.
-* `MEMTEST` prüft jetzt 10 bis 14 MB, wo nichts anderes liegt.
-
-Nachgewiesen: Paint, Speichertest und Flappy laufen **gleichzeitig**, jedes
-in seinem Fenster, nichts friert ein und nichts malt in fremde Daten.
-
-Und die Lehre, die über dieses Projekt hinausgeht: Der Umzug der Programme
-aus dem Kernel war fachlich richtig -- aber er hat eine Annahme gebrochen,
-die niemand aufgeschrieben hatte, weil sie zwanzig Jahre lang stimmte.
-*Nur ein Programm zur Zeit.*
+**A window took a second to appear.** `fw_neu` filled the image buffer
+byte by byte — at up to 100000 bytes in TB-32 code, that's exactly the
+delay you saw. Now the block copier does it, and the window appears
+instantly.
 
 ---
 
-## Jedes Programm läuft jetzt im Fenster
+## The Bug Behind All the Others: Every Program Loaded at the Same Address
 
-Systematisch durchgetestet: **alle dreizehn** Programme aus dem Startmenü
-öffnen ein Fenster. Drei taten es vorher nicht -- BENCH, MEMTEST und
-KELLERTEST sind **Textprogramme**: sie schreiben mit `print()` in die
-Textkonsole, und die sieht man im Schreibtisch nicht. Das Programm lief,
-aber es blieb schwarz.
+Colin reported four things at once: Paint got garbled strokes as soon
+as the memory test ran; Paint couldn't be closed afterward; BENCH was
+gray; and once Flappy joined in, everything froze. **That was a single
+bug.**
 
-**Neu dafür: Textausgabe im Fenster** (`tf_*` in `gfxlib.c`). Ein Rechteck
-aus Zeichen wie bei einer Textkarte, mit Umbruch und Rollen; `tf_warten()`
-hält das Fenster offen, bis man es schließt. Damit kann jedes künftige
-Textprogramm ein Fenster haben, ohne dass jemand etwas umschreibt.
+`prog_start.asm` had `.org 0x00200000`. So every program was loaded to
+the same location and ran there. As long as only one was running, this
+was fine — it worked that way for decades. Since programs moved out of
+the kernel and **several now run simultaneously in windows**, the
+second one overwrites the first one's code out from under it.
 
-**Beim Umstellen bin ich in eine alte Falle getreten.** Ich habe die Aufrufe
-mit einem regulären Ausdruck ersetzt -- und der hielt das Komma **in einer
-Zeichenkette** für ein Argumenttrennzeichen:
+The second half compounded it: `MEMTEST` checked the range **3 to 9
+MB** — and exactly there sit Paint's canvas (6 MB) and Word's text
+(7.2 MB). The memory test filled them with its test patterns. Those
+"crooked little strokes" in Paint were literally the memory test's
+patterns.
+
+**The fix is the one early systems also had, long before there was
+memory management: every program gets its own place assigned at build
+time.**
+
+* `build.py` allocates: tools (CC, ASM, PY) run alone and keep the old
+  slot at 512 KB; window programs get 128 KB each starting at 2.5 MB.
+* Every program carries `"TBXP"` and its address in its header. The
+  loader reads them, moves the program there with the block copier, and
+  starts it there.
+* Programs **without** this header — such as ones compiled on the
+  device itself — land at the first slot as before. Old files keep
+  working.
+* `MEMTEST` now checks 10 to 14 MB, where nothing else sits.
+
+Verified: Paint, memory test, and Flappy run **simultaneously**, each in
+its own window, nothing freezes and nothing paints over someone else's
+data.
+
+And the lesson that reaches beyond this project: moving programs out of
+the kernel was technically correct — but it broke an assumption nobody
+had written down, because it had held true for twenty years.
+*Only one program at a time.*
+
+---
+
+## Every Program Now Runs in a Window
+
+Systematically tested: **all thirteen** programs in the start menu open
+a window. Three didn't do so before — BENCH, MEMTEST, and KELLERTEST
+are **text programs**: they write to the text console with `print()`,
+and you can't see that on the desktop. The program ran, but stayed
+black.
+
+**New for this: text output in a window** (`tf_*` in `gfxlib.c`). A
+rectangle of characters like a text card, with wrapping and scrolling;
+`tf_warten()` keeps the window open until it's closed. This means any
+future text program can have a window without anyone rewriting
+anything.
+
+**While converting these, I stepped into an old trap.** I replaced the
+calls with a regular expression — and it treated the comma **inside a
+string** as an argument separator:
 
 ```c
 printc("  FAILED, errors: ", RED);   ->   tf_text("  FAILED);
 ```
 
-Dieselbe Sorte Fehler wie damals das Semikolon in Assembler-Zeichenketten.
-Jetzt sucht der Ersetzer die schließende Klammer und weiß dabei, wann er in
-einer Zeichenkette steht.
+The same kind of bug as the semicolon in assembly strings back then.
+Now the replacer looks for the closing parenthesis while tracking
+whether it's inside a string.
 
-**Power options taten nichts.** Das Fenster ging auf, die Knöpfe waren tot:
-beim Ausräumen der ausgezogenen Fenster ist der Klick-Zweig für `APP_POWER`
-mit verschwunden. Ein Fenster, dessen Klicks niemand annimmt, sieht aus wie
-ein Fenster -- man merkt es erst beim Drücken.
+**Power options did nothing.** The window opened, the buttons were
+dead: while cleaning out the extracted windows, the click branch for
+`APP_POWER` got removed along with them. A window whose clicks nobody
+handles looks like a window — you only notice when you press it.
 
-**Zurücksetzen ging nicht, wenn ein Passwort gesetzt ist.** Der Kernel lässt
-es erst zu, wenn das Passwort in diesem Lauf einmal richtig genannt wurde --
-der Reset-Knopf fragte aber nie danach. Jetzt fragt er: *„Enter your
-password to reset this machine."*
-
----
-
-## Vier Fehler aus dem Betrieb
-
-**Programme aus dem Dateifenster gaben einen schwarzen Bildschirm.** Der
-Doppelklick war schon umgestellt -- der **Open/Run-Knopf** hatte aber einen
-eigenen Weg, der noch `gui_ausfuehren` rief: Oberfläche tritt ab, Programm
-bekommt den ganzen Schirm. Seit alle Programme Fensterprogramme sind, sah
-man davon nur noch Schwarz. Zwei Wege zum selben Ziel sind einer zu viel;
-jetzt ruft der Knopf dieselbe Funktion wie der Doppelklick.
-
-**Fremde Fenster öffnen mittig.** Der Stapelversatz von `starte()` ist für
-die eingebauten Fenster gedacht; ein Programm weiß nicht, wo es landet, und
-Flappy lag halb aus dem Bild. Jetzt rechnet `fw_neu` die Mitte aus.
-
-**Vollbild verbog das Bild.** Beim Vergrößern änderte sich die Fensterbreite
--- das Programm malte aber weiter mit der alten, und weil die Breite zugleich
-der Zeilenabstand im Puffer ist, lief das Bild schief. Jetzt bekommt ein
-fremdes Fenster beim Vollbild und nach dem Ziehen an der Ecke ein
-`FE_MALEN`, holt sich die neue Größe und malt richtig.
-
-**Zurücksetzen ging nicht mehr.** Settings ist ein Programm und bittet den
-Kernel darum; der verlangte, dass vorher einmal das Passwort genannt wurde.
-Auf einer Maschine **ohne** Passwort gibt es aber nichts zu nennen -- also
-kam man nie daran. Ein offener Rechner darf jetzt ohne.
-
-**Und noch einer, den man nur sieht, wenn man hinschaut:** ein neues Fenster
-war nicht da, obwohl es in der Liste stand. `fw_neu` malte den Schreibtisch
-aus dem Prozess des **Programms** neu -- und die Oberfläche malte gleich
-darauf ihr eigenes Bild darüber. Jetzt setzt `fw_neu` nur eine Marke, und
-der Schreibtisch zeichnet sich in seiner eigenen Schleife neu.
+**Reset didn't work if a password was set.** The kernel only allows it
+once the password has been entered correctly during this run — but the
+reset button never asked for it. Now it asks: *"Enter your password to
+reset this machine."*
 
 ---
 
-## Die Systemprogramme sind ausgezogen -- und der Selbsttest hinkt hinterher
+## Four Bugs From Everyday Use
 
-**In `\SYSTEM\PROGS` liegen jetzt vier Programme:** `MONITOR.TBX`,
-`CONTROL.TBX`, `SETTINGS.TBX` und `PROMPT.TBX`. Alle vier laufen und sind im
-Fenster geprüft.
+**Programs from the file window produced a black screen.** The
+double-click had already been converted — but the **Open/Run button**
+still had its own path that called `gui_ausfuehren`: the desktop steps
+aside, the program gets the whole screen. Since every program is now a
+windowed program, all that was left to see was black. Two paths to the
+same goal are one too many; now the button calls the same function as
+the double-click.
 
-**Die Kommandozeile ist an der richtigen Naht geteilt.** Die **Schale** --
-der Befehlsinterpreter mit DIR, COPY, CD -- bleibt im Kernel; sie ist Teil
-des Betriebssystems. Das **Fenster** ist ein Programm: es malt den
-Bildspeicher der Schale und reicht Tasten hinein. Genau so ist es bei den
-Großen auch, Shell und Terminal sind zwei verschiedene Dinge.
+**Foreign windows open centered.** The stacking offset in `starte()` is
+meant for built-in windows; a program doesn't know where it will land,
+and Flappy ended up half off-screen. Now `fw_neu` computes the center.
 
-**Ein Fehler dabei, der genau dieses Muster zeigt:** das Fenster blieb leer.
-Der Kernel las weiter `term_dirty` („hat die Schale etwas geschrieben?") und
-setzte es zurück -- er stahl dem Programm das Signal. Es gab ja kein
-Kernel-Terminalfenster mehr, das damit etwas anfangen konnte. Nach dem
-Entfernen zeigt das Fenster alles.
+**Fullscreen distorted the picture.** On resizing, the window width
+changed — but the program kept drawing with the old one, and since the
+width also serves as the buffer's stride, the picture ran crooked.
+Now a foreign window gets an `FE_MALEN` on entering fullscreen and after
+dragging the corner, fetches the new size, and draws correctly.
 
-**Control Panel brauchte keinen einzigen neuen Systemaufruf** -- alles, was
-es einstellt, steht in der Knopfzelle oder in einem Port, und beides erreicht
-ein Programm unmittelbar.
+**Reset stopped working.** Settings is a program and asks the kernel;
+the kernel required the password to have been named once beforehand.
+On a machine **without** a password there's nothing to name, though —
+so you could never get there. An open machine may now do it without.
 
-**Das Startmenü scrollt jetzt mit dem Mausrad.** Die Pfeilchen am Rand waren
-acht Punkte breit -- daneben zu klicken war leichter als sie zu treffen, und
-dann startete man aus Versehen ein Programm. Sie sind außerdem größer und
-farbig.
-
-**Der Dateimanager bleibt im Kernel**, und zwar mit Grund: er zieht Dateien
-auf den Schreibtisch und in andere Fenster. Das ist keine Anwendung, das ist
-der Schreibtisch selbst -- wie der Explorer bei Windows die Shell *ist*.
-
-### Offen: der Selbsttest
-
-Die Prüfungen setzen an vielen Stellen voraus, dass die Kommandozeile ein
-Fenster **im Kernel** ist -- sie tippen hinein, um Programme zu starten.
-Das gibt es nicht mehr. 18 von 86 Prüfungen fallen deshalb um, angefangen
-beim Schließen eines Programmfensters; danach bleibt die Maschine im
-Schreibtisch und alle Konsolenprüfungen laufen ins Leere.
-
-Das ist **kein Fehler der Programme** -- die sind einzeln geprüft --, sondern
-eine Prüfmechanik, die dem Umbau hinterherhinkt. Sie gehört neu geordnet:
-erst alle Konsolenprüfungen, dann der Schreibtisch, und Programme werden über
-`menue_prog(name)` gestartet statt über eine geratene Menünummer.
+**And one more, only visible if you look closely:** a new window wasn't
+there, even though it was in the list. `fw_neu` redrew the desktop from
+the **program's** process — and right after, the interface painted its
+own picture over it. Now `fw_neu` just sets a flag, and the desktop
+redraws in its own loop.
 
 ---
 
-## Der Coder ist ausgezogen -- der größte Brocken
+## The System Programs Have Moved Out — and the Self-Test Lags Behind
 
-780 Zeilen in `gui.c`, dazu die Farbgebung aus `coder.c` und der Textkern aus
-`edit.c`: der Coder war der dickste Teil des Kernels. Jetzt liegt er als
-`\PROGS\CODER.TBX` auf der Platte.
+**`\SYSTEM\PROGS` now holds four programs:** `MONITOR.TBX`,
+`CONTROL.TBX`, `SETTINGS.TBX`, and `PROMPT.TBX`. All four run and have
+been verified in windowed form.
 
-**Fünf neue Systemaufrufe** waren nötig, weil ein Programm Dinge braucht, die
-vorher „einfach da" waren:
+**The command line is split at the right seam.** The **shell** — the
+command interpreter with DIR, COPY, CD — stays in the kernel; it's part
+of the operating system. The **window** is a program: it draws the
+shell's screen buffer and passes keys into it. That's exactly how it is
+with the big systems too — shell and terminal are two different things.
 
-| Nr. | wofür |
+**One bug along the way that shows exactly this pattern:** the window
+stayed empty. The kernel kept reading `term_dirty` ("has the shell
+written something?") and clearing it — stealing the signal from the
+program. There was no longer a kernel terminal window that could have
+done anything with it. After removing that, the window shows
+everything.
+
+**Control Panel needed not a single new system call** — everything it
+adjusts lives in the button cell or a port, and a program can reach
+both directly.
+
+**The start menu now scrolls with the mouse wheel.** The little arrows
+at the edge were eight points wide — missing them was easier than
+hitting them, and then you'd accidentally launch a program. They're
+also bigger now and colored.
+
+**The file manager stays in the kernel**, for a reason: it drags files
+onto the desktop and into other windows. That's not an application,
+that's the desktop itself — the way Explorer *is* the shell on Windows.
+
+### Open: the Self-Test
+
+The checks assume in many places that the command line is a window
+**in the kernel** — they type into it to launch programs. That no
+longer exists. 18 of 86 checks fail because of this, starting with
+closing a program window; after that the machine stays on the desktop
+and every console check runs into nothing.
+
+This is **not a bug in the programs** — they're tested individually —
+but a test mechanism lagging behind the restructuring. It needs
+reordering: all console checks first, then the desktop, and programs
+should be launched via `menue_prog(name)` instead of a guessed menu
+number.
+
+---
+
+## The Coder Has Moved Out — the Biggest Chunk
+
+780 lines in `gui.c`, plus the color scheme from `coder.c` and the text
+core from `edit.c`: the Coder was the thickest part of the kernel. Now
+it lives on disk as `\PROGS\CODER.TBX`.
+
+**Five new system calls** were needed, because a program needs things
+that used to be "just there":
+
+| No. | For |
 |---|---|
-| 47/48 | ein Programm startet ein Programm und fragt, ob es noch läuft — der Coder ruft damit den Compiler |
-| 51–54 | die mitgeschriebenen Meldungen des Compilers |
-| 55–57 | den aktuellen Ordner auflisten, wechseln, den Pfad erfragen — damit kann jedes Programm einen Dateibrowser bauen |
-| 58/59 | die BIOS-Anleitung zeigen und ein BIOS bauen |
-| 60 | etwas in der Kommandozeile starten (dort landet die Ausgabe) |
+| 47/48 | a program starts a program and asks whether it's still running — the Coder uses this to call the compiler |
+| 51–54 | the compiler's logged messages |
+| 55–57 | list the current folder, change it, ask for the path — so any program can build a file browser |
+| 58/59 | show the BIOS instructions and build a BIOS |
+| 60 | launch something in the command line (its output ends up there) |
 
-**Was ausdrücklich im Kernel bleibt: das Brennen eines BIOS.** Das ist die
-einzige Stelle, an der man den Rechner unbrauchbar machen kann. Die
-Sicherungen dagegen -- Prüfsumme, rote Rückfrage, Einmal-Test -- gehören
-dorthin, wo kein Programm sie umgehen kann. Der Coder *bittet* darum, statt
-es selbst zu tun.
+**What deliberately stays in the kernel: burning a BIOS.** That's the
+one place where you can render the machine unusable. The safeguards
+against that — checksum, red confirmation, one-time test — belong where
+no program can bypass them. The Coder *asks* for it, instead of doing
+it itself.
 
-**Zwei Fehler, die dasselbe Muster hatten.** Beim Herausschneiden aus `gui.c`
-habe ich zweimal zu viel erwischt: einmal die Variablen der Dateiverwaltung
-(sie standen direkt hinter `edg_masse`), einmal die des BIOS-Bauens. Beide
-Male meldete der Compiler eine „unbekannte Variable" an ganz anderer Stelle.
-Die Lehre: beim Ausschneiden bis zur **schließenden Klammer** der Funktion
-gehen, nicht bis zum Anfang der nächsten -- dazwischen steht oft anderes.
+**Two bugs with the same pattern.** While cutting things out of
+`gui.c`, I grabbed too much twice: once the file-management variables
+(they sat right behind `edg_masse`), once the BIOS-building ones. Both
+times the compiler reported an "unknown variable" somewhere entirely
+different. The lesson: when cutting, go to the function's **closing
+brace**, not to the start of the next one — there's often other stuff
+in between.
 
-**Und einer, den man sofort sieht:** der Hintergrund. Im Kernel malte der
-Schreibtisch den Fensterrahmen samt Füllung, bevor die Anwendung dran war.
-Im eigenen Puffer muss das Programm selbst wischen -- sonst stand die alte
-Ansicht darunter durch.
+**And one you notice immediately:** the background. In the kernel, the
+desktop drew the window frame and its fill before the application got
+its turn. In its own buffer, the program has to clear it itself —
+otherwise the old view kept showing through underneath.
 
-Der Dateidialog (`system/dialog.c`) ist ersatzlos entfallen: seine drei
-Kunden -- Paint, Word, Coder -- sind alle ausgezogen und fragen jetzt in
-ihrem eigenen Fenster nach dem Namen. Ein Doppelklick im Dateifenster
-startet den Coder mit dem Dateinamen als Argument.
+The file dialog (`system/dialog.c`) was removed without replacement:
+its three clients — Paint, Word, Coder — have all moved out and now ask
+for the name in their own window. A double-click in the file window
+launches the Coder with the file name as an argument.
 
-**Der Kernel ist um rund 2400 Zeilen leichter.** 85/85.
+**The kernel is about 2400 lines lighter.** 85/85.
 
-**Stand:** Im Kernel sind noch Dateimanager, Kommandozeile, System Monitor,
-Control Panel, Settings, Browser -- und Clock und About, die dort bleiben.
-
----
-
-## Word ist ausgezogen
-
-`system/word.c` gibt es nicht mehr -- Word liegt als `\PROGS\WORD.TBX` auf
-der Platte. 1200 Zeilen, und der Umbau folgte demselben Muster wie bei Paint.
-Drei Stellen brauchten etwas mehr:
-
-**Die Zwischenablage.** Ihr Puffer liegt fest bei `0x00130000` und steht
-jedem offen -- nur ihre *Länge* war eine Zahl im Kernel. Dafür gibt es jetzt
-zwei Systemaufrufe (45 lesen, 46 setzen). Word holt sie vor jedem Tastendruck
-und schreibt sie danach zurück; damit wandert Text weiterhin zwischen Word,
-Coder und dem Wirtsrechner hin und her.
-
-**Die rechte Maustaste.** Word öffnet damit sein Menü. Welche Taste gedrückt
-war, reichte der Kernel früher als `gui_taste` durch -- ein Programm fragt
-die Maus einfach selbst (`portin(0x62)`).
-
-**Der Blockkopierer.** Word kopierte Bilder mit einer Funktion aus Paint.
-Beide sind ausgezogen; jetzt spricht Word die DMA-Ports direkt an.
-
-Der Dateidialog des Kernels fällt weg -- der Name wird im eigenen Fenster
-getippt, so wie es Word für „Save as" ohnehin schon konnte.
-
-85/85. Geprüft: Fenster steht, Werkzeugleiste vollständig, Tippen kommt an.
+**Status:** still in the kernel are the file manager, command line,
+System Monitor, Control Panel, Settings, Browser — plus Clock and
+About, which stay there.
 
 ---
 
-## Paint, Calc und Flappy sind ausgezogen
+## Word Has Moved Out
 
-Drei Programme liegen jetzt als Dateien auf der Platte statt im Kernel oder
-im Vollbild. **Paint war der erste echte Auszug aus dem Kernel** --
-`system/paint.c` gibt es nicht mehr, der Code steht in `programs/paint.c`
-und wird zu `\PROGS\PAINT.TBX`.
+`system/word.c` no longer exists — Word now lives on disk as
+`\PROGS\WORD.TBX`. 1200 lines, and the conversion followed the same
+pattern as Paint. Three spots needed a bit more:
 
-**Der Umbau war fast mechanisch**, und das ist die gute Nachricht für alles,
-was noch folgt:
+**The clipboard.** Its buffer sits fixed at `0x00130000` and is open to
+everyone — only its *length* was a number in the kernel. There are now
+two system calls for that (45 read, 46 set). Word fetches it before
+every keystroke and writes it back afterward; that's how text keeps
+moving between Word, the Coder, and the host machine.
 
-| im Kernel | als Programm |
+**The right mouse button.** Word uses it to open its menu. Which button
+was pressed used to be passed through by the kernel as `gui_taste` — a
+program now just asks the mouse itself (`portin(0x62)`).
+
+**The block copier.** Word copied images with a function from Paint.
+Both have moved out; now Word talks to the DMA ports directly.
+
+The kernel's file dialog goes away — the name is typed in its own
+window, the way Word already handled "Save as" anyway.
+
+85/85. Verified: window stands, toolbar complete, typing gets through.
+
+---
+
+## Paint, Calc, and Flappy Have Moved Out
+
+Three programs now live as files on disk instead of in the kernel or in
+fullscreen. **Paint was the first real move out of the kernel** —
+`system/paint.c` no longer exists, the code lives in `programs/paint.c`
+and becomes `\PROGS\PAINT.TBX`.
+
+**The conversion was almost mechanical**, and that's the good news for
+everything still to come:
+
+| in the kernel | as a program |
 |---|---|
-| `x = win_x[i]; y = win_y[i] + TITLE_H;` | `x = 0; y = 0;` — im eigenen Puffer fängt alles bei null an |
+| `x = win_x[i]; y = win_y[i] + TITLE_H;` | `x = 0; y = 0;` — in its own buffer, everything starts at zero |
 | `g_text`, `g_fill`, `g_frame`, `g_button` | `gx_text`, `gx_fill`, `gx_frame`, `p_knopf` |
-| `fs_read`, `fs_write` | `fileread`, `filewrite` (Systemaufrufe) |
+| `fs_read`, `fs_write` | `fileread`, `filewrite` (system calls) |
 | `sys_out(P_DMA_…)` | `portout(P_DMA_…)` |
-| Dateidialog des Kernels | Name im eigenen Fenster tippen |
+| kernel file dialog | type the name in its own window |
 
-**Eine Sache brauchte neue Hardware-Auskunft.** Paint verfolgt beim Ziehen
-eines Strichs die Maus selbst -- über Ereignisse ginge das nicht, die kommen
-nur beim Drücken, nicht beim Bewegen. Dafür liefert `fw_groesse` jetzt auch
-die **Lage des Fensters auf dem Schirm**, damit das Programm von
-Bildschirm- auf Fensterkoordinaten umrechnen kann.
+**One thing needed new hardware information.** Paint tracks the mouse
+itself while dragging a stroke — events wouldn't work for this, they
+only fire on press, not on movement. For this, `fw_groesse` now also
+returns the **window's position on screen**, so the program can convert
+screen coordinates to window coordinates.
 
-Flappy hat nebenbei die Doppelpufferung verloren, und zwar zu Recht: die
-gilt für den Bildschirm. Wer in seinen eigenen Puffer malt, zeigt ihn erst
-mit `fenster_fertig()` -- flackern kann da nichts.
+Flappy lost double buffering in the process, and rightly so: that's for
+the screen. Whoever draws into their own buffer only shows it with
+`fenster_fertig()` — nothing can flicker there.
 
-Word musste eine Zeile ändern: es kopierte Bilder mit `pt_kopieren` aus
-Paint. Der Blockkopierer ist aber Hardware und steht jedem offen -- jetzt
-spricht Word die Ports direkt an.
+Word needed one line changed: it copied images with `pt_kopieren` from
+Paint. But the block copier is hardware and open to everyone — now Word
+talks to the ports directly.
 
-**Stand der Umzüge:** Calc, Flappy, Paint sind Dateien. Im Kernel stehen
-noch Dateimanager, Kommandozeile, Coder, System Monitor, Control Panel,
-Word, Browser, Settings -- und Clock und About, die dort bleiben sollen.
+**Status of the moves:** Calc, Flappy, Paint are files. Still in the
+kernel: file manager, command line, Coder, System Monitor, Control
+Panel, Word, Browser, Settings — plus Clock and About, which are meant
+to stay there.
 
 85/85.
 
 ---
 
-## Der erste echte Umzug: der Taschenrechner läuft im Fenster
+## The First Real Move: the Calculator Runs in a Window
 
-`CALC.TBX` war ein Vollbildprogramm -- es nahm den ganzen Schirm und der
-Schreibtisch war weg. Jetzt liegt es in `\SYSTEM\PROGS`, steht im
-Startmenü und läuft in einem Fenster, das man verschieben kann. Tasten und
-Mausklicks kommen über die Fenster-Ereignisse, gemalt wird in den eigenen
-Bildpuffer.
+`CALC.TBX` was a fullscreen program — it took over the whole screen and
+the desktop was gone. Now it lives in `\SYSTEM\PROGS`, appears in the
+start menu, and runs in a window you can move. Keys and mouse clicks
+come through window events, drawing happens into its own image buffer.
 
-Der Umbau selbst ist klein: `gx_start()` raus (das schaltet den
-Bildschirmmodus um und löschte den Schreibtisch), `fenster_neu()` rein, vor
-jedem Malen `fenster_malziel()`, und die Hauptschleife holt Ereignisse statt
-Tasten. Die Maßangaben mussten schrumpfen -- der Rechner war für 640×400
-entworfen und passt so in kein Fenster.
+The conversion itself is small: `gx_start()` removed (it switches the
+screen mode and cleared the desktop), `fenster_neu()` added, a
+`fenster_malziel()` before every draw call, and the main loop fetches
+events instead of keys. The measurements had to shrink — the calculator
+was designed for 640×400 and doesn't fit any window like that.
 
-**Der Fehler, der eine halbe Stunde kostete, und die Lehre daraus.** Nach
-dem Umbau wurde der Bildschirm schwarz, obwohl der neue Code das gar nicht
-mehr kann. Der Grund: **CALC.TBX lag doppelt auf der Platte.** Die neue
-Fassung in `\SYSTEM\PROGS`, die alte noch in `\PROGS` -- und der Suchpfad
-(cwd, `\SYSTEM`, `\PROGS`) fand die **alte**. Der Rechner startete also
-brav das Programm von gestern, mitsamt seinem `gx_start()`.
+**The bug that cost half an hour, and the lesson from it.** After the
+conversion, the screen went black even though the new code can't do
+that anymore. The reason: **CALC.TBX existed twice on disk.** The new
+version in `\SYSTEM\PROGS`, the old one still in `\PROGS` — and the
+search path (cwd, `\SYSTEM`, `\PROGS`) found the **old** one. So the
+computer dutifully started yesterday's program, `gx_start()` and all.
 
-Zwei Dinge behoben:
+Two things fixed:
 
-1. Der Suchpfad kennt jetzt auch `\SYSTEM\PROGS`, und zwar **vor**
-   `\PROGS`. Was zum System gehört, gewinnt gegen eine gleichnamige Datei
-   im Benutzerordner -- sonst kann man das System mit einer untergeschobenen
-   Datei aushebeln.
-2. `build.py` räumt beim Bauen die alte Fassung aus dem anderen Ordner weg
-   und sagt es auch. Ein Umzug, der eine Leiche zurücklässt, ist kein Umzug.
+1. The search path now also knows `\SYSTEM\PROGS`, and **before**
+   `\PROGS`. What belongs to the system wins against a same-named file
+   in the user folder — otherwise the system could be undermined by a
+   planted file.
+2. `build.py` cleans out the old version from the other folder while
+   building, and says so. A move that leaves a corpse behind isn't a
+   move.
 
-Fremde Fenster tragen in der Leiste jetzt ihren eigenen Namen -- „Calculator"
-statt „Program". Bei denen weiß nur das Programm, wie es heißt.
+Foreign windows now show their own name in the title bar — "Calculator"
+instead of "Program." Only the program itself knows what it's called.
 
-Zwei neue Prüfungen. 85/85.
+Two new checks. 85/85.
 
 ---
 
-## Das Startmenü zeigt, was da ist -- und \SYSTEM ist geschützt
+## The Start Menu Shows What's There — and \SYSTEM Is Protected
 
-**Das Menü liest die Ordner.** Es zeigt oben die eingebauten Fenster, danach
-alles, was in `\SYSTEM\PROGS` und `\PROGS` liegt. Sieben auf einmal, der
-Rest über die Pfeile rechts; *Power options* und *Exit desktop* stehen immer
-unten -- man will nicht scrollen müssen, um den Rechner ausschalten zu
-können. Wer eine `.TBX` in einen der Ordner legt, findet sie beim nächsten
-Öffnen im Menü. Programme aus den Ordnern stehen in der Betonfarbe, damit man
-sieht, was Datei ist und was noch im Kernel steckt.
+**The menu reads the folders.** It shows the built-in windows at the
+top, then everything found in `\SYSTEM\PROGS` and `\PROGS`. Seven at a
+time, the rest via the arrows on the right; *Power options* and
+*Exit desktop* always stay at the bottom — you shouldn't have to scroll
+just to turn the machine off. Drop a `.TBX` into either folder and it
+shows up in the menu next time it's opened. Programs from these folders
+are shown in the concrete color, so you can see what's a file and
+what's still baked into the kernel.
 
-**`\SYSTEM\PROGS` ist neu** -- die Programme, die zum System gehören. Wie
-`System32` bei Windows: es sind ganz normale Dateien, aber sie zu löschen
-kostet das Passwort.
+**`\SYSTEM\PROGS` is new** — the programs that belong to the system.
+Like `System32` on Windows: they're perfectly normal files, but
+deleting them costs the password.
 
-**Der Schutz.** `fs_delete` und das endgültige Löschen fragen `darf_system()`:
-liegt der Eintrag in `\SYSTEM` (auch in einem Unterordner), dann nur mit
-Erlaubnis. `SUDO` fragt einmal nach dem Passwort und gibt fünf Minuten Ruhe
--- genau wie das echte sudo. Ein Rechner ohne Passwort gilt als offen, dort
-fragt auch der Schutz nicht. Der Sinn ist nicht Misstrauen: ein einziges
-verlorenes `KERNEL.BIN`, und die Maschine startet nie wieder.
+**The protection.** `fs_delete` and permanent deletion ask
+`darf_system()`: if the entry sits in `\SYSTEM` (including a
+subfolder), it's only allowed with permission. `SUDO` asks for the
+password once and grants five minutes of peace — exactly like real
+sudo. A machine without a password counts as open, and there the
+protection doesn't ask either. The point isn't distrust: a single lost
+`KERNEL.BIN`, and the machine never starts again.
 
-**Zwei Kleinigkeiten, die beim Testen auffielen:**
+**Two small things that came up while testing:**
 
-Das Menü merkte sich, wie weit man gescrollt hatte. Beim nächsten Öffnen
-stand man mitten in der Liste und die ersten Einträge schienen zu fehlen.
-Jetzt fängt es immer oben an.
+The menu remembered how far you'd scrolled. Opening it again left you
+in the middle of the list and the first entries seemed to be missing.
+Now it always starts at the top.
 
-`MENU_ANZ` gibt es nicht mehr -- die Zahl der Einträge steht ja erst beim
-Öffnen fest. Der Selbsttest rechnet jetzt mit `MENU_SICHT` und scrollt
-selbst, wenn ein Eintrag nicht sichtbar ist.
+`MENU_ANZ` no longer exists — the number of entries isn't known until
+the menu opens anyway. The self-test now works with `MENU_SICHT` and
+scrolls itself if an entry isn't visible.
 
 83/83.
 
 ---
 
-## Der Fenster-Server: ein Programm von der Platte bekommt ein Fenster
+## The Window Server: a Program From Disk Gets a Window
 
-Bis hierher galt: entweder ein Programm hat den **ganzen** Bildschirm
-(Flappy, Calc), oder es ist als Fenster in den Kernel einkompiliert (Word,
-Paint, der Coder). `FENSTER.TBX` ist beides nicht -- es liegt als Datei auf
-der Platte, läuft als eigener Prozess, und hat trotzdem ein Fenster, das man
-verschieben kann, während daneben alles weiterläuft.
+Up to this point the rule was: either a program has the **entire**
+screen (Flappy, Calc), or it's compiled as a window straight into the
+kernel (Word, Paint, the Coder). `FENSTER.TBX` is neither — it lives as
+a file on disk, runs as its own process, and still has a window that
+can be moved while everything else keeps running alongside it.
 
-**Der Kern der Sache: der Blitter kann jetzt in den Speicher malen.**
-Ports 0x5B–0x5D geben ihm einen Zielpuffer statt des Bildschirms. Jedes
-fremde Fenster hat einen (256 KB, ab 0x00800000), das Programm malt dort
-hinein, und der Schreibtisch setzt die Puffer zusammen. Damit kann kein
-Programm über ein fremdes Fenster malen, und ein verdecktes Fenster darf
-weiterzeichnen, ohne dass man etwas davon sieht -- genau wie bei einem
-Compositor.
+**The core of it: the blitter can now draw into memory.** Ports
+0x5B–0x5D give it a target buffer instead of the screen. Every foreign
+window has one (256 KB, starting at 0x00800000), the program draws into
+it, and the desktop composites the buffers together. This means no
+program can draw over a foreign window, and a covered window is allowed
+to keep drawing without anyone seeing it — exactly like a compositor.
 
-Ereignisse gehen den umgekehrten Weg: der Schreibtisch legt Tasten, Klicks
-und „bitte schließen" in einen Ring von acht Einträgen je Fenster, das
-Programm holt sie ab. Syscalls 40–44, Bibliothek in `gfxlib.c`.
+Events go the reverse way: the desktop places keys, clicks, and "please
+close" into a ring of eight entries per window, and the program picks
+them up. Syscalls 40–44, library in `gfxlib.c`.
 
-**Der Fehler, der die eigentliche Lehre war.** Der Bildschirm wurde
-schwarz. Ursache: der Blitter ist **ein einziges Stück Hardware**, und sein
-Zielpuffer ist ein Register. Das Programm stellte ihn auf seinen Puffer,
-wurde mitten im Malen unterbrochen -- und der Schreibtisch malte danach sein
-Bild in den **fremden Puffer** statt auf den Schirm. Auf dem Schirm blieb
-nichts.
+**The bug that was the real lesson.** The screen went black. Cause: the
+blitter is **a single piece of hardware**, and its target buffer is a
+register. The program pointed it at its own buffer, got interrupted
+mid-draw — and the desktop then painted its own picture into the
+**foreign buffer** instead of onto the screen. Nothing was left on the
+screen.
 
-Die Lösung ist die, die jedes echte Betriebssystem nimmt: **der Zustand der
-Grafikhardware gehört zum Prozess** und wird beim Wechsel gesichert, genau
-wie die Register. `proc_schedule()` liest jetzt Zielpuffer, Größe und
-Zeichensatzadresse aus und legt sie zurück, wenn der Prozess wieder dran ist.
-Dafür wurden die vier Ports lesbar gemacht -- in beiden Emulatoren, sonst
-liefen sie auseinander.
+The fix is the one every real operating system uses: **the graphics
+hardware's state belongs to the process** and gets saved on a context
+switch, just like the registers. `proc_schedule()` now reads out target
+buffer, size, and font address, and restores them when the process gets
+its turn again. For this, the four ports were made readable — in both
+emulators, otherwise they'd have drifted apart.
 
-**Zweiter Fehler, gleiche Familie:** das Programm rief `gx_start()`. Das
-schaltet den Bildschirmmodus um und löscht das Bild -- für ein
-Vollbildprogramm richtig, für ein Fenster das Ende des Schreibtischs. Ein
-Fenster braucht nur die Adresse des Zeichensatzes.
+**Second bug, same family:** the program called `gx_start()`. That
+switches the screen mode and clears the picture — correct for a
+fullscreen program, the end of the desktop for a window. A window only
+needs the font address.
 
-Vier neue Prüfungen: Fenster entsteht, Programm malt in seinen Puffer, der
-Bildschirm bleibt dabei heil, und das Programm räumt sein Fenster selbst ab.
-**82/82**, und beide Emulatoren rechnen weiter Befehl für Befehl gleich.
+Four new checks: a window is created, the program draws into its
+buffer, the screen stays intact throughout, and the program cleans up
+its own window. **82/82**, and both emulators keep computing instruction
+for instruction identically.
 
-**Was das für Word, Paint und den Coder heißt:** der Weg steht jetzt offen.
-Sie brauchen dafür Zeichenfunktionen, die in den eigenen Puffer malen statt
-auf den Schirm -- das ist Fleißarbeit, keine Forschung mehr.
+**What this means for Word, Paint, and the Coder:** the path is now
+open. They'll need drawing functions that paint into their own buffer
+instead of the screen — that's grunt work now, not research anymore.
 
 ---
 
-## Ein Aufruf genügt: pc.py startet das Netz mit
+## One Call Is Enough: pc.py Starts the Network Along With It
 
-Colin: *„ich will aber nur pc.py starten müssen damit Netz geht."* Recht hat
-er -- drei Fenster für einen Rechner ist keine Bedienung.
+Colin: *"but I only want to have to start pc.py for networking to
+work."* He's right — three windows for one computer isn't usable.
 
-Router und Vermittler laufen jetzt in eigenen Fäden **im selben Prozess** wie
-das Gehäuse. Beide sind reines Python, beide warten ohnehin die meiste Zeit,
-und beide gehen mit dem Fenster aus.
+The router and the proxy now run in their own threads **within the same
+process** as the case. Both are pure Python, both spend most of their
+time waiting anyway, and both go away with the window.
 
-**Der Türsteher ist der Port des Vermittlers.** Startet man ein zweites
-TOOBAD-Fenster, ist 8080 belegt -- dann startet dieses weder Vermittler noch
-Router. Das ist wichtig: **zwei Router am selben Draht** würden sich beim
-Beantworten von ARP gegenseitig ins Wort fallen, und die Verbindungen
-lägen halb beim einen und halb beim anderen.
+**The gatekeeper is the proxy's port.** Start a second TOOBAD window,
+and 8080 is taken — then that instance starts neither the proxy nor the
+router. This matters: **two routers on the same wire** would trip over
+each other answering ARP, and connections would end up split half with
+one and half with the other.
 
-**Der Vermittler ist voreingestellt** (127.0.0.1:8080). Antwortet dort
-niemand, fällt Browser wie `FETCH` auf den unmittelbaren Weg zurück -- dann
-geht alles außer HTTPS. Wer den Kernel ohne `pc.py` benutzt, sitzt so nicht
-vor einer toten Anzeige.
+**The proxy is preset** (127.0.0.1:8080). If nobody answers there,
+browsers like `FETCH` fall back to the direct path — then everything
+except HTTPS works. Whoever uses the kernel without `pc.py` doesn't end
+up sitting in front of a dead display.
 
-`python3 pc.py --kein-netz` lässt beides aus. Einzeln starten geht weiterhin
-(`router.py`, `proxy.py`) -- dann sieht man ihnen beim Arbeiten zu.
+`python3 pc.py --kein-netz` leaves both out. Starting them individually
+still works (`router.py`, `proxy.py`) — then you can watch them work.
 
 78/78.
 
 ---
 
-## Netzwerk fertig: der Vermittler bringt HTTPS
+## Networking Complete: the Proxy Brings HTTPS
 
-`https://example.com` steht im Browserfenster. Der TB-32 spricht dabei
-**weiterhin nur HTTP** -- die Verschlüsselung macht `proxy.py`.
+`https://example.com` works in the browser window. The TB-32 still only
+speaks **HTTP** — the encryption is done by `proxy.py`.
 
-**Warum das der ehrliche Weg ist.** HTTPS heißt: TLS, Zertifikate, ein
-halbes Dutzend kryptografische Verfahren. Im TB-32 wäre das Jahre Arbeit für
-etwas, das man am Ende nicht sieht. Ein Vermittler ist keine Krücke, sondern
-die Lösung, die es im Netz seit jeher gibt -- in Firmen und Schulen steht
-genau so einer. Der TB-32 gibt ab, was er nicht kann, statt so zu tun als ob.
+**Why that's the honest path.** HTTPS means TLS, certificates, half a
+dozen cryptographic procedures. On the TB-32 that would be years of
+work for something you wouldn't even see in the end. A proxy isn't a
+crutch, it's the solution the internet has always had — companies and
+schools have exactly one of these. The TB-32 hands off what it can't
+do, instead of pretending it can.
 
-**Wie der Browser ihn benutzt:** ist ein Vermittler eingetragen, geht die
-Verbindung zu IHM statt zum Server, und in der Anfrage steht die **volle**
-Adresse (`GET https://example.com/ HTTP/1.0`) statt nur des Pfads. Genau so
-macht es jeder Browser mit Proxy. `FETCH` nimmt denselben Weg.
+**How the browser uses it:** with a proxy configured, the connection
+goes to IT instead of the server, and the request carries the **full**
+address (`GET https://example.com/ HTTP/1.0`) instead of just the path.
+That's exactly how every browser handles a proxy. `FETCH` takes the
+same route.
 
-**Eine Kleinigkeit mit Folgen:** zum Abschalten war `NET PROXY 0.0.0.0`
-gedacht. Das geht nicht -- `ip_lesen` gibt dafür 0 zurück, und 0 heißt auch
-„unbrauchbare Eingabe". Der Vermittler blieb also an, und im Selbsttest
-liefen danach vier Prüfungen ins Leere, weil sie über einen längst beendeten
-Vermittler gingen. Jetzt heißt es `NET PROXY OFF`.
+**A small thing with consequences:** `NET PROXY 0.0.0.0` was meant to
+turn it off. That doesn't work — `ip_lesen` returns 0 for it, and 0
+also means "unusable input." So the proxy stayed on, and afterward four
+checks in the self-test ran into nothing because they went through a
+proxy that had long since been shut down. Now it's `NET PROXY OFF`.
 
-Zwei neue Prüfungen, unverschlüsselt gegen einen Server auf dem Mac -- dass
-der Vermittler auch TLS kann, ist Sache von Python und braucht keinen Beweis
-im TB-32. **78/78.**
+Two new checks, unencrypted against a server on the Mac — that the
+proxy can also do TLS is Python's job and needs no proof inside the
+TB-32. **78/78.**
 
-Damit ist das Netz fertig: Karte, ARP, IP, ICMP, UDP, DNS, TCP, HTTP,
-Browser, Vermittler. Als Nächstes der Weg zum Pi.
-
----
-
-## Netzwerk, Stufe 5: der Browser
-
-*Start ▸ Browser*, Adresse eintippen, ENTER. Der TB-32 schlägt den Namen
-nach, baut die Verbindung auf, holt die Seite und stellt sie dar --
-Überschriften in der Betonfarbe, Verweise blau und unterstrichen, Text an
-der Fensterbreite umgebrochen. Ein Klick auf einen Verweis holt die nächste
-Seite. `system/browser.c` versteht die Seite, `gui.c` malt sie.
-
-**Was der Umbruch können muss:** nicht mitten im Wort trennen. Ist die Zeile
-voll, wird das letzte Leerzeichen gesucht, der Rest wandert in die nächste
-Zeile. Und mehrere Leerzeichen hintereinander werden zu einem -- HTML zählt
-sie nicht, und ohne das sieht jede Seite zerrupft aus.
-
-**Drei Fehler, jeder eine eigene Lehre:**
-
-1. **Der Zwischenspeicher lag auf der ersten Zeile.** Beim Umbrechen wandert
-   der Rest der Zeile kurz woandershin -- das war `BR_ROH + BR_ROHMAX`, und
-   das ist auf das Byte genau `BR_TEXT`, also Zeile 0 der Seite. Oben im
-   Fenster stand deshalb ein Wortfetzen aus der Mitte des Textes. Adressen
-   auszurechnen ist bequem, bis zwei Rechnungen sich treffen.
-
-2. **Der Verweis war weg, bevor die Zeile fertig war.** Eine Zeile endet
-   meist erst beim nächsten Absatz -- da ist `</a>` längst vorbei und der
-   Verweis wieder zurückgesetzt. Also merkt sich `br_zeilenlink`, dass in
-   *dieser* Zeile ein Verweis steht, bis sie abgeschlossen wird.
-
-3. **Relative Verweise verloren den Port.** `/b` wurde zu `127.0.0.1/b` --
-   ohne `:8080`. Auf Port 80 wartete niemand. Der Port gehört zum Wirt.
-
-**Ehrlich zur Farbe:** Überschriften und Verweise waren beide blau und nicht
-zu unterscheiden. Verweise haben jetzt einen Strich darunter.
-
-**Was er nicht kann:** CSS, JavaScript, Bilder, Tabellen als Raster --
-und HTTPS. Damit sieht er von heutigen Seiten wenig. Der nächste Schritt ist
-deshalb der Vermittler auf dem Pi, der die Verschlüsselung übernimmt.
-
-Vier neue Prüfungen gegen zwei echte Seiten auf dem Mac: darstellen,
-Überschrift, Verweis, und einem Verweis folgen. Statt fester Wartezeiten
-wird gewartet, **bis** die Seite steht -- wie lange DNS und Übertragung
-brauchen, hängt an der Tagesform des Wirtsrechners. 76/76, zweimal stabil.
+That completes networking: card, ARP, IP, ICMP, UDP, DNS, TCP, HTTP,
+browser, proxy. Next up: the path to the Pi.
 
 ---
 
-## Netzwerk, Stufe 4: TCP -- eine echte Seite aus dem echten Netz
+## Networking, Stage 5: the Browser
 
-`FETCH example.com` holt eine Seite aus dem Internet. Der TB-32 schlägt den
-Namen nach, baut eine TCP-Verbindung auf, schickt eine HTTP-Anfrage und liest
-die Antwort. 828 Byte, mit Kopfzeilen von Cloudflare und dem HTML dahinter.
+*Start ▸ Browser*, type an address, ENTER. The TB-32 looks up the name,
+establishes the connection, fetches the page, and displays it —
+headings in the concrete color, links blue and underlined, text wrapped
+to window width. Clicking a link fetches the next page.
+`system/browser.c` understands the page, `gui.c` draws it.
 
-**Der Dreischritt** (Handschlag): wir SYN → sie SYN+ACK → wir ACK. Danach
-fließt ein Strom von Bytes, jedes durchnummeriert und bestätigt. Am Ende FIN.
+**What the wrapping has to handle:** not breaking in the middle of a
+word. If a line is full, the last space is found, and the rest moves to
+the next line. And multiple consecutive spaces collapse into one — HTML
+doesn't count them, and without this every page looks ragged.
 
-**Die Nummern laufen über.** Deshalb wird nie mit `<` verglichen, sondern über
-die Differenz: `(a - b) < 0` heißt „a liegt vor b" -- das stimmt auch über den
-Überlauf hinweg.
+**Three bugs, each its own lesson:**
 
-**Bewusst weggelassen:** Daten, die nicht genau anschließen, werden
-weggeworfen statt in Lücken verwaltet. Die Gegenseite schickt sie dann noch
-einmal. Das ist erlaubt und spart die halbe Buchhaltung.
+1. **The scratch buffer sat on the first line.** While wrapping, the
+   rest of the line briefly moves elsewhere — that was `BR_ROH +
+   BR_ROHMAX`, and that lands exactly on `BR_TEXT`, i.e. line 0 of the
+   page. A word fragment from the middle of the text ended up at the
+   top of the window. Computing addresses is convenient, until two
+   computations collide.
 
-**Der Fehler, der eine Stunde kostete:** der Router schickte seine Segmente
-mit **seiner eigenen** Adresse als Absender. Der TB-32 hatte aber
-104.20.23.154 angesprochen und warf alles weg, was von jemand anderem kam --
-zu Recht. Ein Router, der Adressen umsetzt, muss die Antwort mit der Adresse
-des **echten** Servers hinstellen. Der Handschlag kam damit nie zustande, und
-im Router stand trotzdem „steht": er hatte seine Verbindung nach draußen ja
-wirklich.
+2. **The link was gone before the line was finished.** A line usually
+   only ends at the next paragraph — by then `</a>` is long past and the
+   link state already reset. So `br_zeilenlink` now remembers that
+   *this* line has a link until the line is completed.
 
-**Und ein Fund, der schon länger dalag.** `NET IP` beschwerte sich manchmal
-über eine Adresse, die niemand eingetippt hatte. Der Rest der Zeile wurde
-ausgerechnet: `cmdline + 4 + strlen(arg1) + 1`. Bei `net ip` -- sechs Zeichen
--- landet das auf Stelle 7, **einen hinter dem abschließenden Nullbyte**. Mal
-stand da zufällig eine Null und alles ging gut, mal Datenmüll. Erst als der
-TCP-Code die Speicherbelegung verschob, fiel es auf. Jetzt zählt
-`nach_woertern()` die Wörter, statt zu rechnen.
+3. **Relative links lost the port.** `/b` became `127.0.0.1/b` —
+   without `:8080`. Nobody was listening on port 80. The port belongs
+   to the host.
 
-`FETCH name[:port] [/pfad]`. Zwei neue Prüfungen mit einem echten Webserver
-auf dem Mac, also ohne Internet. 72/72.
+**Honest about the color:** headings and links were both blue and
+indistinguishable. Links now have an underline.
 
-Als Nächstes: **der Browser** -- HTML lesen und in einem Fenster darstellen.
+**What it can't do:** CSS, JavaScript, images, tables as a grid — and
+HTTPS. That leaves it able to show little of today's pages. The next
+step is therefore the proxy on the Pi, which takes over the encryption.
 
----
-
-## Netzwerk, Stufe 3: UDP, DNS und der Router
-
-IP bringt ein Paket zum richtigen **Rechner**. Aber dort laufen viele
-Programme -- welches ist gemeint? Dafür gibt es Portnummern, und das
-einfachste Protokoll mit Ports ist **UDP**: acht Byte Kopf, fertig. Kein
-Verbindungsaufbau, keine Bestätigung. Genau so arbeitet **DNS**, die Stelle,
-die aus `example.com` eine Adresse macht.
-
-**Die Prüfsumme von UDP rechnet Absender und Ziel mit**, obwohl die schon im
-IP-Kopf stehen -- der „Pseudokopf". Damit fällt auf, wenn ein Paket beim
-richtigen Rechner, aber im falschen Zusammenhang landet. Und eine 0 heißt
-„nicht gerechnet", deshalb wird aus einer errechneten 0 eine 0xFFFF.
-
-**Namen stehen in Stücken:** `example.com` wird zu `7 example 3 com 0`. In
-der Antwort dürfen Namen **abgekürzt** sein -- zwei Byte, die mit `0xC0`
-anfangen, zeigen auf eine Stelle weiter vorn im selben Paket. Wer das nicht
-beachtet, läuft beim Überspringen ins Leere und findet die Adresse nie.
-
-**Wegewahl:** was nicht im eigenen Netz liegt, geht an den **Gateway**. Nach
-ihm wird dann per ARP gefragt, nicht nach dem eigentlichen Ziel -- genau das
-macht jeder Rechner im Internet.
-
-**Neu: `router.py`.** Er hängt an derselben Multicast-Gruppe wie die Karten,
-hat die Adresse 10.0.0.254, beantwortet ARP und PING und leitet UDP nach
-draußen weiter (NAT). Das schummelt nicht: der TB-32 baut ARP, IP-Kopf,
-Prüfsumme, UDP und die DNS-Frage **komplett selbst**; der Router liest sie
-nur und gibt sie weiter. Auf dem Pi fällt er ersatzlos weg, dort steht ein
-richtiger Router im Netz. `--dns <adresse[:port]>` schickt Namensfragen an
-einen anderen Server -- der Selbsttest nutzt das für einen eigenen kleinen
-Namensdienst und kommt damit **ohne Internet** aus.
-
-**Ein Fehler beim Bauen, der zum Nachdenken zwingt:** im Router hieß sowohl
-die eigene Adresse als auch die Methode für IP-Pakete `ip`. Python
-überschreibt dabei stillschweigend die eine mit der anderen -- `self.ip(...)`
-warf „'int' object is not callable". In einer Sprache mit getrennten
-Namensräumen wäre das nie passiert.
-
-Nachgewiesen: `PING 10.0.0.254` antwortet, `HOST example.com` nennt die
-echte Adresse. Zwei neue Prüfungen, 70/70.
-
-Als Nächstes: **TCP** -- das dicke Stück. Danach HTTP und der Browser.
+Four new checks against two real pages on the Mac: render, heading,
+link, and following a link. Instead of fixed wait times, it waits
+**until** the page is ready — how long DNS and the transfer take
+depends on the host machine's mood on the day. 76/76, stable twice.
 
 ---
 
-## Netzwerk, Stufe 2: ARP, IP und ICMP -- PING antwortet
+## Networking, Stage 4: TCP — a Real Page From the Real Internet
 
-Die Karte kennt nur Hardware-Adressen, das Internet nur IP-Adressen. Was
-beides zusammenbringt, ist **ARP**: *"Wer hat 10.0.0.2? Bitte an mich."* Wer
-sie hat, antwortet mit seiner Hardware-Adresse, und die merken wir uns in
-einer Tabelle mit acht Plätzen.
+`FETCH example.com` fetches a page from the internet. The TB-32 looks
+up the name, establishes a TCP connection, sends an HTTP request, and
+reads the response. 828 bytes, with headers from Cloudflare and the HTML
+behind them.
 
-Darüber liegt **IP** (Kopf mit Absender, Ziel, Lebenszeit, Prüfsumme) und
-darin **ICMP** -- das Protokoll hinter PING. Alles in `system/net.c`, alles
-TB-32-Code. Damit läuft es später auf dem Pi unverändert.
+**The three-way handshake:** we SYN → they SYN+ACK → we ACK. After
+that, a stream of bytes flows, each numbered and acknowledged. FIN at
+the end.
 
-**Die eine Rechnung, die im ganzen Internet steckt**, ist die Prüfsumme: alle
-Zahlen zu 16 Bit addieren, den Überlauf wieder unten drauf, Ergebnis umdrehen.
-Wer nachrechnet und 0 bekommt, weiß: unterwegs ist nichts kaputtgegangen.
+**The numbers wrap around.** That's why comparisons are never done with
+`<`, but via the difference: `(a - b) < 0` means "a comes before b" —
+this holds true even across the wraparound.
 
-**Zahlen stehen im Netz mit dem höchsten Byte zuerst**, der TB-32 legt sie
-andersherum ab. Deshalb `net_get16`/`net_put16` Byte für Byte -- ein
-Wortzugriff gäbe sie verdreht, und zwar ohne Fehlermeldung.
+**Deliberately left out:** data that doesn't attach exactly is dropped
+instead of being managed in gaps. The other side then sends it again.
+That's allowed, and it saves half the bookkeeping.
 
-**Warum der Rechner antwortet, wenn niemand davor sitzt.** `net_bearbeiten()`
-hängt in `getkey()` (Konsole) und in der Schleife des Schreibtischs. Während
-niemand tippt, wird die Post bearbeitet. Das `sys_halt()` dazwischen hält die
-Maschine dabei ruhig: sie weckt der nächste Interrupt -- der Zeitgeber oder
-ein ankommender Rahmen.
+**The bug that cost an hour:** the router sent its segments with **its
+own** address as sender. But the TB-32 had addressed 104.20.23.154 and
+rightly discarded everything that came from someone else. A router that
+translates addresses has to present the reply with the address of the
+**real** server. The handshake never came together this way, and yet
+the router reported "connected": it really did have its own connection
+outward.
 
-Die Adresse leitet sich beim Start aus der Hardware-Adresse ab
-(`10.0.0.<letztes Byte>`), damit ohne Zutun schon etwas geht. `NET IP 10.0.0.5`
-setzt sie, `NET ARP` zeigt, wen die Maschine kennt.
+**And a find that had been sitting there for a while.** `NET IP`
+sometimes complained about an address nobody had typed. The rest of the
+line was computed: `cmdline + 4 + strlen(arg1) + 1`. For `net ip` — six
+characters — that lands on position 7, **one past the terminating null
+byte.** Sometimes there happened to be a zero there and everything
+worked, sometimes garbage. It only surfaced once the TCP code shifted
+the memory layout. Now `nach_woertern()` counts the words instead of
+computing an offset.
 
-Nachgewiesen mit zwei Maschinen: `PING 10.0.0.2` → *4 of 4 answered*, und in
-der Adresstabelle der Gegenseite steht danach unsere Adresse. Drei neue
-Prüfungen, 68/68.
+`FETCH name[:port] [/path]`. Two new checks with a real web server on
+the Mac, so no internet required. 72/72.
 
-Als Nächstes: UDP und DNS, dann TCP.
-
----
-
-## Netzwerk, Stufe 1: die Karte, der Treiber, der NET-Befehl
-
-Der Anfang eines eigenen Netzwerks. Der Grundsatz bleibt: **Python emuliert
-nur den Chip.** Die Karte kennt Rahmen und sonst nichts -- sechs Byte Ziel,
-sechs Byte Absender, zwei Byte Art, dann Nutzdaten, genau wie bei Ethernet.
-Was darin steht, entscheidet der TB-32 selbst.
-
-**Ports 0xC0–0xC7, IRQ 0x0D.** Senden: Adresse und Länge hinlegen, Befehl 1.
-Empfangen: Adresse hinlegen, Befehl 2, Länge zurücklesen. Den Absender
-trägt die **Karte** ein, nicht der Absender selbst -- man kann sich also
-nicht als jemand anderes ausgeben, wie bei echter Hardware auch.
-
-**Der Draht** ist auf dem Mac eine UDP-Multicast-Gruppe (239.32.32.32:32032).
-Zwei laufende TB-32 hängen daran wie zwei Rechner an einem Hub.
-
-**Die Falle dabei -- eine Stunde gekostet:** mit `INADDR_ANY` sucht macOS
-sich für Multicast die Karte des Standardwegs aus, also das WLAN. Die Rahmen
-gehen dann hinaus und kommen auf demselben Rechner **nie** an; gesendet
-wurde ohne Fehler, empfangen wurde nichts. Erst `IP_MULTICAST_IF` und der
-Beitritt ausdrücklich über `127.0.0.1` bringen sie ans Ziel. Für die
-Ausweitung auf das echte Netz muss man dieselbe Stelle noch einmal anfassen.
-
-**Zweite Falle:** die Adresse kam aus der Prozessnummer. Zwei Karten im
-selben Prozess (der Selbsttest!) hatten damit dieselbe Adresse -- und weil
-jede Karte ihre eigenen Rahmen wegwirft, kam nichts an. Jetzt zählt eine
-laufende Nummer mit.
-
-`NET` zeigt Zustand, eigene Adresse und die Zähler. `NET SEND <text>`
-schickt einen Rundruf, `NET WATCH` zeigt an, was ankommt. Nachgewiesen mit
-zwei Maschinen: A sendet, B zeigt Absender, Art und Text.
-
-Was noch fehlt, in dieser Reihenfolge: ARP und IP (dann antwortet PING),
-UDP und DNS, TCP, und ganz am Ende HTTP und ein Browser. HTTPS können wir
-nicht -- dafür holt später ein Proxy auf dem Pi die Seiten und reicht sie
-als einfaches HTTP weiter.
+Next up: **the browser** — reading HTML and rendering it in a window.
 
 ---
 
-## ESC führt nicht mehr aus dem Schreibtisch heraus
+## Networking, Stage 3: UDP, DNS, and the Router
 
-Ein Druck auf **ESC** auf dem Schreibtisch warf einen in die große
-Textkonsole -- im Coder, in Paint und in Word sogar mitten aus der Arbeit
-heraus, mit ungesichertem Text.
+IP delivers a packet to the right **machine**. But many programs run
+there — which one is meant? That's what port numbers are for, and the
+simplest protocol with ports is **UDP**: eight bytes of header, done.
+No connection setup, no acknowledgment. That's exactly how **DNS**
+works too, the service that turns `example.com` into an address.
 
-**Warum das drinstand:** früher war die Textkonsole das Zuhause und die
-Oberfläche das Programm, das man mit ESC wieder verlässt. Seit der Rechner
-in den Schreibtisch startet, ist es andersherum -- und die alte Taste ist
-zur Falle geworden. Hinaus geht es über *Start ▸ Exit desktop*.
+**UDP's checksum includes the sender and destination**, even though
+they're already in the IP header — the "pseudo header." This catches a
+packet that lands at the right machine but in the wrong context. And a
+0 means "not computed," so a computed 0 becomes 0xFFFF.
 
-**Der Selbsttest hing daran.** Drei Prüfungen verließen den Schreibtisch mit
-ESC; sie klicken jetzt den letzten Menüpunkt. Die Nummer wird aus
-`MENU_ANZ` in `gui.c` gelesen, nicht abgeschrieben.
+**Names are stored in pieces:** `example.com` becomes
+`7 example 3 com 0`. In the response, names may be **abbreviated** —
+two bytes starting with `0xC0` point to a location earlier in the same
+packet. Ignore that, and skipping past it runs into nothing, never
+finding the address.
 
-**Und die Tests fassen die Platte des Nutzers nicht mehr an.** Sie arbeiten
-auf einer Arbeitskopie (`test_platte()` in `tools/headless.py`), auf der ein
-offenes Konto liegt. Vorher lief jeder Test auf der echten Platte und
-`build.py` überschrieb dabei das Konto -- Colins Passwort war nach jedem Bau
-weg. Der C-Emulator nimmt dafür einen fünften Parameter: den Pfad der Platte,
-damit beide Seiten beim Vergleich dieselbe sehen.
+**Routing:** whatever isn't on the local network goes to the
+**gateway**. It's then asked via ARP, not the actual destination —
+that's exactly what every machine on the internet does.
 
----
+**New: `router.py`.** It hangs off the same multicast group as the
+cards, has the address 10.0.0.254, answers ARP and PING, and forwards
+UDP outward (NAT). No cheating here: the TB-32 builds ARP, the IP
+header, the checksum, UDP, and the DNS query **entirely by itself**;
+the router just reads and forwards it. On the Pi it will drop away
+without replacement, since a real router sits on the network there.
+`--dns <address[:port]>` sends name queries to a different server — the
+self-test uses this for its own small name service and thereby needs
+**no internet** at all.
 
-## Konto lag im falschen Ordner -- und der erste Start gehört dem Benutzer
+**A build-time bug that forces some thought:** in the router, both the
+router's own address and the method for IP packets were named `ip`.
+Python silently overwrites one with the other — `self.ip(...)` threw
+"'int' object is not callable." In a language with separate namespaces
+this would never have happened.
 
-**Der Fund.** Auf der Platte lag eine `USER.DAT` **in `\SYSTEM`**. Das darf
-nicht sein, und es erklärt seltsames Verhalten: `benutzer_anlegen()` schrieb
-die Datei mit `fs_write("USER.DAT", ...)`, und `fs_write` arbeitet im
-**aktuellen Ordner**. Stand das Dateifenster gerade in `\SYSTEM`, landete
-das Konto dort.
+Verified: `PING 10.0.0.254` answers, `HOST example.com` reports the real
+address. Two new checks, 70/70.
 
-Zwei Folgen, beide unangenehm:
-
-1. Die Anmeldung sucht im Hauptverzeichnis. Ein Konto in `\SYSTEM` findet
-   sie nie -- der Rechner fragte nach jedem Start wieder nach der
-   Ersteinrichtung.
-2. Das Zurücksetzen lässt `\SYSTEM` absichtlich stehen. Ein Konto, das dort
-   liegt, überlebt also jedes Zurücksetzen und ist nicht mehr loszuwerden.
-
-`benutzer_anlegen()` und `benutzer_vorhanden()` setzen `cwd` jetzt kurz auf
-die Wurzel und danach zurück. Das Zurücksetzen räumt außerdem ein
-verirrtes `\SYSTEM\USER.DAT` mit weg.
-
-**Zwei Sicherungen beim Zurücksetzen.** Wird der Ordner `SYSTEM` nicht
-gefunden, ist `sys == -1` -- und -1 ist zugleich der Elternordner des
-Hauptverzeichnisses. Die Schutzabfrage hätte dann genau das Falsche
-geschützt: alles oben, und gelöscht worden wäre alles in den Ordnern,
-einschließlich `KERNEL.BIN`. Der Rechner wäre nie wieder gestartet. Jetzt
-passiert in dem Fall gar nichts, mit Meldung. Und nach dem Löschen wird
-geprüft, dass `\SYSTEM\KERNEL.BIN` noch da ist -- erst dann wird neu
-gestartet.
-
-**Der erste Start gehört dem Benutzer.** `build.py` legt kein Konto mehr an.
-Wer das Projekt herunterlädt, baut und startet, richtet seinen Benutzer
-selbst ein -- vorher saß er in einem fremden Konto namens `user`, das er nie
-angelegt hatte. Die Testwerkzeuge legen sich ihres selbst an
-(`test_konto()` in `tools/headless.py`, aufgerufen aus `test_cmos()`).
-
-**Kleinigkeiten.** Der Anmeldeschirm zeigte kein `User` -- er malte den
-Eingabepuffer für den Namen, und beim Anmelden tippt niemand einen Namen.
-Jetzt steht dort der Name des Kontos. Und `reset.py` stürzte mit
-`EOFError` ab, wenn man es aus dem Editor startete: dort hängt keine
-Tastatur am Programm, die Sicherheitsfrage konnte niemand beantworten.
-Jetzt steht da, dass man es im Terminal starten soll -- oder mit `--ja`.
+Next up: **TCP** — the big piece. Then HTTP and the browser.
 
 ---
 
-## Passwortfelder lassen sich anklicken
+## Networking, Stage 2: ARP, IP, and ICMP — PING Answers
 
-Beim Passwort-Ändern kam man **nur mit TAB** von einem Feld zum anderen. Wer
-mit der Maus arbeitet, klickt aber in das Feld, das er meint -- und nichts
-geschah. Die Eingabe landete stillschweigend im falschen Feld.
+The card only knows hardware addresses, the internet only knows IP
+addresses. What ties both together is **ARP**: *"Who has 10.0.0.2?
+Reply to me."* Whoever has it replies with its hardware address, and we
+remember it in a table with eight slots.
 
-Betroffen waren beide Stellen mit mehreren Feldern: der zweistufige
-Passwortwechsel in den **Einstellungen** und der **Ersteinrichtungs-Schirm**
-beim allerersten Start.
+On top of that sits **IP** (header with sender, destination, lifetime,
+checksum) and inside that **ICMP** — the protocol behind PING. All in
+`system/net.c`, all TB-32 code. So it will later run unchanged on the
+Pi.
 
-**Der Trefferbereich ist absichtlich größer als der Kasten.** Der gezeichnete
-Kasten ist nur 14 Punkte hoch; ein Klick neun Punkte darunter ging beim
-ersten Versuch daneben, ohne dass man den Grund sehen konnte. Getroffen wird
-jetzt die ganze Zeile samt Beschriftung -- 24 Punkte hoch bei einem Abstand
-von 26, also ohne Überschneidung mit der Nachbarzeile. Nachgemessen und mit
-Klicks auf Kastenmitte, Kastenrand und Beschriftung geprüft.
+**The one calculation that's woven through the whole internet** is the
+checksum: add all numbers as 16-bit values, fold the overflow back in
+at the bottom, invert the result. Whoever recomputes it and gets 0
+knows: nothing broke along the way.
 
-Die Hinweiszeilen sagen es jetzt auch: *"Click a field or press TAB."*
+**Numbers are stored on the network with the highest byte first**, the
+TB-32 stores them the other way around. That's why there's
+`net_get16`/`net_put16`, byte by byte — a word access would deliver
+them reversed, and without any error message.
+
+**Why the machine answers when nobody's sitting in front of it.**
+`net_bearbeiten()` hangs inside `getkey()` (console) and inside the
+desktop's loop. While nobody's typing, mail gets processed. The
+`sys_halt()` in between keeps the machine quiet during this: it's woken
+by the next interrupt — the timer or an incoming frame.
+
+The address is derived at startup from the hardware address
+(`10.0.0.<last byte>`), so something already works without any setup.
+`NET IP 10.0.0.5` sets it, `NET ARP` shows who the machine knows.
+
+Verified with two machines: `PING 10.0.0.2` → *4 of 4 answered*, and
+the other side's address table then shows our address. Three new
+checks, 68/68.
+
+Next up: UDP and DNS, then TCP.
+
+---
+
+## Networking, Stage 1: the Card, the Driver, the NET Command
+
+The start of a network of our own. The principle stays the same:
+**Python only emulates the chip.** The card only knows frames and
+nothing else — six bytes destination, six bytes sender, two bytes type,
+then payload, exactly like Ethernet. What's inside is up to the TB-32
+itself.
+
+**Ports 0xC0–0xC7, IRQ 0x0D.** Send: place address and length, command
+1. Receive: place address, command 2, read back the length. The
+**card**, not the sender, fills in the sender address — so you can't
+impersonate someone else, just like with real hardware.
+
+**The wire** is a UDP multicast group on the Mac (239.32.32.32:32032).
+Two running TB-32 instances hang off it like two machines on a hub.
+
+**The trap along the way — an hour spent:** with `INADDR_ANY`, macOS
+picks the default route's interface for multicast, i.e. Wi-Fi. Frames
+then go out and **never** arrive on the same machine; sending happened
+without an error, nothing was received. Only `IP_MULTICAST_IF` and
+explicitly joining via `127.0.0.1` gets them to their destination.
+Extending this to a real network will need touching this same spot
+again.
+
+**Second trap:** the address came from the process number. Two cards in
+the same process (the self-test!) ended up with the same address — and
+since every card drops its own frames, nothing arrived. Now a running
+counter is factored in.
+
+`NET` shows status, its own address, and the counters. `NET SEND <text>`
+sends a broadcast, `NET WATCH` shows what arrives. Verified with two
+machines: A sends, B shows sender, type, and text.
+
+What's still missing, in this order: ARP and IP (then PING answers),
+UDP and DNS, TCP, and right at the end HTTP and a browser. We can't do
+HTTPS — for that a proxy on the Pi will later fetch pages and pass them
+along as plain HTTP.
+
+---
+
+## ESC No Longer Exits the Desktop
+
+Pressing **ESC** on the desktop used to throw you into the big text
+console — in the Coder, in Paint, and in Word even right out of your
+work, with unsaved text.
+
+**Why it was there:** the text console used to be home base and the
+interface was the program you left again with ESC. Since the machine
+now boots into the desktop, it's the other way around — and the old key
+had become a trap. The way out is now *Start ▸ Exit desktop*.
+
+**The self-test depended on it.** Three checks left the desktop with
+ESC; they now click the last menu item. The number is read from
+`MENU_ANZ` in `gui.c`, not hardcoded.
+
+**And the tests no longer touch the user's disk.** They work on a
+working copy (`test_platte()` in `tools/headless.py`), which has an
+open account. Previously every test ran on the real disk, and
+`build.py` overwrote the account in the process — Colin's password was
+gone after every build. The C emulator takes a fifth parameter for
+this: the disk path, so both sides see the same one when comparing.
+
+---
+
+## Account Was in the Wrong Folder — and the First Boot Belongs to the User
+
+**The find.** There was a `USER.DAT` on the disk **in `\SYSTEM`**. That
+shouldn't happen, and it explains some odd behavior:
+`benutzer_anlegen()` wrote the file with `fs_write("USER.DAT", ...)`,
+and `fs_write` works in the **current folder**. If the file window
+happened to be sitting in `\SYSTEM`, that's where the account landed.
+
+Two consequences, both unpleasant:
+
+1. Login searches the root directory. An account in `\SYSTEM` is never
+   found there — the machine asked for first-time setup again after
+   every boot.
+2. Reset deliberately leaves `\SYSTEM` untouched. An account sitting
+   there survives every reset and can't be gotten rid of.
+
+`benutzer_anlegen()` and `benutzer_vorhanden()` now briefly set `cwd`
+to the root and back afterward. Reset also cleans up any stray
+`\SYSTEM\USER.DAT`.
+
+**Two safeguards during reset.** If the folder `SYSTEM` isn't found,
+`sys == -1` — and -1 is also the parent folder of the root directory.
+The protection check would then have protected exactly the wrong thing:
+everything above, and everything in the folders would have been
+deleted, including `KERNEL.BIN`. The machine would never boot again.
+Now nothing happens in that case, with a message. And after deleting,
+it's verified that `\SYSTEM\KERNEL.BIN` is still there — only then does
+it restart.
+
+**The first boot belongs to the user.** `build.py` no longer creates an
+account. Whoever downloads the project, builds it, and starts it sets
+up their own user — previously they sat in a stranger's account named
+`user` that they'd never created. The test tools create their own
+(`test_konto()` in `tools/headless.py`, called from `test_cmos()`).
+
+**Minor things.** The login screen didn't show a `User` field — it drew
+the name's input buffer, and nobody types a name when logging in. Now
+the account's name is shown there. And `reset.py` crashed with
+`EOFError` when started from the editor: there's no keyboard attached
+to the program there, so nobody could answer the security question.
+Now it says to run it in the terminal instead — or with `--ja`.
+
+---
+
+## Password Fields Are Now Clickable
+
+When changing the password, you could **only** move from one field to
+another with TAB. Someone working with the mouse clicks into the field
+they mean, though — and nothing happened. The input silently landed in
+the wrong field.
+
+Both places with multiple fields were affected: the two-step password
+change in **Settings** and the **first-time setup screen** at the very
+first boot.
+
+**The hit area is deliberately bigger than the box.** The drawn box is
+only 14 points tall; a click nine points below it missed on the first
+try, with no way to see why. Now the whole line including its label is
+the hit target — 24 points tall at a 26-point spacing, so no overlap
+with the neighboring line. Measured and verified with clicks on box
+center, box edge, and label.
+
+The hint lines now also say so: *"Click a field or press TAB."*
 
 ---
 
 ## TOOBAD-OS 2.5.2
 
-Aus 1.0 wird **2.5.2** -- System und BIOS gemeinsam, an allen sechs Stellen
-(Startbild, Kopfzeile, `ver`, `about`, Setup, Kopf des BIOS-Abbildes).
+1.0 becomes **2.5.2** — system and BIOS together, in all six places
+(boot screen, header, `ver`, `about`, setup, header of the BIOS image).
 
-**Beinahe eine Falle:** das Namensfeld im Kopf ist **genau 32 Byte** lang.
-`TOOBAD BIOS v2.5.2` ist vier Zeichen laenger als vorher, und mit dem alten
-`.space 17` waere der Kopf 36 Byte gross geworden -- der Code haette bei
-0x34 statt 0x30 begonnen und der Rechner waere gar nicht mehr gestartet.
-Jetzt `.space 13`, nachgerechnet: 19 + 13 = 32. Geprueft: Name wird gelesen,
-Code steht wieder bei 0x30, Abbild gueltig.
+**Nearly a trap:** the name field in the header is **exactly 32 bytes**
+long. `TOOBAD BIOS v2.5.2` is four characters longer than before, and
+with the old `.space 17` the header would have grown to 36 bytes — the
+code would have started at 0x34 instead of 0x30 and the machine
+wouldn't have booted at all. Now `.space 13`, recomputed: 19 + 13 = 32.
+Verified: name is read, code sits at 0x30 again, image valid.
 
-**Und der Coder ruckelte.** `edg_ist_bios()` durchsuchte bei JEDEM
-Neuzeichnen 3000 Byte -- rund 30.000 Befehle, waehrend ein ganzes Bild bei
-2 MHz nur etwa 33.000 hat. Allein diese Suche ass die Bildzeit auf. Jetzt
-wird das Ergebnis gemerkt und nur bei geaenderter Laenge neu gesucht, und
-nur in den ersten 400 Byte -- weiter hinten darf die Kennung ohnehin nicht
-stehen.
-
----
-
-## Klicks, Fenstergrenzen und ein abbrechbares "New"
-
-**Zwei weitere Ueberlaeufe, von Colin auf Bildern gezeigt:**
-
-- Im Dateidialog ragte **`Cancel`** aus seinem Knopf: sechs Zeichen sind
-  48 Punkte Text, der Knopf war 44 breit. `g_button` zentriert nur, es
-  kuerzt nichts. Jetzt nachgerechnet statt geschaetzt: 8 Punkte Rand,
-  Cancel 56, OK 44 -- und das Namensfeld entsprechend kuerzer. Zeichnen und
-  Klicken auf dieselben Zahlen umgestellt.
-- In der Statuszeile des Coders stand das gruene **`saved`** ab fester
-  Spalte 560. Bei 588 Punkten Platz sind das drei Zeichen -- der Rest lief
-  unter dem `?`-Knopf hindurch aus dem Fenster. Jetzt rechtsbuendig vor dem
-  Knopf, und die Byte-Zahl weicht, solange eine Meldung steht. Beide teilen
-  sich denselben Platz, wie es im Kommentar schon immer stand.
-
-Ein Skript haelt jetzt ausserdem jede feste Knopfbeschriftung gegen ihre
-Breite -- danach war keine weitere zu breit.
-
-**Der Command Prompt liess sich nicht mehr anklicken**, sobald ein Fenster
-dahinter lag. Ursache: `draw_desktop()` malt nach Fensternummer und
-`win_top` zuletzt -- die hoehere Nummer liegt also vorn. Die Klicksuche lief
-dagegen **vorwaerts** und nahm den ersten Treffer, mithin das Fenster
-DAHINTER. Jetzt laeuft sie rueckwaerts, in derselben Reihenfolge wie das
-Malen. Nachgestellt: drei Fenster, das mittlere oben, Klick in die
-Ueberlappung der beiden anderen -- vorher gewann das hintere, jetzt das
-sichtbar vordere.
-
-**Text ragte aus den Meldungsfenstern heraus.** Compilerzeilen sind gut
-50 Zeichen lang, das Fortschrittsfenster war 320 Punkte breit. Neu ist
-`g_text_max()`, das auf die Fensterbreite kuerzt und mit zwei Punkten endet;
-benutzt in den Compilermeldungen, im Hilfefenster und in der
-Firmware-Rueckfrage. Und aus dem schmalen Balkenfenster wird beim Fehler ein
-richtiges Meldungsfenster (520x240 statt 320x90).
-
-**Eine falsche Klickflaeche gefunden**, maschinell: ein Skript hat alle
-`g_button()` gegen alle `treffer()` gehalten. Der Knopf *Save to CMOS* im
-Control Panel ist 96 Punkte breit, geprueft wurde aber **nur die Zeile, kein
-`mx`** -- ein Klick auf die Temperaturanzeige daneben schrieb das CMOS.
-
-**"New" laesst sich jetzt abbrechen.** Vorher legte es sofort ein leeres
-Blatt an und fragte erst danach nach dem Platz; wer abbrach, hatte seine
-Arbeit verloren und eine namenlose Datei offen. Jetzt fragt es zuerst, und
-das Dokument entsteht erst, wenn ein Platz gewaehlt ist -- in Paint, Word
-und im Coder. Im Coder geht das Schreibfenster ohne Platz gar nicht erst
-auf, die Startseite bleibt stehen.
+**And the Coder was stuttering.** `edg_ist_bios()` searched 3000 bytes
+on EVERY redraw — around 30,000 instructions, while a whole frame at
+2 MHz only has about 33,000. That search alone was eating up the frame
+time. Now the result is remembered and only re-searched when the length
+changes, and only within the first 400 bytes — the tag can't legally
+sit further back anyway.
 
 ---
 
-## Neue Datei fragt sofort nach dem Platz
+## Clicks, Window Bounds, and a Cancelable "New"
 
-Colins Wunsch: beim Anlegen einer neuen Datei -- in Paint, Word oder im
-Coder -- kommt gleich das Fenster fuer den Speicherort. Danach ist man
-"direkt drin", und "Save" speichert einfach den neuen Stand.
+**Two more overflows, shown by Colin with screenshots:**
 
-Genau so ist es jetzt. `New` oeffnet den Dateidialog im Speichern-Modus mit
-einem Vorschlag (`PICTURE.TBI`, `DOCUMENT.TBW`, `NEW.C` ...). Ab da merkt
-sich das Programm, dass Name und Ordner feststehen (`pt_ort`, `wd_ort`,
-`edg_ort`), und `Save` schreibt ohne weitere Nachfrage.
+- In the file dialog, **`Cancel`** stuck out of its button: six
+  characters are 48 points of text, the button was 44 wide.
+  `g_button` only centers, it doesn't truncate. Now it's computed
+  instead of guessed: 8 points margin, Cancel 56, OK 44 — and the name
+  field shortened accordingly. Drawing and clicking now use the same
+  numbers.
+- In the Coder's status line, the green **`saved`** sat at a fixed
+  column, 560. With 588 points of space that's three characters — the
+  rest ran under the `?` button and out of the window. Now it's
+  right-aligned in front of the button, and the byte count yields as
+  long as a message is showing. Both share the same space, as the
+  comment always said.
 
-Auch nach dem **Oeffnen** steht der Platz fest -- danach speichert `Save`
-dorthin zurueck, statt jedes Mal wieder zu fragen. Vorher fragte er
-ausnahmslos immer, was bei jedem zweiten Tastendruck ein Fenster aufgehen
-liess.
+A script also now checks every fixed button label against its width —
+none was too wide after that.
+
+**The Command Prompt could no longer be clicked** once a window sat
+behind it. Cause: `draw_desktop()` draws by window number, with
+`win_top` last — the higher number ends up on top. The click search
+ran **forward**, though, and took the first hit, i.e. the window
+BEHIND it. Now it runs backward, in the same order as the drawing.
+Reproduced: three windows, the middle one on top, click in the overlap
+of the other two — previously the back one won, now the visibly
+front one does.
+
+**Text stuck out of message windows.** Compiler lines run about 50
+characters, the progress window was 320 points wide. New:
+`g_text_max()`, which truncates to the window width and ends with two
+dots; used in compiler messages, the help window, and the firmware
+confirmation. And the narrow progress-bar window becomes a proper
+message window on error (520x240 instead of 320x90).
+
+**Found a wrong hit area, mechanically:** a script checked every
+`g_button()` against every `treffer()`. The *Save to CMOS* button in
+Control Panel is 96 points wide, but only the row was checked, no `mx`
+— a click on the temperature display next to it wrote to CMOS.
+
+**"New" can now be cancelled.** It used to create an empty document
+immediately and only ask for the location afterward; anyone cancelling
+had lost their work and an unnamed file left open. Now it asks first,
+and the document is only created once a location has been chosen — in
+Paint, Word, and the Coder. In the Coder, the write window doesn't even
+open without a location; the start page stays up.
 
 ---
 
-## Der TB-32 baut jetzt seine eigene Firmware
+## New File Asks for the Location Right Away
 
-Colins Wunsch: im Coder ein BIOS schreiben, mit Vorlage und Anleitung,
-einmal testen ohne Risiko, und erst wenn es passt dauerhaft flashen -- mit
-Rueckfrage vom BIOS selbst.
+Colin's wish: when creating a new file — in Paint, Word, or the Coder —
+the location window should appear immediately. After that you're
+"straight in," and "Save" simply saves the current state.
 
-**Der Blocker sass tiefer als gedacht.** `ASM.TBX` konnte kein BIOS bauen:
-kein `.org`, kein `.equ`, kein `.include`, 256 Symbole (const.inc allein hat
-158). Dazu kamen beim Ausprobieren drei Sachen heraus, die niemand geahnt
-hatte:
+That's exactly how it works now. `New` opens the file dialog in save
+mode with a suggestion (`PICTURE.TBI`, `DOCUMENT.TBW`, `NEW.C` ...).
+From then on the program remembers that the name and folder are fixed
+(`pt_ort`, `wd_ort`, `edg_ort`), and `Save` writes without asking
+again.
 
-- **Ausdruecke wurden an Leerzeichen zerschnitten.** `next_token()` lieferte
-  von `IVT_BASE + IRQ_TIMER*4` nur `IVT_BASE`; der Rest fiel lautlos weg und
-  die Interrupttabelle stand voller Nullen. Jetzt holt `next_arg()` das
-  ganze Argument bis zum Komma.
-- **Punkt vor Strich fehlte**, und Klammern auch -- `(SCR_H-1)*SCR_W*2/4`
-  kommt in video.asm wirklich vor.
-- **Lokale Marken hatten keinen Gueltigkeitsbereich.** `.copy` war ueberall
-  dieselbe; der Assembler uebersetzte anstandslos, und die Spruenge landeten
-  in einer anderen Funktion. Genau die Sorte Fehler, die erst auffaellt,
-  wenn ein fertiges BIOS nicht mehr startet.
+The location is also fixed after **opening** — after that, `Save`
+writes back there instead of asking every time. Before, it asked
+without exception every single time, popping up a window on every
+other keystroke.
 
-Dazu `ldwa`/`stwa` und 512 Symbole. **Ergebnis:** das Geraet baut
-`minimal.asm` zu 3356 Byte -- **Byte fuer Byte dasselbe wie der Mac**, bis
-auf die acht Kopfbytes, die der Coder selbst stempelt.
+---
 
-**Neu im Coder:** *New -> BIOS* mit fertiger Vorlage, ein `?`-Knopf mit der
-Kurzfassung von [[16 Eigenes BIOS schreiben]] auf dem Geraet, und unten
-**Test** und **Flash**.
+## The TB-32 Now Builds Its Own Firmware
 
-**Der Einmal-Start** ist der Kern. Das Abbild liegt im Board, nicht auf der
-Platte: der naechste Start nimmt es, der uebernaechste wieder den echten
-Chip. Im Startbild steht `TEST IMAGE -- runs once`. Ein Testabbild, das
-haengenbleibt, kostet damit einen Druck auf Strg+R und sonst nichts.
+Colin's wish: write a BIOS in the Coder, with a template and
+instructions, test it once with no risk, and only flash it permanently
+once it works — with a confirmation from the BIOS itself.
 
-**Beim dauerhaften Flashen fragt die Firmware selbst**, in Rot, vor dem
-Selbsttest. Der Coder kann ein Abbild nur anmelden -- ein Programm darf
-nicht allein entscheiden, dass der Chip ueberschrieben wird.
+**The blocker sat deeper than expected.** `ASM.TBX` couldn't build a
+BIOS: no `.org`, no `.equ`, no `.include`, 256 symbols (const.inc alone
+has 158). On top of that, three things turned up while trying it out
+that nobody had anticipated:
 
-**Vier Fehler auf dem Weg, alle in [[07 Fallstricke]]:**
+- **Expressions were cut apart at spaces.** `next_token()` only
+  returned `IVT_BASE` from `IVT_BASE + IRQ_TIMER*4`; the rest fell away
+  silently and the interrupt table ended up full of zeros. Now
+  `next_arg()` fetches the whole argument up to the comma.
+- **Operator precedence was missing**, and so were parentheses —
+  `(SCR_H-1)*SCR_W*2/4` genuinely appears in video.asm.
+- **Local labels had no scope.** `.copy` was the same label everywhere;
+  the assembler translated it without complaint, and jumps landed in a
+  different function. Exactly the kind of bug that only surfaces once
+  a finished BIOS no longer boots.
 
-1. `#define NAME wert /* Kommentar */` nahm den Kommentar in den Wert. Wer
-   `NAME` in einem Kommentar erwaehnte, bekam ein `*/` hineingesetzt und der
-   Rest wurde als Quelltext gelesen. Behoben in `tools/tcc.py`.
-2. **Ich habe `programs/asm.c` selbst zerstoert** -- `s[:i] + neu + s[j:]`
-   mit `j == -1` schnitt die Datei von 646 auf 434 Zeilen. Kein Backup, kein
-   git. Der fehlende Teil wurde aus `tools/assembler.py` und `hardware/isa.py`
-   neu geschrieben; die Befehlstabelle war zum Glueck heil.
-3. 308 Byte Zeichenketten mitten im BIOS -- ohne `.align 4` lag jeder Befehl
-   danach schief, und der Rechner starb 15 Befehle nach dem Reset.
-4. Die C-Fassung des Emulators meldete auf die Frage "liegt ein Flashwunsch
-   an?" eine 2 statt 0 -- und zeigte beim Start die rote Rueckfrage, ohne
-   dass jemand etwas angemeldet hatte.
+Plus `ldwa`/`stwa` and 512 symbols. **Result:** the device builds
+`minimal.asm` to 3356 bytes — **byte for byte identical to the Mac's**,
+except for the eight header bytes the Coder stamps itself.
 
-**Nachtrag nach Colins Blick auf den fertigen Coder:** die BIOS-Vorlage war
-auf Deutsch (`einstieg`, `hochfahren`, `; BIOS-Daten leeren`) -- sie steht
-auf dem Bildschirm des TB-32 und gehoert damit auf Englisch. Uebersetzt,
-Marken inklusive. Beim Suchen sind noch sechs weitere deutsche Texte
-aufgefallen: `"Datei"` als Fenstertitel des Dateidialogs, `-- Taste
-druecken --` in lib.c und vier in Word (`Bild einfuegen`, `Bild loeschen`,
-`Als Text speichern`, `Seite`). Alle englisch.
+**New in the Coder:** *New → BIOS* with a ready-made template, a `?`
+button with the short version of [[16 Eigenes BIOS schreiben]] on the
+device, and **Test** and **Flash** at the bottom.
 
-**Die Knopfleiste richtet sich jetzt nach der Art des Quelltextes.** Erst
-hatte ich nur zwischen BIOS und Rest getrennt; Colin hat den schaerferen
-Schnitt gesehen: eine `.PY` wird gar nicht uebersetzt, die laeuft direkt.
-`Build` haette dort den **C-Compiler auf Python-Quelltext** losgelassen --
-dabei kann nichts als eine Fehlerliste herauskommen.
+**The one-time boot is the core of it.** The image lives in the board,
+not on disk: the next boot uses it, the one after that uses the real
+chip again. The boot screen shows `TEST IMAGE -- runs once`. A test
+image that hangs costs nothing more than a press of Ctrl+R.
+
+**When flashing permanently, the firmware asks for confirmation
+itself**, in red, before the self-test. The Coder can only register an
+image — a program must not be allowed to decide alone that the chip
+gets overwritten.
+
+**Four bugs along the way, all in [[07 Fallstricke]]:**
+
+1. `#define NAME value /* comment */` pulled the comment into the
+   value. Whoever mentioned `NAME` in a comment got a `*/` inserted
+   into it and the rest was read as source code. Fixed in
+   `tools/tcc.py`.
+2. **I destroyed `programs/asm.c` myself** — `s[:i] + new + s[j:]` with
+   `j == -1` cut the file from 646 down to 434 lines. No backup, no
+   git. The missing part was rewritten from `tools/assembler.py` and
+   `hardware/isa.py`; luckily the instruction table was intact.
+3. 308 bytes of strings in the middle of the BIOS — without `.align 4`
+   every instruction after them was misaligned, and the machine died
+   15 instructions after reset.
+4. The C version of the emulator answered the question "is a flash
+   request pending?" with a 2 instead of 0 — and showed the red
+   confirmation on boot even though nobody had registered anything.
+
+**Addendum after Colin looked at the finished Coder:** the BIOS
+template was in German (`einstieg`, `hochfahren`, `; clear BIOS data`)
+— it appears on the TB-32's screen and therefore belongs in English.
+Translated, labels included. While searching, six more German strings
+turned up: `"Datei"` as the file dialog's window title,
+`-- Taste druecken --` in lib.c, and four in Word (`Bild einfuegen`,
+`Bild loeschen`, `Als Text speichern`, `Seite`). All now in English.
+
+**The button bar now goes by the kind of source file.** At first I only
+split between BIOS and everything else; Colin spotted the sharper cut:
+a `.PY` isn't compiled at all, it just runs. `Build` would have set the
+**C compiler loose on Python source** there — nothing but an error list
+could come of that.
 
 | | Build | Run | Test | Flash |
 |---|---|---|---|---|
-| C / Assembler | ja | ja | -- | -- |
-| Python | **nein** | ja | -- | -- |
-| BIOS | nein | nein | ja | ja |
+| C / Assembly | yes | yes | -- | -- |
+| Python | **no** | yes | -- | -- |
+| BIOS | no | no | yes | yes |
 
-Die Firmware wird an der Kennung `TBBI` im Kopf erkannt, die ein BIOS
-ohnehin braucht -- so gibt es keine Betriebsart, die man vergessen kann
-umzuschalten. Die Knoepfe ruecken zusammen, wenn einer fehlt; Zeichnen und
-Klicken fragen dieselbe Funktion `cb_pos()`, damit die beiden nicht wieder
-auseinanderlaufen. Nachgerechnet passt die Leiste in allen drei Faellen:
-436, 382 und 454 von 588 Punkten.
+Firmware is recognized by the `TBBI` tag in the header, which a BIOS
+needs anyway — so there's no mode you could forget to switch. The
+buttons move together when one is missing; drawing and clicking both
+query the same function `cb_pos()`, so the two can't drift apart again.
+Recomputed, the bar fits in all three cases: 436, 382, and 454 of 588
+points.
 
-**Nachtraeglich bestaetigt:** der Suchlauf im Hintergrund hat doch noch
-Kopien von `asm.c` gefunden (in `~/Desktop/Projekte/PyPC Kopie` und im
-iCloud-Papierkorb). Der Vergleich mit dem Original zeigt: keine Funktion
-fehlt, nur `parse_mem` heisst jetzt `mem_operand`, und Kodierung wie
-Sprungrechnung sind verhaltensgleich. Zur Sicherheit wurde HELLO.ASM auf
-dem Geraet uebersetzt und gegen den Mac gehalten -- **171 Byte, Byte fuer
-Byte gleich.**
+**Confirmed afterward:** the background search did turn up copies of
+`asm.c` after all (in `~/Desktop/Projekte/PyPC Kopie` and in the iCloud
+trash). Comparing against the original shows: no function is missing,
+only `parse_mem` is now called `mem_operand`, and both encoding and
+jump computation behave identically. As a further check, HELLO.ASM was
+compiled on the device and compared against the Mac — **171 bytes,
+byte for byte identical.**
 
-Tests: **62/62** statt 55/55 -- neu sind Puffer aus dem RAM holen,
-Einmal-Start laeuft und der Chip bleibt unangetastet, der Start danach nimmt
-wieder das echte BIOS, die Firmware fragt in Rot nach, sie schreibt bis
-dahin nichts, und ENTER brennt. Dazu 11/11 Compilertests und beide
-Emulatoren wieder Befehl fuer Befehl gleich.
-
----
-
-## Ein BIOS, das die Ruecktaste nicht kennt -- und der deutsche Papierkorb
-
-**Colins Bild:** `A:\> fff` und dahinter drei graue Kaestchen. Jeder Druck
-auf die Loeschtaste legte eins dazu, die Buchstaben blieben stehen.
-
-**Erst nicht reproduzierbar, und das war der Hinweis.** Mit dem grossen BIOS
-loescht die Taste sauber -- durch `pc.py` genauso wie kopflos. Erst mit
-**seinem** BIOS im Chip kam der Fehler, und zwar auf Anhieb: drei Drucke,
-drei Kaestchen.
-
-**Ursache:** Colin hat seine Bildschirmroutinen selbst geschrieben statt
-`video.asm` einzubinden -- deshalb ist sein BIOS auch nur 3 KB statt 3,3.
-Sein `scr_putc` faengt genau ein Steuerzeichen ab, die 10. Die 8, die
-`readline` zum Loeschen schickt, lief in den normalen Zweig und landete als
-Zeichen im Bildspeicher. CP437 stellt die 8 als "◘" dar.
-
-**Das Tueckische:** der Puffer im Speicher war die ganze Zeit richtig. Nach
-den drei Ruecktasten und ENTER kam keine Fehlermeldung, sondern ein frischer
-Prompt -- die Shell hatte brav den leeren Befehl ausgefuehrt. **Nur der
-Bildschirm log.**
-
-**Und die Doku war schuld.** In [[16 Eigenes BIOS schreiben]] stand jede
-Funktionsnummer und jedes Register -- aber nirgends, dass `putc` 8, 9, 10
-und 13 abfangen muss. Colin konnte es nicht wissen. Steht jetzt als eigene
-Tabelle drin, und als Fallstrick in [[07 Fallstricke]].
-
-**Behoben in Colins `colinbios.asm`** (auf seine Bitte): Ruecktaste,
-Wagenruecklauf und Tabulator dazu. Dabei gleich das Namensfeld im Kopf
-nachgetragen -- im Startbild steht jetzt `ColinBIOS 0.2` statt
-`UNNAMED BIOS`. Nachgeprueft: drei Ruecktasten, drei Buchstaben weg.
-
-**Der Papierkorb heisst jetzt `\RECYCLED`.** Er hiess `\PAPIERKORB`, und das
-war der einzige deutsche Name, der auf dem Bildschirm des TB-32 stand --
-gegen die eigene Regel aus [[05 Konventionen]]. Windows 95 nannte seinen
-genauso. Der vorhandene Ordner auf Colins Platte wurde mitsamt Inhalt
-umbenannt, nicht neu angelegt.
+Tests: **62/62** instead of 55/55 — new ones are fetching buffers from
+RAM, the one-time boot running with the chip left untouched, the
+following boot using the real BIOS again, the firmware asking in red,
+writing nothing until then, and ENTER burning it. Plus 11/11 compiler
+tests and both emulators computing instruction for instruction
+identically again.
 
 ---
 
-## Das Startbild gehoert dem Board -- nur der Name kommt aus dem BIOS
+## A BIOS That Doesn't Know Backspace — and the German Recycle Bin
 
-Colin wollte einen festen Ablauf beim Einschalten, **bei jedem BIOS gleich**:
-Blau laeuft langsam von oben nach unten, in der Mitte erscheint der Name,
-darunter der Hinweis auf DEL, dann faehrt der Rechner hoch. Und der Name
-soll der sein, den *jedes BIOS fuer sich* festlegt.
+**Colin's screenshot:** `A:\> fff` with three gray boxes behind it.
+Every press of the delete key added another one, the letters stayed put.
 
-Genau so ist es jetzt -- und die Aufteilung ist der interessante Teil:
+**Not reproducible at first, and that was the clue.** With the large
+BIOS, the key deletes cleanly — through `pc.py` just as much as
+headless. Only with **his** BIOS in the chip did the bug appear, and
+right away: three presses, three boxes.
 
-| | wer macht es |
+**Cause:** Colin wrote his own screen routines instead of including
+`video.asm` — which is also why his BIOS is only 3 KB instead of 3.3.
+His `scr_putc` catches exactly one control character, 10. The 8 that
+`readline` sends for deletion fell into the normal branch and ended up
+as a character in the screen buffer. CP437 renders 8 as "◘".
+
+**The tricky part:** the buffer in memory was correct the whole time.
+After the three backspaces and ENTER, no error message came, just a
+fresh prompt — the shell had dutifully executed the empty command.
+**Only the screen was lying.**
+
+**And the docs were to blame.** [[16 Eigenes BIOS schreiben]] listed
+every function number and every register — but nowhere did it say that
+`putc` has to intercept 8, 9, 10, and 13. Colin couldn't have known.
+It's now written up as its own table, and as a trap in
+[[07 Fallstricke]].
+
+**Fixed in Colin's `colinbios.asm`** (at his request): backspace,
+carriage return, and tab added. The header's name field was filled in
+at the same time — the boot screen now shows `ColinBIOS 0.2` instead of
+`UNNAMED BIOS`. Verified: three backspaces, three letters gone.
+
+**The recycle bin is now called `\RECYCLED`.** It used to be
+`\PAPIERKORB`, and that was the one German name that showed up on the
+TB-32's screen — against the project's own rule from
+[[05 Konventionen]]. Windows 95 called its own the same thing. The
+existing folder on Colin's disk was renamed along with its contents,
+not recreated.
+
+---
+
+## The Boot Screen Belongs to the Board — Only the Name Comes From the BIOS
+
+Colin wanted a fixed sequence at power-on, **the same for every BIOS**:
+blue slowly runs from top to bottom, the name appears in the center,
+below it the hint about DEL, then the machine boots. And the name
+should be whatever *each individual BIOS* sets.
+
+That's exactly how it is now — and the split is the interesting part:
+
+| | who does it |
 |---|---|
-| Blau von oben nach unten, Bildmitte, DEL-Zeile, die fuenf Sekunden | **das Mainboard** (`pc.py`) |
-| der Name in der Mitte | **das BIOS**, im Kopf seines Abbildes |
+| Blue top to bottom, screen center, DEL line, the five seconds | **the mainboard** (`pc.py`) |
+| the name in the center | **the BIOS**, in its image's header |
 
-**Der Kopf ist von 16 auf 48 Byte gewachsen.** Auf 0x10 stehen jetzt 32 Byte
-Name, mit Nullbyte abgeschlossen; der Code faengt bei 0x30 an. Das Board
-liest ihn, bevor die CPU ueberhaupt Strom hat (`Machine.rom_name`). Fehlt
-das Feld -- so wie in Colins bisherigem ColinBIOS -- zeigt das Board
-`UNNAMED BIOS` statt zu raten. Geprueft wird streng: druckbar, mit Nullbyte
-beendet, danach nur noch Nullbytes.
+**The header has grown from 16 to 48 bytes.** At 0x10 there are now 32
+bytes of name, terminated with a null byte; the code starts at 0x30.
+The board reads it before the CPU even has power (`Machine.rom_name`).
+If the field is missing — as in Colin's ColinBIOS at the time — the
+board shows `UNNAMED BIOS` instead of guessing. Checked strictly:
+printable, ends with a null byte, only null bytes after that.
 
-**Warum das Bild nicht in die Firmware gehoert:** ein Startbild im BIOS ist
-genau dann weg, wenn jemand sein eigenes flasht -- und dann gibt es auch
-keine Stelle mehr, an der man DEL druecken koennte. Im Board kann es kein
-BIOS verlieren.
+**Why the picture doesn't belong in the firmware:** a boot screen in the
+BIOS is gone exactly when someone flashes their own — and then there's
+also no place left to press DEL. In the board, no BIOS can lose it.
 
-Der Ablauf, nachgemessen im echten `pc.py`:
+The sequence, measured in real `pc.py`:
 
-| Zeit | Bild |
+| Time | Picture |
 |---|---|
-| 0,4 s | 7 von 25 Zeilen blau |
-| 0,9 s | 18 Zeilen |
-| 1,7 s | voll blau, in der Mitte `TOOBAD BIOS v1` |
-| 2,4 s | darunter `Press DEL to enter SETUP` |
-| 5,0 s | Strom aufs Board |
+| 0.4 s | 7 of 25 lines blue |
+| 0.9 s | 18 lines |
+| 1.7 s | fully blue, `TOOBAD BIOS v1` in the center |
+| 2.4 s | `Press DEL to enter SETUP` below it |
+| 5.0 s | power reaches the board |
 
-Mit Colins BIOS steht an derselben Stelle `UNNAMED BIOS` -- alles andere
-identisch. Genau das war der Wunsch.
+With Colin's BIOS, `UNNAMED BIOS` shows in the same place — everything
+else identical. That was exactly the wish.
 
-**Die Hinweiszeilen unten links sind weg**, wie gewuenscht. Ausgeschaltet
-heisst jetzt wirklich nur schwarz.
+**The hint lines in the bottom left are gone**, as requested. Powered
+off now really just means black.
 
-**Was weiterhin nicht geht, und zwar grundsaetzlich:** Das Board kann Zeit
-verschaffen, aber kein Menue herbeizaubern. Was beim DEL passiert,
-entscheidet die Firmware. Colins BIOS hat kein Setup, also tut das DEL dort
-nichts -- nachgeprueft. Dafuer braucht es ein Setup im BIOS selbst.
-
----
-
-## Die Bedenkzeit gehoert ins Gehaeuse, nicht in die Firmware
-
-Colin wollte fuenf Sekunden Bedenkzeit **bei jedem BIOS**, und zwar in
-Python hinterlegt. Der Grund dahinter ist gut: eine Bedenkzeit, die in der
-Firmware steht, ist genau dann weg, wenn man ein eigenes BIOS flasht -- und
-dann kommt man nicht mehr ins Setup. Sein ColinBIOS sprang sofort in den
-Bootsektor, und er landete ohne Zwischenstopp in der Konsole.
-
-**Jetzt haelt das Gehaeuse den Rechner fuenf Sekunden an**
-(`EINSCHALT_HALT_S` in `pc.py`), bevor ueberhaupt Strom auf das Board kommt.
-Kein BIOS kann das ueberspringen, auch nicht aus Versehen. Das gilt fuer den
-Programmstart genauso wie fuer den `ü`-Knopf.
-
-**Tasten aus der Bedenkzeit gehen nicht verloren.** Sie werden aufgehoben
-und dem Rechner gereicht, sobald die CPU laeuft. Erst dann -- ein
-Tastatur-Interrupt bei stehender CPU verpufft, die Taste laege im Baustein
-und niemand holte sie ab.
-
-Nachgeprueft mit beiden BIOSen im echten `pc.py`: nach 1 s und nach 4 s
-noch aus, nach 6 s laeuft er. Mit dem grossen BIOS oeffnet ein DEL aus der
-Bedenkzeit **das Setup**. Mit ColinBIOS passiert nichts -- richtig so, denn
-dort gibt es keins. Eine Bedenkzeit kann Zeit verschaffen, aber kein Menue
-herbeizaubern.
+**What still doesn't work, and fundamentally so:** the board can buy
+time, but not conjure up a menu. What happens on DEL is up to the
+firmware. Colin's BIOS has no setup, so DEL does nothing there —
+verified. For that, a setup within the BIOS itself is needed.
 
 ---
 
-## Ausschalten heisst jetzt aus, und Hochfahren dauert
+## The Grace Period Belongs in the Housing, Not the Firmware
 
-**Zwei Wuensche von Colin, beide vom selben Gedanken:** der Rechner soll
-sich anfuehlen wie einer.
+Colin wanted a five-second grace period **for every BIOS**, stored in
+Python. The reasoning behind it is sound: a grace period living in the
+firmware is gone exactly when you flash a custom BIOS — and then you
+can no longer get into setup. His ColinBIOS jumped straight into the
+boot sector, and he landed in the console with no stopover.
 
-**Der Bildschirm wird beim Ausschalten schwarz.** Vorher blieb das letzte
-Bild stehen und darueber lag ein roter Balken "Rechner ausgeschaltet". Das
-war praktisch, aber falsch -- ein Monitor an einem ausgeschalteten Rechner
-zeigt nichts. Jetzt ist er wirklich schwarz, unten steht nur klein
-`aus -- ü = einschalten`.
+**Now the housing halts the machine for five seconds**
+(`EINSCHALT_HALT_S` in `pc.py`) before any power even reaches the
+board. No BIOS can skip this, not even by accident. This applies to
+program startup the same way as to the `ü` button.
 
-**Das `ü` ist der Einschaltknopf.** Es wirkt nur, wenn der Rechner aus ist,
-und **nicht sofort**: erst bleibt es 1,1 Sekunden dunkel, so wie bei einem
-echten Geraet zwischen Knopfdruck und erstem Bild. Waehrend dieser Sekunde
-steht auch der Hinweis nicht da -- der Schirm ist einfach schwarz.
+**Keys pressed during the grace period aren't lost.** They're buffered
+and handed to the machine as soon as the CPU runs. Only then — a
+keyboard interrupt fizzles out while the CPU is stopped; the key would
+sit in the chip and nobody would pick it up.
 
-**Der Selbsttest laesst sich Zeit.** Das war der eigentliche Punkt: der
-ganze POST war nach **16 Millisekunden** fertig. Alle sechs Zeilen standen
-schon im ersten Bild -- vom Hochfahren sah man schlicht nichts. Jetzt:
+Verified with both BIOSes in real `pc.py`: still off after 1 s and
+after 4 s, running after 6 s. With the large BIOS, a DEL during the
+grace period opens **setup**. With ColinBIOS, nothing happens — as it
+should, since there is none there. A grace period can buy time, but not
+conjure up a menu.
 
-| | vorher | nachher |
+---
+
+## Powering Off Now Really Means Off, and Booting Up Takes Time
+
+**Two wishes from Colin, both from the same idea:** the machine should
+feel like a real one.
+
+**The screen turns black on power-off.** Previously the last picture
+stayed up with a red bar reading "machine powered off" on top. That was
+practical, but wrong — a monitor on a powered-off machine shows
+nothing. Now it's really black, with only a small
+`off -- ü = power on` at the bottom.
+
+**`ü` is the power button.** It only works while the machine is off,
+and **not instantly**: it stays dark for 1.1 seconds first, the way a
+real device sits between button press and first picture. During that
+second, the hint doesn't show either — the screen is simply black.
+
+**The self-test takes its time.** That was the actual point: the whole
+POST used to finish in **16 milliseconds**. All six lines were already
+on the first frame — you saw nothing of the boot process at all. Now:
+
+| | before | after |
 |---|---|---|
-| POST komplett | 0,02 s | 1,5 s |
-| bis zur Eingabeaufforderung | 2,3 s | 3,95 s |
-| mit Quick Boot | | 0,58 s |
+| POST complete | 0.02 s | 1.5 s |
+| until prompt | 2.3 s | 3.95 s |
+| with Quick Boot | | 0.58 s |
 
-Der Speichertest **zaehlt sichtbar hoch** -- 512 KB alle 15 Millisekunden,
-von 512 bis 16384 -- und zwischen den Pruefungen liegt je eine Fuenftel-
-sekunde (`post_pause` in `firmware/bios.asm`).
+The memory test now **visibly counts up** — 512 KB every 15
+milliseconds, from 512 to 16384 — and there's a fifth of a second
+between checks (`post_pause` in `firmware/bios.asm`).
 
-**Abschaltbar, und zwar ueber die Einstellung, die es dafuer schon gab.**
-Bei eingeschaltetem *Quick Boot* entfaellt jede Pause. Genau dafuer ist der
-Schalter da, und genau so macht es jedes echte BIOS.
+**Turn-off-able, via the setting that already existed for it.** With
+*Quick Boot* enabled, every pause is skipped. That's exactly what the
+switch is for, and exactly how every real BIOS does it.
 
-**Fast in eine dokumentierte Falle getreten.** Die `ü`-Abfrage stand
-zuerst bei den Tastendruecken (`KEYDOWN`, `event.unicode`) -- und keine
-zwanzig Zeilen darueber steht in `pc.py` der Kommentar, dass `unicode` dort
-je nach Layout leer ist oder noch das Zeichen des vorigen Anschlags traegt.
-Umlaute kommen nur ueber das Text-Ereignis zuverlaessig an. Jetzt steht sie
-bei `TEXTINPUT`, wo sie hingehoert.
+**Nearly stepped into a documented trap.** The `ü` check first sat with
+the key-press events (`KEYDOWN`, `event.unicode`) — and not twenty
+lines above that, `pc.py` has a comment saying `unicode` is empty
+there depending on layout, or still carries the previous keystroke's
+character. Umlauts only arrive reliably via the text-input event. Now
+it sits at `TEXTINPUT`, where it belongs.
 
-**Nachgeprueft mit gefaelschten Ereignissen im echten `pc.py`:** laeuft nach
-dem Start, ist nach `power_off` aus, bleibt waehrend des Kaltstarts dunkel,
-laeuft nach dem `ü` wieder, und bootet erneut bis zur Eingabeaufforderung.
-Fuenf von fuenf.
+**Verified with faked events in real `pc.py`:** runs after startup, is
+off after `power_off`, stays dark during cold start, runs again after
+`ü`, and boots again up to the prompt. Five for five.
 
-Die Wartezeiten im Selbsttest mussten mit -- er prueft den POST nach 2,0 s
-statt 1,2 s und den Bootvorgang nach 3,0 s statt 2,5 s. Danach wieder
-**55/55**, und beide Emulatoren rechnen weiterhin Befehl fuer Befehl gleich.
+The self-test's wait times had to move with it — it now checks POST
+after 2.0 s instead of 1.2 s and the boot process after 3.0 s instead
+of 2.5 s. Back to **55/55** afterward, and both emulators still compute
+instruction for instruction identically.
 
 ---
 
-## Das BIOS ist austauschbar geworden
+## The BIOS Has Become Replaceable
 
-**Die Frage davor:** Colin hatte `\SYSTEM\BIOS.BIN` geloescht und wollte
-wissen, warum nichts passiert. Antwort: weil das BIOS auf einem Chip liegt
-und nicht auf der Platte -- die Datei ist eine sichtbare Kopie. So ist es
-auch bei einem echten PC, und so soll es bleiben.
+**The question that started it:** Colin had deleted `\SYSTEM\BIOS.BIN`
+and wanted to know why nothing happened. Answer: because the BIOS lives
+on a chip, not on the disk — the file is just a visible copy. That's
+how it is on a real PC too, and it should stay that way.
 
-Aber es gibt einen Weg, ein BIOS wirklich zu zerstoeren: **flashen**. Colins
-Vorschlag war, es genau so zu machen -- im Setup eine Datei vom echten Mac
-aussuchen. Das ist die richtige Variante, und zwar aus einem Grund, der
-nicht offensichtlich ist: der Chip ist Hardware. Eine Datei vom Wirt
-hereinzureichen heisst "ein anderer Chip kommt aufs Board" -- das darf der
-Emulator, weil er das Mainboard ist. Ein Programm *im* TB-32, das den Chip
-beschreibt, aus dem es gerade selbst seine Befehle holt, waere die schlechte
-Variante.
+But there is a way to actually destroy a BIOS: **flashing**. Colin's
+suggestion was to do exactly that — pick a file from the real Mac in
+setup. That's the right approach, and for a reason that isn't obvious:
+the chip is hardware. Handing in a file from the host means "a
+different chip goes on the board" — the emulator is allowed to do that,
+because it *is* the mainboard. A program *inside* the TB-32 writing to
+the chip it's currently fetching its own instructions from would be the
+bad approach.
 
-**Neu -- Setup, Reiter "Firmware".** Zeigt Groesse und Pruefsumme des Chips,
-der gerade laeuft, und hat zwei Knoepfe: *Flash BIOS from File* und *Restore
-Backup BIOS*. Der erste oeffnet den Dateidialog von macOS
+**New — Setup, "Firmware" tab.** Shows the size and checksum of the
+chip currently running, and has two buttons: *Flash BIOS from File* and
+*Restore Backup BIOS*. The first opens macOS's file dialog
 (`osascript`, in `pc.py`).
 
-**Neu -- der Chip als Geraet** (`Flash` in `hardware/devices.py`, Ports
-0xB0-0xB2). Absichtlich dumm: er prueft **nichts** und nimmt jedes Byte, wie
-ein echter Flash-Baustein. Was taugt und was nicht, entscheidet die
-Firmware.
+**New — the chip as a device** (`Flash` in `hardware/devices.py`, ports
+0xB0-0xB2). Deliberately dumb: it checks **nothing** and accepts every
+byte, like a real flash chip. What's valid and what isn't is decided by
+the firmware.
 
-**Neu -- ein Kopf im Abbild.** Die ersten 16 Byte: Sprung, Kennung `TBBI`,
-Laenge, Pruefsumme. `build.py` traegt die letzten beiden ein (`bios_kopf_stempeln`).
+**New — a header in the image.** The first 16 bytes: jump, `TBBI` tag,
+length, checksum. `build.py` fills in the last two
+(`bios_kopf_stempeln`).
 
-**Drei Netze, an drei verschiedenen Zeitpunkten:**
+**Three safety nets, at three different points in time:**
 
-1. Beim Flashen prueft die Firmware Kennung und Pruefsumme und schreibt
-   sonst gar nicht erst (`bios_pruefen` in `firmware/setup.asm`).
-2. Beim Einschalten prueft das **Mainboard** nach und spielt sonst von
-   selbst die Sicherung zurueck (`Machine.rom_pruefen`). Das ist Dual BIOS,
-   und es sitzt bewusst dort: **eine kaputte Firmware kann sich nicht selbst
-   pruefen.**
-3. Was formal gueltig ist und trotzdem haengt, holt *Restore Backup BIOS*
-   oder `python3 build.py` zurueck.
+1. When flashing, the firmware checks the tag and checksum and doesn't
+   write at all otherwise (`bios_pruefen` in `firmware/setup.asm`).
+2. At power-on, the **mainboard** rechecks and otherwise restores the
+   backup automatically (`Machine.rom_pruefen`). This is Dual BIOS, and
+   it deliberately sits there: **broken firmware can't check itself.**
+3. Anything that's formally valid and still hangs is recovered via
+   *Restore Backup BIOS* or `python3 build.py`.
 
-**Neu -- `firmware/minimal.asm`.** Ein vollstaendiges BIOS in **3324 Byte**
-gegen 12216 beim vollen: kein Startbild, kein Setup, kein Secure Boot,
-kein Speichertest. Es startet den Rechner, und TOOBAD-OS laeuft darauf --
-nachgeprueft. Das ist die Vorlage zum Umbauen. Es geht so klein, weil das
-System fast alles selbst macht: Grafik, Blitter, Maus, Ton und Waerme laufen
-ueber `inr`/`outr` direkt an die Ports, ganz ohne BIOS.
+**New — `firmware/minimal.asm`.** A complete BIOS in **3324 bytes**
+versus 12216 for the full one: no boot screen, no setup, no Secure
+Boot, no memory test. It boots the machine, and TOOBAD-OS runs on it —
+verified. This is the template to rebuild from. It's this small because
+the system does almost everything itself: graphics, blitter, mouse,
+sound, and heat all go through `inr`/`outr` directly to the ports, with
+no BIOS at all.
 
-**Neu -- [[16 Eigenes BIOS schreiben]].** Der vollstaendige Vertrag: die 16
-Byte Kopf, die Interruptvektoren, alle vier Dienste mit jeder
-Funktionsnummer und jedem Register. Genau die Datei, nach der Colin gefragt
-hat.
+**New — [[16 Eigenes BIOS schreiben]].** The complete contract: the 16
+bytes of header, the interrupt vectors, all four services with every
+function number and every register. Exactly the file Colin had asked
+for.
 
-**Behoben -- ein Semikolon in einer Zeichenkette frass die halbe Zeile.**
-Der Assembler warf Kommentare mit `zeile.split(";")[0]` weg, ohne auf
-Anfuehrungszeichen zu achten. Aus
-`.db "A bad image is refused; keeps a backup", 0` wurde stillschweigend
-`.db "A bad image is refused` -- kein Nullbyte, keine Fehlermeldung, und die
-Ausgabe lief in die naechste Zeichenkette weiter. Auf dem Bildschirm sah das
-aus, als haette sich der Rechner eine Frage selbst gestellt. Behoben in
+**Fixed — a semicolon in a string ate half the line.** The assembler
+discarded comments with `zeile.split(";")[0]`, without paying attention
+to quotes. From `.db "A bad image is refused; keeps a backup", 0` it
+silently produced `.db "A bad image is refused` — no null byte, no
+error message, and the output ran into the next string. On screen it
+looked as if the machine had asked itself a question. Fixed in
 `tools/assembler.py` (`ohne_kommentar`).
 
-**Behoben -- `vid_puthex` ohne Stellenzahl in `r3`** druckte den Wert
-hunderte Male und fuellte den ganzen Bildschirm mit `5B03E1E0`. Sah aus wie
-eine Endlosschleife, war ein fehlendes Argument.
+**Fixed — `vid_puthex` without a digit count in `r3`** printed the
+value hundreds of times and filled the whole screen with `5B03E1E0`.
+Looked like an infinite loop, was a missing argument.
 
-**Getestet, nicht behauptet.** Sechs neue Pruefungen im Selbsttest, alle auf
-einer **Kopie** des Chips: beschaedigtes Abbild wird abgelehnt und der Chip
-bleibt unangetastet, gutes Abbild wird gebrannt, Sicherung wird angelegt,
-der Rechner startet mit dem selbst geflashten BIOS, und ein vernichteter
-Chip wird beim Einschalten automatisch aus der Sicherung ersetzt.
-**55/55** statt vorher 45/45.
+**Tested, not just claimed.** Six new checks in the self-test, all on a
+**copy** of the chip: a damaged image is rejected and the chip stays
+untouched, a good image gets burned, a backup is created, the machine
+boots with the self-flashed BIOS, and a destroyed chip gets
+automatically replaced from the backup at power-on. **55/55** instead
+of the previous 45/45.
 
-Die drei Ports stehen auch in `emu/` -- die C-Fassung kann keinen
-Dateidialog oeffnen und meldet immer "keine Datei", aber die Portnummern
-muessen dieselben sein. Beide Emulatoren rechnen weiterhin Befehl fuer
-Befehl gleich.
-
----
-
-## Der Bootsektor liest jetzt das Dateisystem
-
-**Die Frage, aus der das wurde:** Colin hatte alle Dateien geloescht, auch
-die in `\SYSTEM` -- und der Rechner startete weiter. Zu Recht misstrauisch:
-*"sollte er nach einem reboot nicht abstuerzen dann?"*
-
-**Warum er weiterlief.** Der Kernel lag auf festen Sektoren ab 1, ausserhalb
-des Dateisystems. Die Kernelgroesse stand im Bootsektor an Position 506, und
-mehr brauchte er nicht zu wissen. Die `KERNEL.BIN` in `\SYSTEM` war blosse
-Dekoration -- man konnte sie ansehen, kopieren, loeschen, es aenderte nichts.
-Ein Betriebssystem, dessen Systemdateien Attrappen sind.
-
-**Jetzt sucht der Bootsektor die Datei wirklich.** `system/boot.asm` liest
-das Verzeichnis (Sektor 513..520), sucht den Ordner `SYSTEM` im
-Hauptverzeichnis, darin `KERNEL.BIN`, nimmt Startsektor und Groesse aus dem
-Eintrag und laedt genau diese Sektoren. Feste Kernelsektoren gibt es nicht
-mehr; `build.py` schreibt nur noch Sektor 0.
-
-Nachgeprueft, beides:
-
-- `KERNEL.BIN` geloescht, Neustart → `\SYSTEM\KERNEL.BIN fehlt`, der Rechner
-  bleibt stehen. Genau wie ein echter Rechner ohne Betriebssystem.
-- `python3 build.py`, Neustart → startet wieder.
-
-**Das Kunststueck sind die 512 Byte.** Ein Verzeichnis durchsuchen, mit
-Namensvergleich und Ordnerpruefung, in einem einzigen Sektor: 483 Byte
-belegt, 29 frei. Moeglich ist es nur, weil TBFS Dateien **am Stueck** ablegt
--- Startsektor und Groesse genuegen, es gibt keine Blockketten zu verfolgen.
-Gespart wurde an zwei Stellen bewusst:
-
-- Die Namen werden als **drei 32-Bit-Woerter** verglichen statt Byte fuer
-  Byte. Zwei Woerter waeren zu wenig gewesen: `KERNEL.BIN` und `KERNEL.BAK`
-  sind in den ersten acht Zeichen gleich.
-- Der **Superblock wird nicht geprueft**. Die Magie haette sieben Befehle und
-  eine eigene Fehlermeldung gekostet, und ohne Dateisystem findet die
-  Namenssuche gleich darauf ohnehin nichts.
-
-**Secure Boot musste mitwandern.** Die Firmware rechnete ihre Pruefsumme
-ueber Bootsektor + feste Kernelsektoren. Waere das so geblieben, haette sie
-Bytes gemessen, die niemand mehr startet -- eine Pruefung, die nie anschlaegt
-und trotzdem nach Sicherheit aussieht. `secure_summe` in `firmware/setup.asm`
-sucht deshalb ueber `kernel_finden` **dieselbe Datei** wie der Bootsektor.
-Dass die Suche zweimal dasteht, ist unvermeidbar: der Bootsektor kann keine
-BIOS-Innereien aufrufen.
-
-Nachgeprueft mit drei Durchlaeufen: richtige Summe → startet durch; ein Byte
-der gemerkten Summe verdreht → rotes SECURE-BOOT-Bild; **ein Byte in der
-Kerneldatei verdreht → rotes Bild.** Der letzte Fall ist der eigentliche
-Zweck. Die erwartete Summe wurde unabhaengig in Python nachgerechnet und war
-Bit fuer Bit dieselbe (`0xF61B29C2`).
-
-**Wenn geloescht wird, wandert der Kernel in den Papierkorb** -- der
-Bootsektor findet ihn dort nicht, weil er den Elternordner mitprueft. Der
-Rechner startet also nicht mehr, die Bytes sind aber noch da.
-
-**Nachtrag -- die Meldungen waren deutsch.** Colin hat es auf dem Bild
-gesehen: `Bootsektor: lade Kernel ... \SYSTEM\KERNEL.BIN fehlt` mitten in
-einem sonst englischen Startbild. Jetzt `Boot sector: loading kernel ... OK`
-bzw. `... \SYSTEM\KERNEL.BIN missing`, passend zur Zeile `Booting from Hard
-Disk 0 ... OK` darueber. 488 Byte von 512.
-
-**Merke:** Kommentare und Doku auf Deutsch, alles was auf dem Bildschirm des
-TB-32 landet auf Englisch. Bei einem neu geschriebenen Programmstueck faellt
-das leicht durch.
-
-Tests danach: 45/45 Selbsttest, 11/11 Compilertests, Bootstrapping bestanden,
-C- und Python-Emulator Befehl fuer Befehl gleich.
+The three ports also exist in `emu/` — the C version can't open a file
+dialog and always reports "no file," but the port numbers have to be
+the same. Both emulators still compute instruction for instruction
+identically.
 
 ---
 
-## Dateiauswahl-Fenster, Papierkorb -- und zwei sichtbare Fehler
+## The Boot Sector Now Reads the File System
 
-**Neu -- ein Dateiauswahl-Fenster fuer alle** (`system/dialog.c`). Bis jetzt
-hatte jedes Programm ein Textfeld fuer den Dateinamen: man musste wissen,
-wie die Datei heisst und wo sie liegt. Das ist der Stand von 1981.
+**The question this grew out of:** Colin had deleted all files,
+including the ones in `\SYSTEM` — and the machine kept booting.
+Rightly suspicious: *"shouldn't it crash on a reboot then?"*
 
-Jetzt gibt es EIN Fenster, das Coder, Paint und Word benutzen. Es zeigt den
-Ordner, laesst hineinklicken, hat einen Up-Knopf, ein Namensfeld und
-OK/Cancel. Der Rueckweg laeuft ueber `dlg_ziel`: das Fenster merkt sich, wer
-gefragt hat, und ruft dort die passende Funktion auf -- kein Programm muss
-auf ein Ergebnis warten.
+**Why it kept running.** The kernel sat on fixed sectors starting at 1,
+outside the file system. The kernel size was stored in the boot sector
+at position 506, and that's all it needed to know. `KERNEL.BIN` in
+`\SYSTEM` was pure decoration — you could look at it, copy it, delete
+it, nothing changed. An operating system whose system files are
+dummies.
 
-**Mit Filter.** Paint sieht nur `.TBI`, Word nur `.TBW`, und *Bild einfuegen*
-in Word nur Bilder. Ordner werden immer gezeigt -- man muss ja hinnavigieren
-koennen.
+**Now the boot sector actually searches for the file.**
+`system/boot.asm` reads the directory (sectors 513..520), looks for the
+`SYSTEM` folder in the root directory, `KERNEL.BIN` inside it, takes the
+start sector and size from the entry, and loads exactly those sectors.
+Fixed kernel sectors no longer exist; `build.py` only writes sector 0.
 
-**Neu -- der Papierkorb.** `DEL` verschiebt ab jetzt nach `\PAPIERKORB`
-statt zu vernichten. Erst wer DORT loescht, loescht wirklich. Der Ordner
-entsteht beim ersten Bedarf. Das ist keine Bequemlichkeit: Colin hatte an
-einem Abend versehentlich die ganze Platte geleert, und eigene Quelltexte
-holt kein `build.py` zurueck.
+Verified, both cases:
 
-**Neu -- Bilder in Word loeschen.** Ein Bild ist ein ganzer Absatz; mit der
-Ruecktaste haette man Buchstaben seines Dateinamens abgeknabbert. Jetzt
-loescht Entf oder Ruecktaste bei angeklicktem Bild den ganzen Absatz,
-Dateiname und Umbruch inklusive.
+- `KERNEL.BIN` deleted, restart → `\SYSTEM\KERNEL.BIN missing`, the
+  machine halts. Just like a real machine with no operating system.
+- `python3 build.py`, restart → boots again.
 
-**Behoben -- die Uhr malte ueber andere Fenster.** Einmal je Sekunde zeichnete
-`app_clock()` ihren Inhalt direkt auf den Schirm, ohne die Fensterreihenfolge
-zu beachten. Die Uhrzeit stand dann mitten im Control Panel. Jetzt fordert
-sie ein normales Neuzeichnen an -- und der Schreibtisch kennt die
-Reihenfolge. Dasselbe galt fuer den System Monitor.
+**The trick is the 512 bytes.** Searching a directory, with name
+comparison and folder checking, in a single sector: 483 bytes used, 29
+free. Only possible because TBFS stores files **contiguously** — start
+sector and size are enough, there are no block chains to follow.
+Savings were made deliberately in two places:
 
-**Behoben -- nach dem Dialog kam keine Taste mehr an.** `win_top` zeigte auf
-das geschlossene Dialogfenster. Beim Schliessen bekommt jetzt das Programm
-den Fokus zurueck, das gefragt hat.
+- Names are compared as **three 32-bit words** instead of byte by
+  byte. Two words would have been too few: `KERNEL.BIN` and
+  `KERNEL.BAK` are identical in their first eight characters.
+- The **superblock isn't checked**. The sanity check would have cost
+  seven instructions and its own error message, and without a file
+  system the name search right after would find nothing anyway.
 
-**Umbenannt -- Paints "Pic" heisst jetzt "Get".** Es war nie fuer Bilder,
-sondern die Pipette: Farbe aus dem Bild aufnehmen und damit weitermalen.
-Der alte Name las sich wie "Picture".
+**Secure Boot had to move along with it.** The firmware computed its
+checksum over the boot sector plus the fixed kernel sectors. Had that
+stayed as it was, it would have been measuring bytes that nobody boots
+anymore — a check that never triggers and still looks like security.
+`secure_summe` in `firmware/setup.asm` therefore searches for **the
+same file** as the boot sector, via `kernel_finden`. That the search
+appears twice is unavoidable: the boot sector can't call into BIOS
+internals.
 
----
+Verified with three runs: correct checksum → boots through; one byte
+of the remembered checksum flipped → red SECURE-BOOT screen; **one byte
+in the kernel file flipped → red screen.** The last case is the actual
+point. The expected checksum was independently recomputed in Python and
+matched bit for bit (`0xF61B29C2`).
 
-## Word: Listen, Seiten und "Drucken" -- und drei Fehler nebenbei
+**When deleted, the kernel moves to the recycle bin** — the boot sector
+doesn't find it there, because it checks the parent folder too. So the
+machine no longer boots, but the bytes are still there.
 
-**Listen.** Aufzaehlung (gemaltes Kaestchen) und Nummerierung. Die Nummer
-zaehlt zurueck bis zum ersten Absatz ohne Nummer -- so faengt jede neue Liste
-wieder bei eins an. Ein neuer Absatz erbt die Liste des vorigen: man tippt
-eine Liste einfach durch. Der Umbruch rechnet die Einrueckung mit, die Marke
-steht nur an der **ersten** Zeile eines Absatzes.
+**Addendum — the messages were in German.** Colin saw it on screen:
+`Bootsektor: lade Kernel ... \SYSTEM\KERNEL.BIN fehlt` in the middle of
+an otherwise English boot screen. Now `Boot sector: loading kernel ...
+OK` and `... \SYSTEM\KERNEL.BIN missing`, matching the
+`Booting from Hard Disk 0 ... OK` line above it. 488 of 512 bytes.
 
-Technisch: ein **zweites Formbyte je Absatz** (`WD_ABS2` bei `0x00730400`).
-Im Dateiformat haengt es ganz hinten -- aeltere Dokumente haben dort nichts
-und werden einfach ohne Listen geladen, statt kaputtzugehen.
+**Rule of thumb:** comments and docs in German, everything that ends up
+on the TB-32's screen in English. It's easy to slip up with a freshly
+written piece of code.
 
-**Echte Seiten.** Der Umbruch teilt in einem zweiten Durchgang die Zeilen
-auf Seiten auf (`WD_SEITE_H` = 620 Punkte). Beim Malen erscheint an der
-Grenze eine Trennlinie mit der Seitenzahl. Die Umbruchliste hat dafuer eine
-vierte Spalte bekommen.
-
-**"Drucken".** Der Rechner hat keinen Drucker -- also gibt es die Datei.
-`Als Text speichern` im Rechtsklick-Menue schreibt reinen Text: Formen fallen
-weg, Listenmarken werden ausgeschrieben (`- ` und `1. `), Bilder erscheinen
-als `[Bild: NAME]`. Damit laesst sich ein Dokument mit `TYPE` anzeigen oder
-im Coder oeffnen.
-
-**Behoben -- Blaettern lief ins Leere.** PgDn schob den Anfang um eine feste
-Zahl Zeilen weiter und konnte hinter dem Text landen: leere Seite. Jetzt
-zaehlt es die **echten Zeilenhoehen** (eine Ueberschrift in Groesse 3 nimmt
-dreimal so viel Platz wie normaler Text, ein Bild noch mehr) und stoppt so,
-dass die letzte Zeile unten steht.
-
-**Behoben -- der Rechtsklick kam nie beim TB-32 an.** `pc.py` las die
-Maustasten mit `pygame.mouse.get_pressed()` statt aus dem Ereignis. Das
-liefert je nach Plattform beim Loslassen noch den alten Stand -- und die
-rechte Taste fiel ganz durch. Jetzt wird der Zustand aus den Ereignissen
-gefuehrt (`e.button`: 1 links, 2 Mitte, 3 rechts). Dazu gilt auf dem Mac
-**Ctrl+Klick als Rechtsklick**, weil das dort ohnehin ueblich ist und bei
-manchen Trackpads der einzige Weg.
-
-**Neu -- das System liegt jetzt sichtbar in `\SYSTEM`.** `KERNEL.BIN`,
-`BIOS.BIN` und `KERNEL.SYM` werden beim Bauen mit auf die Platte gelegt.
-Es sind dieselben Bytes wie in den reservierten Sektoren; gebootet wird
-weiterhin von dort, nicht aus diesen Dateien. Aber man kann sie jetzt
-sehen, mit `DUMP` ansehen und kopieren.
-
-**Nachgeprueft -- was passiert, wenn man alles loescht?** Colin hatte alle
-Dateien einschliesslich `\SYSTEM` geloescht, und der Rechner lief weiter.
-Versuch mit leerem Dateisystem: **er bootet auch nach einem Neustart** --
-der Kernel liegt in den Sektoren 1-318, das Dateisystem faengt erst bei
-Sektor 512 an. Loeschen kann ihn gar nicht erwischen. Weg sind nur die
-Dateien; `python3 build.py` holt das System zurueck, eigene Quelltexte
-nicht. Genau dafuer kommt als Naechstes der Papierkorb.
+Tests afterward: 45/45 self-test, 11/11 compiler tests, bootstrapping
+passed, C and Python emulator instruction for instruction identical.
 
 ---
 
-## Der Schreibtisch flackert nicht mehr -- und heisst jetzt Coder
+## File Selection Window, Recycle Bin — and Two Visible Bugs
 
-**Behoben -- alles flackerte.** Der Schreibtisch malte direkt in den
-*angezeigten* Bildspeicher. Jede halbfertige Zeichnung war sofort zu sehen:
-beim Fensterziehen, beim Menueoeffnen, am schlimmsten beim Malen in Paint.
+**New — a file selection window for everyone** (`system/dialog.c`).
+Until now, every program had a text field for the file name: you had
+to know exactly how the file was named and where it lived. That's the
+state of the art from 1981.
 
-Die Loesung lag schon in der Hardware -- die zweite Bildseite, die Flappy
-seit heute Mittag benutzt. Der Schreibtisch bekommt sie jetzt auch. Dafuer
-brauchte Port `0x53` eine zweite Betriebsart:
+Now there's ONE window that the Coder, Paint, and Word all use. It
+shows the folder, lets you click into it, has an Up button, a name
+field, and OK/Cancel. The return path runs through `dlg_ziel`: the
+window remembers who asked and calls the matching function there — no
+program has to wait around for a result.
 
-| Wert | Was |
+**With a filter.** Paint only sees `.TBI`, Word only `.TBW`, and
+*Insert Image* in Word only images. Folders are always shown — you
+have to be able to navigate into them.
+
+**New — the recycle bin.** `DEL` now moves to `\PAPIERKORB` instead of
+destroying. Only deleting THERE actually deletes. The folder is
+created on first use. This isn't a convenience feature: Colin had once
+wiped the entire disk by accident in one evening, and no `build.py`
+brings back your own source files.
+
+**New — deleting images in Word.** An image is a whole paragraph; with
+backspace you'd have been nibbling away at the characters of its file
+name. Now Delete or Backspace on a selected image deletes the whole
+paragraph, file name and line break included.
+
+**Fixed — the clock painted over other windows.** Once a second,
+`app_clock()` drew its content straight onto the screen, ignoring
+window order. The time then showed up in the middle of Control Panel.
+Now it requests a normal redraw — and the desktop knows the order. The
+same applied to the System Monitor.
+
+**Fixed — no key got through after the dialog.** `win_top` pointed at
+the closed dialog window. On close, the program that asked now gets
+the focus back.
+
+**Renamed — Paint's "Pic" is now called "Get."** It was never for
+images, it's the eyedropper: pick up a color from the image and keep
+painting with it. The old name read like "Picture."
+
+---
+
+## Word: Lists, Pages, and "Printing" — and Three Bugs Along the Way
+
+**Lists.** Bullets (a drawn box) and numbering. The number counts back
+to the first paragraph without one — so every new list starts at one
+again. A new paragraph inherits the previous one's list: you just type
+a list straight through. Wrapping accounts for the indentation, the
+marker only appears on the **first** line of a paragraph.
+
+Technically: a **second style byte per paragraph** (`WD_ABS2` at
+`0x00730400`). In the file format it's appended at the very end —
+older documents have nothing there and simply load without lists,
+instead of breaking.
+
+**Real pages.** The line-wrapping pass splits the lines across pages in
+a second run (`WD_SEITE_H` = 620 points). While drawing, a divider with
+the page number appears at the boundary. The wrap list gained a fourth
+column for this.
+
+**"Printing."** The machine has no printer — so there's the file
+instead. *Save as Text* in the right-click menu writes plain text:
+styles fall away, list markers are spelled out (`- ` and `1. `), images
+appear as `[Image: NAME]`. That lets a document be viewed with `TYPE`
+or opened in the Coder.
+
+**Fixed — scrolling ran into nothing.** PgDn moved the start forward by
+a fixed number of lines and could land past the end of the text: a
+blank page. Now it counts the **actual line heights** (a heading in
+size 3 takes up three times the space of normal text, an image even
+more) and stops so the last line sits at the bottom.
+
+**Fixed — the right click never reached the TB-32.** `pc.py` read the
+mouse buttons with `pygame.mouse.get_pressed()` instead of from the
+event. Depending on the platform, that still returns the old state on
+release — and the right button fell through entirely. Now the state is
+tracked from the events (`e.button`: 1 left, 2 middle, 3 right). On top
+of that, **Ctrl+click counts as a right-click** on the Mac, since
+that's the convention there anyway and the only option on some
+trackpads.
+
+**New — the system now visibly lives in `\SYSTEM`.** `KERNEL.BIN`,
+`BIOS.BIN`, and `KERNEL.SYM` are now placed on the disk while building.
+They're the same bytes as in the reserved sectors; booting still
+happens from there, not from these files. But now you can see them,
+view them with `DUMP`, and copy them.
+
+**Verified — what happens if you delete everything?** Colin had
+deleted all files including `\SYSTEM`, and the machine kept running.
+Tried it with an empty file system: **it still boots after a
+restart** — the kernel sits in sectors 1-318, the file system only
+starts at sector 512. Deleting can't touch it. Only the files are
+gone; `python3 build.py` restores the system, but not your own source
+files. That's exactly why the recycle bin comes next.
+
+---
+
+## The Desktop No Longer Flickers — and Is Now Called Coder
+
+**Fixed — everything flickered.** The desktop drew directly into the
+*displayed* screen buffer. Every half-finished drawing was immediately
+visible: while dragging a window, opening a menu, worst of all while
+painting in Paint.
+
+The fix was already there in the hardware — the second screen page
+that Flappy has used since this morning. The desktop now gets it too.
+For this, port `0x53` needed a second mode:
+
+| Value | What |
 |---|---|
-| 1 | Seiten **tauschen** -- schnell, aber die neue Rueckseite hat das vorletzte Bild. Fuer Spiele, die ohnehin alles neu malen. |
-| 2 | Rueckseite auf die Vorderseite **kopieren** -- die Rueckseite bleibt stehen. Genau das braucht der Schreibtisch, der meist nur EIN Fenster neu malt. |
+| 1 | **Swap** pages — fast, but the new back page has the second-to-last picture. For games that redraw everything anyway. |
+| 2 | **Copy** the back page onto the front page — the back page stays as it was. Exactly what the desktop needs, since it usually only redraws ONE window. |
 
-Eingebaut in **beide** Emulatoren (Python und C). Der Schreibtisch schaltet
-die zweite Seite beim Start ein, kopiert am Ende jeder Runde nach vorn und
-schaltet sie beim Verlassen wieder aus. Waehrend ein Vollbildprogramm laeuft,
-gehoert die Bildseite dem Programm -- danach holt sich der Schreibtisch sie
-zurueck.
+Built into **both** emulators (Python and C). The desktop switches on
+the second page at startup, copies it to the front at the end of every
+round, and switches it off again on exit. While a fullscreen program is
+running, the page belongs to the program — afterward the desktop takes
+it back.
 
-**Behoben -- Paint malte auf den Schreibtisch.** Die Vorschau eines grossen
-Kreises ragte ueber den Fensterrand hinaus. Die Figur selbst war korrekt
-beschnitten (`pt_tupfen` prueft die Grenzen), ihre **Vorschau** aber nicht --
-die ging direkt mit `g_frame` auf den Schirm. Jetzt gibt es
-`pt_rahmen_begrenzt()`, das an der Leinwandkante endet.
+**Fixed — Paint painted onto the desktop.** The preview of a large
+circle stuck out past the window edge. The shape itself was clipped
+correctly (`pt_tupfen` checks bounds), but its **preview** wasn't — that
+went straight to the screen with `g_frame`. Now there's
+`pt_rahmen_begrenzt()`, which stops at the canvas edge.
 
-**Beschleunigt -- Paint zeichnete beim Ziehen das ganze Fenster neu.**
-Werkzeugleiste, Knoepfe, Palette und Dateiname bei jeder Mausbewegung.
-Jetzt geht nur noch die Leinwand nach vorn -- ein einziger Blitterbefehl
+**Sped up — Paint redrew the whole window while dragging.** Toolbar,
+buttons, palette, and file name on every mouse move. Now only the
+canvas goes to the front — a single blitter command
 (`pt_leinwand_malen`).
 
-**Umbenannt -- aus "Editor" wird "Coder".** Colins Wunsch: der Coder ist
-zum Programmieren da, Texte und Notizen schreibt man in Word. Der Punkt
-"Notes / text .MD" ist aus dem Startbildschirm verschwunden, es bleiben
-C, Assembler und Python. Bestehende Dateien lassen sich weiterhin oeffnen --
-man will beim Programmieren ja auch mal in eine README schauen.
+**Renamed — "Editor" becomes "Coder."** Colin's wish: the Coder is for
+programming, texts and notes are written in Word. The "Notes / text
+.MD" entry has disappeared from the start screen, leaving C, Assembly,
+and Python. Existing files can still be opened — you'll want to peek
+at a README while programming sometimes too.
 
-**Geprueft:** 45/45, 11/11, Emulator-Vergleich (Bildschirm Zeichen fuer
-Zeichen gleich).
+**Verified:** 45/45, 11/11, emulator comparison (screen identical
+character for character).
 
 ---
 
-## Der Emulator in C -- Schritt 1 auf dem Weg zum Pi
+## The Emulator in C — Step 1 on the Path to the Pi
 
-`emu/` neben `hardware/`: derselbe Rechner, nur nicht mehr in Python.
-`emu/cpu.c` (alle 57 Befehle), `emu/machine.c` (Bus, Grafikkarte mit
-Blitter, Platte, Tastatur, Timer, CMOS, Blockkopierer, Waerme),
-`emu/main.c` (kopfloser Start zum Vergleichen).
+`emu/` alongside `hardware/`: the same machine, just no longer in
+Python. `emu/cpu.c` (all 57 instructions), `emu/machine.c` (bus,
+graphics card with blitter, disk, keyboard, timer, CMOS, block copier,
+heat), `emu/main.c` (headless startup for comparison).
 
-**TOOBAD-OS hat sich dabei um kein Byte geaendert.** Der TB-32 bleibt der
-Prozessor -- getauscht wird nur, was die Chips nachbaut. Genau das ist der
-Unterschied zu einer Portierung auf ARM, bei der der TB-32 verschwaenden
-wuerde.
+**TOOBAD-OS didn't change by a single byte in the process.** The TB-32
+stays the processor — only what emulates the chips gets swapped out.
+That's exactly the difference from a port to ARM, where the TB-32 would
+disappear.
 
-**Tempo:** 1,8 -> **287 Millionen Befehle je Sekunde**, Faktor **160**.
+**Speed:** 1.8 → **287 million instructions per second**, a factor of
+**160**.
 
-**Neuer Test: `tools/emu_vergleich.py`.** Zwei Emulatoren desselben Rechners
-sind nur etwas wert, wenn sie genau dasselbe rechnen. Der Test laesst beide
-Fassungen einzelne Befehle ausfuehren und vergleicht nach jedem
-Programmzaehler und Flags; danach den ganzen Bootvorgang Zeichen fuer
-Zeichen. Er hat sich sofort bezahlt gemacht -- drei Portierungsfehler, alle
-in Sekunden gefunden:
+**New test: `tools/emu_vergleich.py`.** Two emulators of the same
+machine are only worth something if they compute exactly the same
+thing. The test has both versions execute individual instructions and
+compares the program counter and flags after each one; afterward it
+checks the entire boot process character for character. It paid for
+itself immediately — three porting bugs, all found within seconds:
 
-| Fehler | gefunden bei |
+| Bug | found at |
 |---|---|
-| `cmp`/`cmpi`/`tst`/`tsti` vergleichen **rd**, nicht ra | Schritt 13 |
-| `jmpr`/`callr` springen ueber **rd**, nicht ra | beim Sprung in den Bootsektor |
-| `IRQ_TIMER` ist **0x08**, nicht 0 | "Division durch null" beim Booten |
+| `cmp`/`cmpi`/`tst`/`tsti` compare **rd**, not ra | step 13 |
+| `jmpr`/`callr` jump via **rd**, not ra | on the jump into the boot sector |
+| `IRQ_TIMER` is **0x08**, not 0 | "division by zero" while booting |
 
-Der letzte ist der lehrreichste: die IRQ-Nummern in `isa.py` **sind bereits
-die Interrupt-Vektoren**. Wer dort 0/1/2 einsetzt, laesst den Timer auf
-Vektor 0 springen -- und der heisst "Division durch null". Das BIOS hat
-brav genau das gemeldet.
+The last one is the most instructive: the IRQ numbers in `isa.py`
+**are already the interrupt vectors**. Set 0/1/2 there, and the timer
+jumps to vector 0 — which is called "division by zero." The BIOS
+dutifully reported exactly that.
 
-**Stand:** Der C-Emulator bootet TOOBAD-OS, der Bildschirm ist Zeichen fuer
-Zeichen gleich, `dir` laeuft. Noch kein Fenster -- das kommt mit SDL im
-naechsten Schritt, zusammen mit dem Pi.
-
----
-
-## Word: Zwischenablage -- und dieselbe wie ueberall sonst
-
-Kopieren, Ausschneiden, Einfuegen mit Strg+C/X/V oder ueber das
-Rechtsklick-Menue. Word benutzt **dieselbe Ablage wie der Editor**
-(`CLIP_BUF` bei `0x130000`) -- Text wandert also zwischen beiden Programmen.
-Und weil `pc.py` die Mac-Zwischenablage dorthin spiegelt, auch zwischen dem
-TB-32 und dem Mac.
-
-Die **Farben** kommen in eine eigene kleine Ablage daneben (`0x00760000`).
-Bleibt die Laenge gleich, faerbt sich der eingefuegte Text wieder wie vorher
--- ein Kopieren innerhalb von Word behaelt also die Farbe, ein Einfuegen vom
-Mac kommt schwarz herein. Genau das erwartet man auch.
-
-**Geprueft:** "ABC " markiert, Strg+C, zweimal Strg+V -> "ABC ABC ABC ".
+**Status:** the C emulator boots TOOBAD-OS, the screen matches
+character for character, `dir` works. No window yet — that comes with
+SDL in the next step, together with the Pi.
 
 ---
 
-## Word kann jetzt markieren, faerben und Bilder einbauen
+## Word: Clipboard — and the Same One as Everywhere Else
 
-Colins Wunsch: Text markieren, Rechtsklick, faerben -- und Paint-Bilder
-einfuegen und in der Groesse aendern. Alles vier drin.
+Copy, Cut, Paste with Ctrl+C/X/V or via the right-click menu. Word uses
+**the same clipboard as the editor** (`CLIP_BUF` at `0x130000`) — text
+therefore moves between both programs. And since `pc.py` mirrors it to
+the Mac clipboard, also between the TB-32 and the Mac.
 
-**Markieren** mit der Maus: aus der Mausposition wird erst die
-Bildschirmzeile gesucht, dann ueber die Schriftgroesse die Spalte. Die
-Markierung wird invers gemalt, Tippen ersetzt sie, Ruecktaste loescht sie.
+The **colors** go into a small separate store next to it
+(`0x00760000`). As long as the length stays the same, pasted text keeps
+its original color — so copying within Word keeps its color, while
+pasting from the Mac comes in black. That's exactly what you'd expect.
 
-**Rechtsklick.** Die Maus liefert Bit 0 links, Bit 1 Mitte, **Bit 2 rechts**
--- der Schreibtisch hat das bisher weggeworfen und jeden Klick gleich
-behandelt. Jetzt merkt er sich in `gui_taste`, welche Taste es war. Word
-klappt darauf ein Menue auf: sechs Farben, Alles markieren, Markierung weg,
-Bild einfuegen.
-
-**Textfarben** waren die eigentliche Modelaenderung. Die Form sass **je
-Absatz** -- fuer eine eingefaerbte Markierung braucht es aber **ein Byte je
-Zeichen**. Also ein zweiter Puffer neben dem Text (`0x00728000`), der bei
-jedem Einfuegen und Loeschen mitwandert. Beim Malen wird die Zeile in
-gleichfarbige Abschnitte zerlegt -- dieselbe Technik wie im Coder.
-
-**Bilder als eigener Absatz.** Sein Text ist der Dateiname, sein Formbyte
-traegt die Marke `WF_BILD`, seine Groesse steht in zwei eigenen Feldern. Der
-Umbruch behandelt ihn wie eine sehr hohe Zeile, der Text laeuft darueber und
-darunter. Anklicken markiert das Bild, am Anfasser unten rechts zieht man
-die Groesse. Fehlt die Datei, steht das ehrlich im Rahmen statt eines
-Absturzes.
-
-**Neu in der Hardware -- Blitter-Kommando 7: Bild skaliert.** Kommando 4
-malt Bilder nur 1:1. Fuer freie Groessen rechnet die Karte jetzt nach dem
-Nachster-Nachbar-Verfahren: die Schrittweite steht als Bruch aus Quell- und
-Zielgroesse fest, ganz ohne Kommazahlen -- genau so skalieren Grafikkarten
-seit jeher. Quellgroesse im CHR-Register, Zielgroesse in W und H. Gemessen:
-**1,7 ms** fuer 320x240.
-
-**Geprueft:** Satz getippt, mit der Maus markiert, ueber das Rechtsklick-Menue
-rot gefaerbt, Bild eingefuegt (160x100 auf 200x130 skaliert), am Anfasser auf
-gut 300x200 gezogen -- Text laeuft weiter darum herum. 45/45, 11/11,
-Bootstrapping.
+**Verified:** "ABC " selected, Ctrl+C, Ctrl+V twice → "ABC ABC ABC ".
 
 ---
 
-## Word -- Textverarbeitung als Fenster im Schreibtisch
+## Word Can Now Select, Color, and Embed Images
 
-Start -> Word. `system/word.c`.
+Colin's wish: select text, right-click, color it — and insert Paint
+images and resize them. All four are in.
 
-**Der Unterschied zum Editor ist das Modell, nicht die Bedienung.** Der
-Editor kennt Zeilen, so wie sie in der Datei stehen. Eine Textverarbeitung
-kennt **Absaetze** -- wo eine Zeile umbricht, entscheidet die Seitenbreite,
-nicht die Eingabetaste. Deshalb liegen hier zwei Ebenen uebereinander:
+**Selecting** with the mouse: the mouse position is first turned into
+the screen line, then the column via the font size. The selection is
+drawn inverted, typing replaces it, backspace deletes it.
 
-* der Text als durchgehender Puffer, Absaetze durch Zeilenumbruch getrennt
-* je Absatz ein **Formbyte**: Groesse (1-3), fett, unterstrichen, Ausrichtung
+**Right-click.** The mouse reports bit 0 left, bit 1 middle, **bit 2
+right** — the desktop used to discard this and treated every click the
+same. Now it remembers in `gui_taste` which button it was. Word opens
+a menu on it: six colors, Select All, Clear Selection, Insert Image.
 
-Daraus wird bei jeder Aenderung ein **Umbruch** gerechnet -- eine Liste von
-Bildschirmzeilen mit Anfang, Laenge und Absatz. Gebrochen wird an
-Leerzeichen, nicht mitten im Wort.
+**Text colors** were the actual model change. The style used to sit
+**per paragraph** — but a colored selection needs **one byte per
+character**. So there's a second buffer next to the text
+(`0x00728000`), which moves along on every insert and delete. While
+drawing, the line is split into same-colored sections — the same
+technique as in the Coder.
 
-**Was geht:** drei Schriftgroessen (8, 16, 24 Punkte), fett, unterstrichen,
-links/mittig/rechts, Wortumbruch, Blaettern, Neu, Speichern und Oeffnen im
-eigenen Format **TBW** (Laenge, Anzahl Absaetze, Formbytes, Text).
+**Images as their own paragraph.** Its text is the file name, its
+style byte carries the `WF_BILD` flag, its size sits in two of its own
+fields. Wrapping treats it like a very tall line, with text running
+above and below it. Clicking selects the image, dragging the handle at
+the bottom right resizes it. If the file is missing, that's shown
+honestly in the frame instead of crashing.
 
-**Wie fett gemacht wird:** derselbe Text noch einmal einen Punkt versetzt
-gemalt -- genau der Trick, mit dem Nadeldrucker frueher fett gedruckt haben.
-Einen zweiten, fetten Zeichensatz gibt es nicht.
+**New in the hardware — blitter command 7: scaled image.** Command 4
+only draws images 1:1. For arbitrary sizes the card now computes using
+nearest-neighbor: the step size is fixed as a fraction of source and
+target size, entirely without floating point — that's exactly how
+graphics cards have scaled forever. Source size in the CHR register,
+target size in W and H. Measured: **1.7 ms** for 320x240.
 
-**Ehrliche Grenze:** Der Zeichensatz hat **feste Breite** und laesst sich nur
-ganzzahlig vergroessern. Echte Proportionalschrift waere ein eigenes Projekt
--- dafuer braeuchte es einen selbst gezeichneten zweiten Zeichensatz mit
-Breitentabelle.
-
-**Erweitert:** Blitter-Kommando 6 (Zeichenkette) kann jetzt auch
-vergroessern -- eine Ueberschrift in 24 Punkt ist damit ein einziger
-Malbefehl.
-
-**Geprueft:** Ueberschrift in Groesse 3 zentriert, Absatz in Groesse 1 mit
-automatischem Umbruch, Zwischenueberschrift in Groesse 2 unterstrichen;
-Speichern, Leeren, Wiederladen -- alle Formate kommen zurueck. 45/45, 11/11,
-Bootstrapping.
-
----
-
-## Coder -- aus dem Editor wird ein Werkzeug fuer Programme
-
-Der Editor im Schreibtisch kann jetzt, was ein Code-Editor koennen muss:
-
-* **Zeilennummern** in einer eigenen Spalte links
-* **Syntaxfarben** fuer C, Assembler und Python: Schluesselwoerter blau,
-  Zeichenketten gruen, Kommentare grau, Zahlen magenta, Praeprozessor braun.
-  Die Sprache ergibt sich aus der Dateiendung.
-* **Suchen** (Knopf *Find*, Strg+F, weitersuchen mit F3 oder Eingabetaste),
-  ohne Gross-/Kleinschreibung, mit Umbruch am Dateiende
-* **Automatisches Einruecken**: die neue Zeile uebernimmt die Einrueckung der
-  vorigen, nach einer offenen geschweiften Klammer zwei Stellen mehr
-* **Sprung zur Fehlerzeile**: schlaegt das Uebersetzen fehl, springt der
-  Cursor auf die Zeile, die der Compiler gemeldet hat
-
-Quelltext: `system/coder.c`.
-
-**Neu in der Hardware -- Blitter-Kommando 6 "Zeichenkette".** Vorher schickte
-das Betriebssystem je Buchstabe einen eigenen Malbefehl; eine Editorseite
-sind 1600 Stueck. Jetzt holt sich der Blitter den Text selbst aus dem
-Speicher: Adresse im CHR-Register, Laenge im W-Register, Zeichensatz bleibt
-wo er ist. `g_text` im ganzen Schreibtisch geht darueber, der Editor malt
-je Zeile nur noch die **Farbabschnitte**.
-
-**Wie die Faerbung schnell blieb.** Der erste Versuch kostete je Tastendruck
-**476.000 Befehle** -- eine Sechstelsekunde, das Tippen fuehlte sich tot an.
-Drei Sachen:
-
-1. Farben haengen nur am Text und am Sichtbereich, nicht am Cursor. Der
-   Farbpuffer wird deshalb nur neu gebaut, wenn sich einer von beiden
-   aendert -- Pfeiltasten, Mausbewegungen und Klicks kosten gar nichts mehr.
-2. Die Schluesselwortsuche pruefte fuer *jedes* Wort die ganze Liste. Jetzt
-   entscheidet erst der Anfangsbuchstabe.
-3. Zeiger statt Funktionsaufruf je Bildpunkt, und Zeichenketten statt
-   Einzelbuchstaben ueber den Blitter.
-
-Ergebnis: **476.000 -> 190.000** Befehle je Neuzeichnen.
-
-**Zwei Fehler unterwegs:**
-
-* Ich habe wieder zu frueh gemessen. Das Fenster blieb leer, alle Zaehler
-  sahen falsch aus -- in Wahrheit war das Bild noch nicht fertig gemalt.
-  Derselbe Fehler wie beim Fuellwerkzeug in Paint, zwei Stunden spaeter.
-  Steht in [[07 Fallstricke]].
-* Der Farbabschnitt wurde ueber `spalte - laenge` platziert. Bei Zeilen, die
-  breiter als das Fenster sind, zaehlt `spalte` aber weiter -- der letzte
-  Abschnitt landete dadurch immer weiter rechts, Zeile um Zeile. Jetzt wird
-  die Startspalte direkt gemerkt.
-
-**Geprueft:** CALC.C geoeffnet (Farben, Zeilennummern), Suche nach "rechne"
-findet die Stelle, Einruecken nach `{` setzt zwei Stellen, 45/45, 11/11,
-Bootstrapping.
+**Verified:** a sentence typed, selected with the mouse, colored red via
+the right-click menu, an image inserted (160x100 scaled to 200x130),
+dragged to about 300x200 via the handle — text keeps flowing around
+it. 45/45, 11/11, bootstrapping.
 
 ---
 
-## Paint -- das erste der drei neuen Programme
+## Word — Word Processing as a Window on the Desktop
 
-Ein Zeichenprogramm als **Fenster im Schreibtisch** (Startmenue -> Paint).
-Werkzeuge: Stift, Radierer, Linie, Rechteck, gefuelltes Rechteck, Kreis,
-Fuellen, Pipette. Dazu drei Strichstaerken, 32 Farben, Neu, Rueckgaengig,
-Speichern und Oeffnen im eigenen Format **TBI** (Breite, Hoehe, dann ein Byte
-je Punkt). Quelltext: `system/paint.c`.
+Start → Word. `system/word.c`.
 
-Die Leinwand liegt **nicht** im Bildspeicher, sondern im RAM bei `0x600008`.
-Ein Fenster kann verschoben oder ueberdeckt werden -- laege das Bild direkt
-auf dem Schirm, waere es danach kaputt. Auf den Schirm kommt es mit einem
-einzigen Blitterbefehl.
+**The difference from the editor is the model, not the interaction.**
+The editor knows lines, the way they sit in the file. A word processor
+knows **paragraphs** — where a line wraps is decided by the page width,
+not the Enter key. So there are two layers stacked here:
 
-**Neu in der Hardware -- Blockkopierer (DMA), Ports 0x56-0x5A.** Er schaufelt
-Speicher am Prozessor vorbei: 256 KB in 0,03 ms statt einer Drittelsekunde.
-Rueckgaengig und "Neu" laufen darueber. Dazu drei **Suchbefehle** ueber ganze
-Bloecke, das Gegenstueck zu den Zeichenkettenbefehlen echter Prozessoren.
-Einzelheiten in [[02 Speicherkarte und Ports]].
+* the text as a continuous buffer, paragraphs separated by line breaks
+* a **style byte** per paragraph: size (1-3), bold, underlined,
+  alignment
 
-**Beschleunigt -- Bild aus dem RAM (Blitter-Kommando 4).** Lief Punkt fuer
-Punkt durch Python: **9,5 ms** fuer 400x300, also die halbe Bildzeit. Jetzt
-zeilenweise, und nur Zeilen mit einem durchsichtigen Punkt werden einzeln
-behandelt: **0,06 ms**, 158-mal schneller.
+From this, a **line-wrap pass** is computed on every change — a list of
+screen lines with start, length, and paragraph. Breaks happen at
+spaces, not mid-word.
 
-**Der Schreibtisch kennt jetzt das Ziehen.** Bisher gab es nur den Klick.
-Ein Malprogramm braucht die ganze Bewegung und den Moment des Loslassens --
-Linie, Rechteck und Kreis werden waehrend des Ziehens nur auf den Schirm
-gemalt und erst beim Loslassen in die Leinwand uebernommen.
+**What works:** three font sizes (8, 16, 24 points), bold, underlined,
+left/center/right, word wrap, scrolling, New, Save, and Open in its own
+format **TBW** (length, paragraph count, style bytes, text).
 
-**Zwei eigene Patzer, aufgeschrieben damit sie nicht wiederkommen:**
+**How bold is done:** the same text drawn again, shifted one point over
+— exactly the trick dot-matrix printers used to use for bold. There's
+no separate bold font.
 
-* Der Blitter liest die Bildquelle aus **demselben Register wie den
-  Zeichensatz**. Ohne `sys_out(P_BLT_SRC, ...)` davor malte Paint den
-  Zeichensatz als Leinwand -- schwarz mit Rauschen. Und danach muss man es
-  zuruecksetzen, sonst schreibt der ganze Schreibtisch seine Schrift aus dem
-  Bild.
-* Eine Textersetzung ohne Anzahlgrenze hat die Doppelpuffer-Methoden in
-  **jede** Geraeteklasse kopiert (neun Stueck). Gefunden beim Suchen nach
-  etwas ganz anderem.
+**Honest limitation:** the font has **fixed width** and can only be
+scaled by whole numbers. Real proportional type would be its own
+project — it would need a hand-drawn second font with a width table.
 
-**Und die teuerste Lehre:** Das Fuellwerkzeug sah kaputt aus -- es fuellte
-nur drei Zeilen. Ich habe eine Stunde lang nach einem Fehler in der
-Warteschlange gesucht, Zaehler mitgeschrieben, die Funktion aufgeteilt, den
-Keller ins RAM verlegt. Es war **nie kaputt, nur langsam**: beim Messen
-rechnete es noch. Steht in [[07 Fallstricke]].
+**Extended:** blitter command 6 (string) can now also scale up — a
+heading at 24 points is thus a single draw command.
 
-**Geprueft:** Paint von Hand bedient (Stift, Linie, Rechteck, Kreis, Fuellen,
-Farben, Strichstaerken), 45/45, 11/11, Bootstrapping.
+**Verified:** a heading in size 3 centered, a paragraph in size 1 with
+automatic wrapping, a subheading in size 2 underlined; save, clear,
+reload — all formats come back. 45/45, 11/11, bootstrapping.
 
 ---
 
-## Der Rechner wurde bei Flappy 65 Grad heiss und drosselte sich selbst
+## Coder — the Editor Becomes a Tool for Programs
 
-Colins Meldung: „Der PC ist gerade gefreezt bei Flappy." Ein hartes Einfrieren
-liess sich in 200 Sekunden Spiel nicht ausloesen — die Uhr lief durch, das
-Bild aenderte sich. Gefunden wurde aber etwas anderes, das sich genau so
-anfuehlt:
+The editor on the desktop can now do what a code editor needs to:
 
-**Der Bildtakt hat den Prozessor nicht schlafen gelegt.** `proc_next()` gibt
-den eigenen Prozess zurueck, wenn sonst niemand rechenbereit ist. Damit war
-`proc_sleep()` bei einem einzigen laufenden Programm wirkungslos: schlafen,
-sofort wieder geweckt, schlafen ... 100 % Auslastung. Der TB-32 heizte auf
-65 Grad und drosselte auf 40 % Takt — und ein gedrosseltes System reagiert
-traege auf alles, auch auf ESC.
+* **Line numbers** in their own column on the left
+* **Syntax colors** for C, Assembly, and Python: keywords blue, strings
+  green, comments gray, numbers magenta, preprocessor brown. The
+  language follows from the file extension.
+* **Search** (*Find* button, Ctrl+F, next match with F3 or Enter), case
+  insensitive, wraps at end of file
+* **Automatic indentation:** the new line inherits the indentation of
+  the previous one, two more levels after an open curly brace
+* **Jump to error line:** if compilation fails, the cursor jumps to the
+  line the compiler reported
 
-Gefunden durch Abtasten des Befehlszaehlers: die Spitze lag in
-`proc_next`/`proc_schedule`, nicht im Spiel. Ausfuehrlich in [[07 Fallstricke]].
+Source: `system/coder.c`.
 
-**Behoben:** `proc_sleep()` wartet den Rest der Zeit selbst mit `hlt` ab.
+**New in the hardware — blitter command 6, "string."** Previously the
+operating system sent one draw command per character; an editor page is
+1600 of them. Now the blitter fetches the text from memory itself:
+address in the CHR register, length in the W register, the font stays
+where it is. `g_text` throughout the desktop now goes through it, and
+the editor only draws the **color sections** per line.
 
-| | vorher | nachher |
+**How the coloring stayed fast.** The first attempt cost **476,000
+instructions** per keystroke — a sixth of a second, typing felt dead.
+Three things:
+
+1. Colors only depend on the text and the visible range, not the
+   cursor. The color buffer is now only rebuilt when one of those two
+   changes — arrow keys, mouse movement, and clicks now cost nothing at
+   all.
+2. Keyword lookup checked the *entire* list for *every* word. Now the
+   first letter decides first.
+3. Pointers instead of function calls per pixel, and strings instead of
+   individual characters through the blitter.
+
+Result: **476,000 → 190,000** instructions per redraw.
+
+**Two bugs along the way:**
+
+* I measured too early again. The window stayed empty, all the
+  counters looked wrong — in reality the picture just wasn't finished
+  drawing yet. The same bug as with the fill tool in Paint, two hours
+  later. Written up in [[07 Fallstricke]].
+* The color section was positioned via `column - length`. For lines
+  wider than the window, `column` kept counting anyway — the last
+  section ended up drifting further and further right, line by line.
+  Now the start column is remembered directly.
+
+**Verified:** CALC.C opened (colors, line numbers), searching for
+"rechne" finds the spot, indenting after `{` sets two levels, 45/45,
+11/11, bootstrapping.
+
+---
+
+## Paint — the First of the Three New Programs
+
+A drawing program as a **window on the desktop** (start menu → Paint).
+Tools: pen, eraser, line, rectangle, filled rectangle, circle, fill,
+eyedropper. Plus three stroke widths, 32 colors, New, Undo, Save, and
+Open in its own format **TBI** (width, height, then one byte per
+pixel). Source: `system/paint.c`.
+
+The canvas does **not** live in the screen buffer, but in RAM at
+`0x600008`. A window can be moved or covered — if the picture lived
+directly on screen, it would end up broken. It reaches the screen with
+a single blitter command.
+
+**New in the hardware — block copier (DMA), ports 0x56-0x5A.** It moves
+memory around without the processor: 256 KB in 0.03 ms instead of a
+third of a second. Undo and "Redo" run through it. Plus three
+**search commands** over whole blocks, the counterpart to real
+processors' string instructions. Details in
+[[02 Speicherkarte und Ports]].
+
+**Sped up — image from RAM (blitter command 4).** Ran pixel by pixel
+through Python: **9.5 ms** for 400x300, i.e. half the frame time. Now
+it goes line by line, and only lines with a transparent pixel are
+handled individually: **0.06 ms**, 158 times faster.
+
+**The desktop now knows dragging.** Until now there was only clicking.
+A drawing program needs the whole movement and the moment of release —
+line, rectangle, and circle are only drawn to the screen while
+dragging, and only committed to the canvas on release.
+
+**Two of my own blunders, written down so they don't come back:**
+
+* The blitter reads the image source from **the same register as the
+  font**. Without `sys_out(P_BLT_SRC, ...)` beforehand, Paint drew the
+  font as the canvas — black with noise. And afterward you have to
+  reset it, or the whole desktop starts drawing its text from the
+  image.
+* A text substitution with no count limit copied the double-buffer
+  methods into **every** device class (nine of them). Found while
+  searching for something completely different.
+
+**And the most expensive lesson:** the fill tool looked broken — it
+only filled three lines. I spent an hour hunting for a bug in the
+queue, logging counters, splitting the function apart, moving the
+stack into RAM. It was **never broken, just slow**: it was still
+computing while I was measuring. Written up in [[07 Fallstricke]].
+
+**Verified:** Paint operated by hand (pen, line, rectangle, circle,
+fill, colors, stroke widths), 45/45, 11/11, bootstrapping.
+
+---
+
+## The Machine Hit 65 Degrees During Flappy and Throttled Itself
+
+Colin's report: "the PC just froze during Flappy." A hard freeze
+couldn't be triggered in 200 seconds of play — the clock kept running,
+the picture kept changing. But something else turned up that feels
+exactly the same:
+
+**The frame clock never let the processor sleep.** `proc_next()`
+returns the current process itself when nobody else is ready to run.
+That made `proc_sleep()` ineffective with a single running program:
+sleep, wake immediately, sleep again ... 100% load. The TB-32 heated up
+to 65 degrees and throttled to 40% clock — and a throttled system
+reacts sluggishly to everything, including ESC.
+
+Found by sampling the instruction counter: the hotspot was in
+`proc_next`/`proc_schedule`, not in the game. Detailed in
+[[07 Fallstricke]].
+
+**Fixed:** `proc_sleep()` now waits out the remaining time itself with
+`hlt`.
+
+| | before | after |
 |---|---|---|
-| Temperatur bei Flappy | 65,1 °C | **26,6 °C** |
-| Drosselung | 60 % | **0 %** |
-| Auslastung | 100 % | **10 %** |
-| Bildrate | 50 | 50 |
+| Temperature during Flappy | 65.1 °C | **26.6 °C** |
+| Throttling | 60% | **0%** |
+| Load | 100% | **10%** |
+| Frame rate | 50 | 50 |
 
-Das gilt fuer **jedes** Programm, das schlaeft — der ganze Rechner bleibt im
-Leerlauf jetzt kalt.
+This applies to **every** program that sleeps — the whole machine now
+stays cool while idle.
 
-**Ausserdem behoben — Doppelpufferung ging nur beim ersten Start.** Beim
-Ausschalten zeigte die Merkvariable fuer die Rueckseite anschliessend auf
-dieselbe Seite; beim zweiten Start eines Spiels waren beide Bildseiten
-dasselbe Feld und es flackerte wieder. Die Karte haelt jetzt zwei feste
-Seiten und waehlt die jeweils andere.
+**Also fixed — double buffering only worked on the first boot.** On
+power-off, the variable tracking the back page kept pointing at the
+same page; on a game's second launch both screen pages were the same
+one and flickering came back. The card now holds two fixed pages and
+always picks the other one.
 
 ---
 
-## Die Grafik-Engine kann jetzt, was eine Engine koennen muss
+## The Graphics Engine Can Now Do What an Engine Needs To
 
-Colins Befund: „die count zahl flackert und legt sich nicht ueber irgendwas,
-es ist ein blauer kasten drumherum". Beides stimmte, und beides waren keine
-Fehler in Flappy, sondern Loecher in der Engine.
+Colin's report: "the count number flickers and doesn't sit on top of
+anything properly, there's a blue box around it." Both were true, and
+neither was a bug in Flappy — they were holes in the engine.
 
-**Zwei Bildseiten (Doppelpufferung).** Bisher las der Bildschirm mit,
-waehrend gemalt wurde — man sah halb gezeichnete Ziffern. Die Karte hat
-jetzt zwei Bildspeicher: gemalt wird in den unsichtbaren, `gx_zeigen()`
-tauscht sie. Ports `0x52` (an/aus) und `0x53` (tauschen).
+**Two screen pages (double buffering).** Until now the display read
+along while drawing was happening — you saw half-finished digits. The
+card now has two frame buffers: drawing happens into the invisible one,
+`gx_zeigen()` swaps them. Ports `0x52` (on/off) and `0x53` (swap).
 
-Damit faellt der ganze alte Eiertanz weg: nur das Bewegte loeschen, die
-Reihenfolge der Malbefehle abzaehlen, Anzeigen ein Kaestchen freiraeumen
-lassen. Genau dieses Kaestchen war Colins blauer Kasten — die Punkteanzeige
-musste ihren alten Stand ueberdecken und stanzte dabei ein himmelblaues Loch
-in jedes Rohr dahinter. Jetzt malt Flappy jedes Bild vollstaendig neu, von
-hinten nach vorn, und die Ziffern liegen einfach obendrauf (mit Schatten,
-damit sie auch vor Gruen lesbar bleiben).
+That eliminates the whole old juggling act — only erasing what moved,
+counting the order of draw calls, having the display clear a little box
+for itself. That exact box was Colin's blue box — the score display had
+to cover its old position and punched a sky-blue hole into every pipe
+behind it. Now Flappy redraws every frame completely, back to front,
+and the digits simply sit on top (with a shadow so they stay readable
+against green too).
 
-**Vergroessern kann die Karte selbst.** Port `0x54` setzt den Faktor fuer
-Blitter-Kommando 3. Vorher schrieb `gx_gross` bei Zoom 3 fuer **eine
-Ziffer 576 Punkte einzeln** — das war der eigentliche Flaschenhals des
-ganzen Spiels, nicht die Rohre.
+**The card can scale by itself.** Port `0x54` sets the factor for
+blitter command 3. Previously, `gx_gross` drew **a single digit as 576
+individual points** at zoom 3 — that was the actual bottleneck of the
+whole game, not the pipes.
 
-**Ein Bildtakt.** `gx_takt(2)` haelt 50 Bilder je Sekunde ein, unabhaengig
-davon, wie schnell die Maschine gerade ist. Ohne Bremse lief das Spiel nach
-den Verbesserungen mit 500 fps — und damit zehnmal zu schnell zum Spielen.
-Zwei Details, die es gebraucht hat: der naechste Zeitpunkt wird vom vorigen
-aus gerechnet (sonst geht der Rest der angebrochenen Hundertstelsekunde
-verloren: 40 statt 50), und gewartet wird mit `sleep(0)` statt `sleep(1)` —
-eine ganze Hundertstelsekunde waere die halbe Bildzeit.
+**A frame clock.** `gx_takt(2)` holds 50 frames per second, regardless
+of how fast the machine currently is. Without a brake, the game ran at
+500 fps after the improvements — ten times too fast to play. Two
+details it needed: the next timestamp is computed from the previous
+one (otherwise the remainder of a fractional hundredth of a second is
+lost: 40 instead of 50), and the wait uses `sleep(0)` instead of
+`sleep(1)` — a whole hundredth of a second would be half a frame's
+time.
 
-Bildrate von Flappy im Verlauf dieser Sitzung:
+Flappy's frame rate over the course of this session:
 
 | | fps |
 |---|---|
-| Anfang | 9 |
-| Blitter in einem Systemaufruf | 39 |
-| Ports direkt + schnellerer Blitter | 53 |
-| alles neu malen (noch mit Punkt-fuer-Punkt-Schrift) | 29 |
-| Vergroessern im Blitter | **500** |
-| mit Bildtakt gebremst | **50, gleichmaessig** |
+| Start | 9 |
+| Blitter in one syscall | 39 |
+| Direct ports + faster blitter | 53 |
+| full redraw (still with pixel-by-pixel font) | 29 |
+| scaling in the blitter | **500** |
+| capped with frame clock | **50, steady** |
 
-**Neu in `gfxlib.c`:** `gx_doppelpuffer(an)`, `gx_zeigen()`, `gx_takt(hundertstel)`.
-`gx_gross` und `gx_text_gross` gehen jetzt ueber den Blitter.
+**New in `gfxlib.c`:** `gx_doppelpuffer(on)`, `gx_zeigen()`,
+`gx_takt(hundredths)`. `gx_gross` and `gx_text_gross` now go through
+the blitter.
 
-**Gefunden dabei:** Ein Schreibvorgang auf einen unbekannten Port wird still
-verschluckt (`bus.unknown_ports`). Die neuen Ports waren beim ersten Versuch
-nicht in `machine.py` eingetragen — die Doppelpufferung blieb einfach aus,
-ohne jede Meldung. Wer einen Port hinzufuegt, muss ihn an **drei** Stellen
-eintragen: `isa.py`, das Geraet und die Geraeteliste in `machine.py`.
+**Found along the way:** a write to an unknown port is silently
+swallowed (`bus.unknown_ports`). The new ports weren't registered in
+`machine.py` on the first attempt — double buffering simply stayed off,
+with no message at all. Whoever adds a port has to register it in
+**three** places: `isa.py`, the device, and the device list in
+`machine.py`.
 
-**Sicherung:** Ein Moduswechsel setzt die Vergroesserung auf 1 zurueck, sonst
-schriebe der Schreibtisch in Riesenschrift weiter, wenn ein Programm mit
-gesetztem Zoom abstuerzt.
+**Safeguard:** a mode switch resets the zoom factor to 1, so the
+desktop doesn't keep writing in giant text if a program crashes with
+zoom set.
 
-**Geprueft:** Flappy (50 fps, sauberes Bild, Anzeige ueber den Rohren), der
-Taschenrechner, der Schreibtisch, 45/45, 11/11, Bootstrapping — und `CC
-CALC.C` **auf dem Geraet**, damit auch der Compiler dort die neuen Ports
-richtig erzeugt.
+**Verified:** Flappy (50 fps, clean picture, display over the pipes),
+the calculator, the desktop, 45/45, 11/11, bootstrapping — and `CC
+CALC.C` **on the device**, so the compiler there also produces the new
+ports correctly.
 
 ---
 
-## Grafik: Programme malen jetzt direkt, ohne den Kernel
+## Graphics: Programs Now Draw Directly, Without the Kernel
 
-**Neu — der Blitter gehoert auch den Programmen.** Ports sind auf dem TB-32
-nicht geschuetzt, ein Programm darf sie selbst bedienen. `gx_fill`,
-`gx_frame`, `gx_char` und `gx_text` in `gfxlib.c` schreiben deshalb
-unmittelbar an 0x44–0x4C statt ueber `int 0x40`. Der Sprung in den Kernel
-kostete das Sichern von 15 Registern und eine lange Fallunterscheidung —
-sechs Portschreibvorgaenge sind zusammen billiger als dieser eine Sprung.
+**New — the blitter belongs to programs too.** Ports on the TB-32
+aren't protected, a program is allowed to operate them itself.
+`gx_fill`, `gx_frame`, `gx_char`, and `gx_text` in `gfxlib.c` therefore
+write directly to 0x44–0x4C instead of going through `int 0x40`. The
+jump into the kernel cost saving 15 registers and a long case
+statement — six port writes together are cheaper than that one jump.
 
-Damit das in **beiden** Compilern gleich funktioniert:
+For this to work identically in **both** compilers:
 
-* `programs/prog_start.asm` bekommt `portout:` / `portin:` (fuer TCC auf dem Mac)
-* `programs/cc.c` kennt sie als eingebaute Funktionen 98 und 97 und setzt
-  `outr` bzw. `inr` direkt an der Aufrufstelle ein (`e_outr`, `e_inr`)
-* `programs/proglib.c` deklariert sie nur noch, ohne Rumpf
+* `programs/prog_start.asm` gets `portout:` / `portin:` (for TCC on the
+  Mac)
+* `programs/cc.c` knows them as built-in functions 98 and 97 and emits
+  `outr` or `inr` directly at the call site (`e_outr`, `e_inr`)
+* `programs/proglib.c` only declares them now, with no body
 
-Achtung bei `outr`: die Reihenfolge ist `outr <Wert>, <Port>` — der Port
-steht in `ra`. Mein erster Versuch hatte sie vertauscht, das Bild blieb
-komplett schwarz.
+Watch out with `outr`: the order is `outr <value>, <port>` — the port
+sits in `ra`. My first attempt had them swapped, the screen stayed
+completely black.
 
-**Neu — `gx_text` schreibt Farbe und Zeile nur einmal.** Bei zwanzig
-Buchstaben spart das vierzig Portzugriffe.
+**New — `gx_text` writes color and line only once.** For twenty
+characters that saves forty port accesses.
 
-**Beschleunigt — der Blitter im Emulator.** Drei Sachen:
+**Sped up — the blitter in the emulator.** Three things:
 
-| | vorher | nachher |
+| | before | after |
 |---|---|---|
-| ein Portzugriff | 0,58 µs | **0,10 µs** |
-| Zeichen 8×8, durchsichtig | 9,90 µs | **1,52 µs** |
-| Zeichen 8×8, mit Hintergrund | 9,90 µs | **2,53 µs** |
-| Flaeche 52×120 | 17,08 µs | 12,51 µs |
-| Vollbild 640×360 | — | 8,98 µs |
+| a single port access | 0.58 µs | **0.10 µs** |
+| character 8×8, transparent | 9.90 µs | **1.52 µs** |
+| character 8×8, with background | 9.90 µs | **2.53 µs** |
+| area 52×120 | 17.08 µs | 12.51 µs |
+| full screen 640×360 | — | 8.98 µs |
 
-1. `port_out` hatte eine `import`-Zeile **im Rumpf** — sie lief bei jedem
-   einzelnen Portzugriff, und ein Malbefehl schreibt sechs davon. Dasselbe
-   stand in elf weiteren Methoden (Maus, Timer, Tastatur, Platte …), alle
-   nach oben gezogen.
-2. Der Zeichen-Blit lief 64-mal durch eine Python-Schleife. Liegt der
-   Buchstabe ganz auf dem Schirm, werden jetzt acht fertige Acht-Byte-Folgen
-   gesetzt; sie wiederholen sich staendig und liegen im Zwischenspeicher.
-   Durchsichtig werden nur die gesetzten Punkte geschrieben (`_GESETZT`).
-3. Fuellen ueber die ganze Breite ist ein einziger Schreibvorgang statt
-   einer Zeile je Bildzeile.
+1. `port_out` had an `import` statement **inside the function body** —
+   it ran on every single port access, and one draw command writes six
+   of them. The same sat in eleven other methods (mouse, timer,
+   keyboard, disk, …), all moved to the top.
+2. The character blit ran through a Python loop 64 times. If the
+   character is entirely on screen, it now sets eight ready-made
+   eight-byte sequences; they repeat constantly and sit in cache.
+   Transparent only writes the set pixels (`_GESETZT`).
+3. Filling across the full width is a single write instead of one per
+   screen line.
 
-**Ergebnis, gemessen an Flappy:** 9 fps → 39 fps → **53 fps**.
+**Result, measured on Flappy:** 9 fps → 39 fps → **53 fps**.
 
-**Geprueft:** Flappy aus der Kommandozeile, der Schreibtisch (unveraendertes
-Bild), und — der eigentliche Beweis — `CC CALC.C` **auf dem Geraet**: der
-Taschenrechner uebersetzt sich mit dem neuen `cc.c` und laeuft. Dazu 45/45,
-11/11 und das Bootstrapping.
-
----
-
-## Ein Prozessplatz hat die Marke seines Vormieters behalten
-
-**Symptom:** Nach dem Uebersetzen im Editor kam im gestarteten Programm
-**keine einzige Taste** an. Der Vogel in Flappy fiel sofort herunter, ESC
-half nicht. Aus der Textkonsole gestartet lief dasselbe Programm normal.
-
-**Ursache:** `p_bg[pid]` merkt sich „im Hintergrund gestartet"; solche
-Prozesse bekommen absichtlich keine Tastatur ([[07 Fallstricke]]). Gesetzt
-wurde die Marke beim Start, **geloescht nie**. Der Compiler laeuft im
-Hintergrund, gibt seinen Platz frei — und die danach gestartete
-Kommandozeile bekam denselben Platz samt alter Marke. Damit galt sie als
-Hintergrundprogramm, und jedes `getkey()` schlief fuer immer.
-
-Messbar war es am Tastenpuffer: `tail` wuchs bei jedem Druck, `head` blieb
-stehen — die Taste kam an, niemand holte sie ab.
-
-**Behoben in:** `system/proc.c`, `proc_start()` setzt `p_bg[i] = 0` beim
-Vergeben eines Platzes, wie schon `p_wake` und `p_ticks`.
-
-**Merke:** Wer einen Platz wiederverwendet, muss *alle* Felder
-zuruecksetzen, nicht die meisten.
+**Verified:** Flappy from the command line, the desktop (unchanged
+picture), and — the actual proof — `CC CALC.C` **on the device**: the
+calculator compiles with the new `cc.c` and runs. Plus 45/45, 11/11,
+and bootstrapping.
 
 ---
 
-## Der Schreibtisch hat ins laufende Vollbildprogramm gemalt
+## A Process Slot Kept Its Previous Tenant's Marker
 
-**Symptom:** Startet man ein Programm ueber **Run** im Editor, lagen
-Command-Prompt-Fenster und Knopfleiste mitten im Bild des Spiels. Per
-Doppelklick im File Manager passierte es nicht.
+**Symptom:** after compiling in the editor, the started program
+received **not a single key press**. The bird in Flappy dropped
+immediately, ESC didn't help. Started from the text console, the same
+program ran normally.
 
-**Ursache:** Schreibtisch und Programm laufen gleichzeitig. Die Regel
-„solange ein Programm den ganzen Schirm hat, malt der Schreibtisch nichts"
-wurde nur **oben in der Hauptschleife** geprueft. Schaltet das Programm
-mitten in einer Runde um, malt der Schreibtisch den Rest dieser Runde
-trotzdem — und weil ein Spiel den Hintergrund nur beim Rundenstart einmal
-fuellt, bleibt das Fensterbild danach stehen.
+**Cause:** `p_bg[pid]` remembers "started in the background"; such
+processes deliberately get no keyboard ([[07 Fallstricke]]). The marker
+was set at startup, **never cleared**. The compiler runs in the
+background, frees its slot — and the command line started after it got
+the same slot along with the old marker. That made it count as a
+background program, and every `getkey()` slept forever.
 
-**Zwei Anlaeufe, die nicht reichten:** die Pruefung ans Schleifenende zu
-setzen half gar nicht; sie an den Anfang von `draw_desktop`/`draw_window`/
-`draw_taskbar` zu setzen half nur halb — `draw_desktop` malt viele Fenster
-nacheinander, das Umschalten passiert mittendrin.
+Measurable via the key buffer: `tail` grew with every press, `head`
+stayed put — the key arrived, nobody picked it up.
 
-**Behoben in:** `system/gui.c`, `gui_fremd` wird in den Malbefehlen selbst
-geprueft (`g_fill`, `g_frame`, `g_char`). So hoert der Schreibtisch mitten
-im Satz auf.
+**Fixed in:** `system/proc.c`, `proc_start()` sets `p_bg[i] = 0` when
+assigning a slot, just like `p_wake` and `p_ticks` already did.
+
+**Lesson:** whoever reuses a slot must reset *all* fields, not most of
+them.
 
 ---
 
-## `#include` findet jetzt auch `\SOURCE` — und ein Präprozessor-Fehler
+## The Desktop Painted Into a Running Fullscreen Program
 
-**Behoben — der Präprozessor hat Quelltext verschluckt.** Ein `#include`, das
-nur *in einem Kommentar* stand, wurde für eine Anweisung gehalten; die Zeile
-verschwand samt dem `*/`, und der offene Kommentar fraß die nächsten
-Codezeilen. Betroffen waren beide Compiler: `tools/tcc.py` (`zeilen_im_kommentar()`)
-und `programs/cc.c` (`komm_folge()`). Ausführlich in [[07 Fallstricke]].
+**Symptom:** starting a program via **Run** in the editor left the
+command-prompt window and the taskbar sitting in the middle of the
+game's picture. Via double-click in the File Manager it didn't happen.
 
-Das war die wahre Ursache dafür, dass `fileread_lib` immer −1 lieferte: der
-Systemaufruf 33 stand zwar im Quelltext, war aber nie im Kernel gelandet.
-`fs_find_in` war die ganze Zeit in Ordnung.
+**Cause:** the desktop and the program run simultaneously. The rule
+"while a program has the whole screen, the desktop draws nothing" was
+only checked **at the top of the main loop**. If the program switches
+mid-round, the desktop still draws the rest of that round — and since a
+game only fills its background once at the start of a round, the
+window's picture stayed put afterward.
 
-**Neu — Suchpfad für `#include`.** Bisher musste eine Quelldatei im selben
-Ordner liegen wie `proglib.c`, sonst brach das Übersetzen ab. Jetzt gilt:
+**Two attempts that weren't enough:** moving the check to the end of
+the loop didn't help at all; moving it to the start of
+`draw_desktop`/`draw_window`/`draw_taskbar` only helped halfway —
+`draw_desktop` draws many windows in sequence, and the switch happens
+in the middle of that.
 
-* Die **Hauptdatei** wird dort gesucht, wo man gerade steht (`fileread`).
-* **Eingebundene Dateien** zusätzlich in `\SOURCE` (`fileread_lib`,
-  Systemaufruf 33, `fs_read_lib()` in `fs.c`).
+**Fixed in:** `system/gui.c`, `gui_fremd` is now checked inside the
+draw calls themselves (`g_fill`, `g_frame`, `g_char`). That way the
+desktop stops mid-sentence.
 
-Damit lässt sich ein Programm in jedem beliebigen Ordner — auch auf dem
-Schreibtisch — übersetzen, solange es `#include "proglib.c"` schreibt.
-Die Fehlermeldung sagt jetzt auch, wo gesucht wurde:
+---
+
+## `#include` Now Also Finds `\SOURCE` — and a Preprocessor Bug
+
+**Fixed — the preprocessor swallowed source code.** An `#include` that
+only appeared *inside a comment* was treated as a directive; the line
+vanished along with the `*/`, and the now-open comment ate the next
+lines of code. Both compilers were affected: `tools/tcc.py`
+(`zeilen_im_kommentar()`) and `programs/cc.c` (`komm_folge()`). Detailed
+in [[07 Fallstricke]].
+
+That was the real reason `fileread_lib` always returned −1: system call
+33 was in the source, but had never made it into the kernel.
+`fs_find_in` had been fine the whole time.
+
+**New — search path for `#include`.** Previously a source file had to
+sit in the same folder as `proglib.c`, or compilation aborted. Now:
+
+* The **main file** is looked up wherever you currently are
+  (`fileread`).
+* **Included files** are additionally looked up in `\SOURCE`
+  (`fileread_lib`, system call 33, `fs_read_lib()` in `fs.c`).
+
+This lets a program be compiled in any folder — even on the desktop —
+as long as it writes `#include "proglib.c"`. The error message now also
+says where it looked:
 
 ```
   cannot include: proglib.c -- not in this folder and not in \SOURCE
 ```
 
-**Geprüft:** beide Fälle. `CC CRASH.C` in `\SOURCE` (der bisher einzige
-funktionierende Weg) und `CC AUSSEN.C` im Wurzelverzeichnis — beide
-übersetzen und laufen. Dazu 45/45 Selbsttest, 11/11 Compilertest und das
-Bootstrapping (Stufe 2 und 3 Byte für Byte gleich).
+**Verified:** both cases. `CC CRASH.C` in `\SOURCE` (previously the only
+working path) and `CC AUSSEN.C` in the root directory — both compile
+and run. Plus 45/45 self-test, 11/11 compiler test, and bootstrapping
+(stages 2 and 3 byte for byte identical).
 
 ---
 
-## Fehlermeldungen: sichtbar und mit richtiger Zeilennummer
+## Error Messages: Visible and With the Right Line Number
 
-**Neu — Meldungen erscheinen im Editor.** Der Compiler läuft als eigener
-Prozess; seine Ausgabe ging in den unsichtbaren Textbildschirm, im Editor
-stand bloß „Errors". Jetzt schreibt das System die Ausgabe während des
-Übersetzens in einen Puffer mit (`cap_*` in `term.c`, Puffer bei
-`0x128000`, 40 Zeilen), und das Übersetzungsfenster bleibt bei Fehlern
-stehen und zeigt sie als **„Compiler messages"**.
+**New — messages appear in the editor.** The compiler runs as its own
+process; its output went to the invisible text screen, and the editor
+just showed "Errors." Now the system logs the output during compilation
+into a buffer (`cap_*` in `term.c`, buffer at `0x128000`, 40 lines), and
+the compile window stays up on errors, showing them as
+**"Compiler messages."**
 
-Wichtig dabei: Der Mitschnitt musste **in `syscall.c`** sitzen, nicht nur in
-`lib.c`. Programme geben über die Systemaufrufe aus, nicht über die
-`print`-Funktionen des Kernels — der erste Versuch fing deshalb nichts ein.
-Und `printn` gehört dazu, sonst fehlen genau die Zahlen (Zeilennummern!).
+Important detail: the logging had to sit **in `syscall.c`**, not just
+in `lib.c`. Programs write output through the system calls, not through
+the kernel's `print` functions — the first attempt therefore caught
+nothing. And `printn` has to be included too, otherwise exactly the
+numbers (line numbers!) go missing.
 
-**Neu — Zeilennummern stimmen wieder.** Sie zählten den eingebundenen Text
-mit: eine acht Zeilen lange Datei meldete Fehler in „line 146", weil
-`proglib.c` davorgeklebt wird. `cc.c` merkt sich jetzt, welcher Bereich der
-zusammengeklebten Fassung aus welcher Datei stammt (`inc_start`, `inc_len`,
-`melde_ort`) und rechnet zurück. Fehler in einer eingebundenen Datei melden
-deren Namen mit.
+**New — line numbers are correct again.** They used to count the
+included text too: an eight-line file reported errors on "line 146,"
+because `proglib.c` gets pasted in front of it. `cc.c` now remembers
+which range of the concatenated version came from which file
+(`inc_start`, `inc_len`, `melde_ort`) and translates back. Errors in an
+included file now also report its name.
 
-**Neu:** „unknown function" nennt jetzt die Zeile des Aufrufs — die
-Zeilennummer wird beim Erzeugen des Aufrufs mitgeschrieben (`fix_zeile`).
-Vorher stand da nur der Name, und man suchte in einer langen Datei.
+**New:** "unknown function" now names the line of the call — the line
+number is recorded when the call is generated (`fix_zeile`). Previously
+only the name was shown, and you had to search through a long file.
 
-Vorher/nachher bei derselben Datei:
+Before/after on the same file:
 
 ```
-  undefined function: gibtsnicht          (vorher)
-  line 4: unknown function gibtsnicht     (jetzt)
+  undefined function: gibtsnicht          (before)
+  line 4: unknown function gibtsnicht     (now)
 ```
 
-Und „cannot include" sagt jetzt dazu, dass nur im aktuellen Ordner gesucht
-wurde — genau die Falle, in die man mit einer Datei außerhalb von `\SOURCE`
-läuft.
+And "cannot include" now also says that only the current folder was
+searched — exactly the trap you fall into with a file outside
+`\SOURCE`.
 
 ---
 
-## Löschtaste wiederholt jetzt — und ein Fehlversuch beim Compiler
+## Delete Key Now Repeats — and a Failed Compiler Attempt
 
-**Neu:** Gehaltene Sondertasten wiederholen sich. Nach **0,4 s** Halten
-löst die Taste alle **30 ms** erneut aus — für Rücktaste, Entfernen, Pfeile
-und Bild auf/ab. Umgesetzt in `pc.py` (`WIEDERHOLBAR`, `halten`), nicht über
-`pygame.key.set_repeat`: so wiederholen sich genau die Tasten, bei denen es
-Sinn ergibt, und nicht F12 oder Strg+R.
+**New:** held special keys now repeat. After **0.4 s** of holding, the
+key fires again every **30 ms** — for Backspace, Delete, arrows, and
+Page Up/Down. Implemented in `pc.py` (`WIEDERHOLBAR`, `halten`), not via
+`pygame.key.set_repeat`: this way exactly the keys where it makes sense
+repeat, and not F12 or Ctrl+R.
 
-**Erkannt:** Wer eine `.C`-Datei außerhalb von `\SOURCE` übersetzt, bekommt
-lauter „undefined function". Ursache: `CC` sucht `#include`-Dateien **nur im
-aktuellen Ordner**, `proglib.c` und `gfxlib.c` liegen aber in `\SOURCE`.
-Wer das nicht weiß, sucht den Fehler im eigenen Code.
+**Discovered:** compiling a `.C` file outside `\SOURCE` gets nothing but
+"undefined function." Cause: `CC` looks for `#include` files **only in
+the current folder**, but `proglib.c` and `gfxlib.c` live in `\SOURCE`.
+Anyone who doesn't know this ends up hunting for the bug in their own
+code.
 
-**Fehlversuch, wieder zurückgenommen:** Ich habe dafür einen Suchpfad gebaut
-(`fs_read_lib`, Syscall 33: erst aktueller Ordner, dann `\SOURCE`) und `cc.c`
-darauf umgestellt. Der Aufruf lieferte aber **immer −1**, auch für Dateien im
-aktuellen Ordner — damit ging **gar kein** `#include` mehr, also kein einziges
-Programm mehr zu übersetzen. Sofort zurückgebaut, `cc.c` liest Includes
-wieder mit `fileread`.
+**Failed attempt, reverted:** I built a search path for this
+(`fs_read_lib`, syscall 33: current folder first, then `\SOURCE`) and
+switched `cc.c` to use it. But the call **always** returned −1, even for
+files in the current folder — which meant **no** `#include` worked
+anymore, i.e. not a single program could be compiled. Reverted
+immediately, `cc.c` reads includes via `fileread` again.
 
-`fs_read_lib` und Syscall 33 stehen weiter im Kernel, werden aber von
-niemandem benutzt. Warum sie −1 liefern, ist **ungeklärt** — das gehört
-gedebuggt, bevor es jemand wieder anfasst. Steht in [[11 Offene Punkte]].
+`fs_read_lib` and syscall 33 remain in the kernel, but nobody uses them.
+Why they return −1 is **unresolved** — that needs debugging before
+anyone touches it again. Noted in [[11 Offene Punkte]].
 
-> **Nachtrag — geklärt und erledigt.** Syscall 33 war gar nicht im Kernel: ein
-> `#include` im *Kommentar* darüber hatte den Präprozessor dazu gebracht, die
-> Zeile mit dem `*/` zu löschen. Der offene Kommentar hat den Code gefressen.
-> Siehe den Eintrag ganz oben und [[07 Fallstricke]].
+> **Addendum — resolved and fixed.** Syscall 33 wasn't in the kernel at
+> all: an `#include` sitting *inside a comment* above it had caused the
+> preprocessor to delete the line with the `*/`. The now-open comment
+> ate the code. See the entry at the very top and [[07 Fallstricke]].
 
-**Merke:** Eine Änderung am Compiler trifft *jedes* Programm. So etwas erst
-mit einer echten Übersetzung prüfen, bevor es weggeht — ich hatte nur den
-neuen Fall getestet, nicht den alten.
-
----
-
-## Einfügen vom Mac ging nur mit Cmd+V
-
-**Behoben.** Wer auf dem Mac etwas kopiert hatte und im Editor `Strg+V`
-drückte, bekam nichts.
-
-**Ursache:** Es gab **zwei** Ablagen und zwei Tasten. `Strg+V` fügte die
-interne Zwischenablage von TOOBAD-OS ein (die war leer), nur `Cmd+V` holte
-vom Mac. Eine Unterscheidung, die kein Mensch im Kopf behalten will — und
-die auch technisch keinen Grund hatte.
-
-**Jetzt:** Beide Tasten tun dasselbe. Liegt auf dem Mac etwas in der
-Zwischenablage, schreibt `pc.py` es **direkt in den Puffer von TOOBAD-OS**
-(`gast_clipboard_setzen`, über die Symboltabelle `system/kernel.sym`) und
-schickt dann `Strg+V` an das System — das fügt von da an selbst ein.
-
-Nebenbei zwei Verbesserungen: Vorher wurden die Zeichen als **Tastendrücke**
-eingeschleust, also einzeln durch den Tastaturpuffer — langsam, nur im
-Editor brauchbar und ohne Tabulatoren. Jetzt geht es in einem Rutsch, samt
-Zeilenumbrüchen, überall wo das System einfügt. Und die Symboltabelle wird
-nur noch **einmal** gelesen statt bei jedem Tastendruck.
-
-Geprüft: Text mit zwei Zeilen vom Mac eingefügt (50 Zeichen rein, 50 im
-Editor angekommen), danach mit `Strg+A`/`Strg+C` markiert und wieder
-zurückgeholt.
+**Lesson:** a change to the compiler affects *every* program. Something
+like this should be tested against a real compilation before shipping —
+I had only tested the new case, not the old one.
 
 ---
 
-## Flappy, und was dabei über die Grafik herauskam
+## Pasting From the Mac Only Worked With Cmd+V
 
-**Neu:** `programs/flappy.c` — Flappy Bird für den TB-32. Physik in
-**Sechzehnteln** eines Bildpunktes (der TB-32 kann kein Fließkomma), Vogel,
-drei wandernde Rohre, Punkte, Bestwert, Bildratenanzeige.
+**Fixed.** Whoever had copied something on the Mac and pressed
+`Ctrl+V` in the editor got nothing.
 
-**Neu — und viel wichtiger als das Spiel:** Systemaufruf **31 und 32** nehmen
-einen ganzen Blitter-Befehl auf **einmal** entgegen. Vorher brauchte eine
-gefüllte Fläche **sechs** Systemaufrufe (x, y, w, h, Farbe, Kommando).
-Koordinaten stecken zu zweit in einem Wort, jeweils 16 Bit im
-Zweierkomplement — der Blitter rechnet Werte ab `0x8000` selbst wieder ins
-Negative.
+**Cause:** there were **two** clipboards and two keys. `Ctrl+V` pasted
+TOOBAD-OS's internal clipboard (which was empty), only `Cmd+V` fetched
+from the Mac. A distinction nobody wants to keep in their head — and
+one with no technical reason either.
 
-Gemessen auf dem Gerät (200 gefüllte Flächen):
+**Now:** both keys do the same thing. If something is on the Mac
+clipboard, `pc.py` writes it **directly into TOOBAD-OS's buffer**
+(`gast_clipboard_setzen`, via the symbol table `system/kernel.sym`) and
+then sends `Ctrl+V` to the system — which pastes it from there itself.
+
+Two improvements along the way: previously the characters were injected
+as **keystrokes**, one by one through the keyboard buffer — slow, only
+usable in the editor, and without tabs. Now it happens in one go,
+including line breaks, wherever the system supports pasting. And the
+symbol table is now read just **once** instead of on every keystroke.
+
+Verified: two-line text pasted from the Mac (50 characters in, 50
+arrived in the editor), then selected with `Ctrl+A`/`Ctrl+C` and
+fetched back again.
+
+---
+
+## Flappy, and What It Revealed About the Graphics
+
+**New:** `programs/flappy.c` — Flappy Bird for the TB-32. Physics in
+**sixteenths** of a pixel (the TB-32 has no floating point), a bird,
+three moving pipes, score, best score, frame-rate display.
+
+**New — and much more important than the game:** system calls **31 and
+32** take an entire blitter command **at once**. Previously, a filled
+area needed **six** system calls (x, y, w, h, color, command).
+Coordinates are packed two to a word, 16 bits each in two's complement —
+the blitter reinterprets values from `0x8000` up as negative itself.
+
+Measured on the device (200 filled areas):
 
 | | |
 |---|---|
-| über sechs Ports (alt) | 85 Ticks → **4,25 ms je Fläche** |
-| über einen Systemaufruf | 30 Ticks → **1,5 ms je Fläche** |
-| ein Systemaufruf allein (`ticks()`) | **0,4 ms** |
+| over six ports (old) | 85 ticks → **4.25 ms per area** |
+| over one system call | 30 ticks → **1.5 ms per area** |
+| a system call alone (`ticks()`) | **0.4 ms** |
 
-Das ist der Grund, warum bewegte Grafik auf dem TB-32 zäh ist: **nicht das
-Rechnen kostet, sondern der Sprung in den Kernel.** Das Spiel braucht rund 25
-Malbefehle je Bild und kommt damit auf **9 Bilder/s** — vorher waren es 5.
-Der Vogel selbst verbraucht dabei nur etwa 20.000 Befehle je Bild; die CPU
-ist zu über 90 % mit Warten beschäftigt.
+That's why animated graphics on the TB-32 are sluggish: **it's not the
+computation that costs, it's the jump into the kernel.** The game needs
+around 25 draw calls per frame and manages **9 frames/s** with that —
+previously it was 5. The bird itself only uses about 20,000
+instructions per frame; the CPU spends over 90% of its time waiting.
 
-Wer es schneller will, muss an dieser Stelle ansetzen, nicht am Spiel:
-weniger Systemaufrufe je Bild, oder ein billigerer Weg in den Kernel.
-Steht in [[11 Offene Punkte]].
+Whoever wants it faster has to attack this point, not the game: fewer
+system calls per frame, or a cheaper way into the kernel. Noted in
+[[11 Offene Punkte]].
 
-**Behoben beim Bauen des Spiels**
+**Fixed while building the game**
 
-- Falsche Farbnummern: der Farbwürfel ist `16 + rot*36 + grün*6 + blau`, ich
-  hatte Grün und Braun verwechselt
-- **Flackern**: Das Spiel löschte erst den ganzen Vogel, malte dann die Rohre
-  und erst danach den Vogel neu — dazwischen lagen zwei Dutzend Malbefehle,
-  und der Bildschirm liest ja währenddessen schon mit. Jetzt wird der Vogel
-  unmittelbar vor dem Neuzeichnen gelöscht
-- **Der Bestwert verschwand**: die Spur hinter den Rohren wischt oben mit
-  durch, die Anzeige wurde aber nur bei Änderung neu gemalt
-
----
-
-## Tastatur hinkte einen Anschlag hinterher
-
-**Behoben.** Im BIOS-Setup passierte beim ersten Pfeil nichts, der nächste
-Druck führte dann die vorige Bewegung aus — die Steuerung fühlte sich
-komplett verdreht an.
-
-**Ursache:** `irq_kbd` in `firmware/bios.asm` holte pro Interrupt **genau
-eine** Taste. Der Interruptcontroller kennt je Quelle aber nur ein Bit:
-Kommen zwei Tasten an, bevor der Handler läuft, gibt es trotzdem nur einen
-Interrupt — die zweite blieb im Baustein liegen, bis irgendwann die nächste
-Taste einen neuen Interrupt auslöste. Im Setup fiel es besonders auf, weil
-dort nach jedem Tastendruck der ganze Bildschirm neu gezeichnet wird.
-
-Derselbe Fehler steckte früher im **Timer** und steht schon in
-[[07 Fallstricke]] — ich habe ihn beim Nachbau der Tastatur nicht
-mitgedacht.
-
-**Behoben:** Der Handler räumt den Baustein jetzt in einer Schleife leer,
-solange der Statusport eine Taste meldet.
-
-**Neu:** Selbsttest prüft den Fall (zwei Tasten im selben Bild), 44 → **45**.
+- Wrong color numbers: the color cube is `16 + red*36 + green*6 + blue`,
+  I had mixed up green and brown
+- **Flicker:** the game first erased the whole bird, then drew the
+  pipes, and only afterward redrew the bird — with two dozen draw calls
+  in between, and the screen already reading along the whole time. Now
+  the bird is erased immediately before being redrawn
+- **The best score disappeared:** the trail behind the pipes wipes over
+  it from above, but the display was only redrawn on change
 
 ---
 
-## BIOS-Setup mit Reitern, stellbare Uhr, Secure Boot
+## Keyboard Was Lagging One Keystroke Behind
 
-**Neu**
+**Fixed.** In the BIOS setup, nothing happened on the first arrow
+press; the next press then carried out the previous move — the
+controls felt completely inverted.
 
-- Setup hat vier Reiter: **Main, Hardware, Cooling, Security**.
-  Links/Rechts wechselt, `SET_TABS` und `setup_tabs` in `firmware/setup.asm`
-- **Uhrzeit und Datum stellbar** über einen Feldeditor
-  (`setup_edit_felder`) — Hoch/Runter ändert, Links/Rechts wechselt das Feld
-- **Cooling**: Lüftersteuerung und Drosselgrenze im CMOS
-  (`CM_FANMODE`, `CM_TEMPLIMIT`), beim POST von `kuehlung_anwenden` an die
-  Ports gegeben. Temperatur, Lüfter, Drosselung und Höchstwert live
-- **Secure Boot**: Prüfsumme über Bootsektor, Kernel und die ersten 16 KB
-  ROM, gemerkt in `CM_SUM0`–`CM_SUM3`. Stimmt sie nicht, hält der Rechner an
-  und bietet `DEL` als Weg ins Setup. Ab Werk aus
-- Neue Ports in `const.inc`: `P_TEMP`, `P_FAN`, `P_THROTTLE`, `P_TEMPLIMIT`,
-  `P_FANMODE`, `P_TEMPMAX`
-- Selbsttest um drei Prüfungen erweitert: 41 → **44**
+**Cause:** `irq_kbd` in `firmware/bios.asm` fetched **exactly one** key
+per interrupt. The interrupt controller only tracks one bit per source,
+though: if two keys arrive before the handler runs, there's still only
+one interrupt — the second one sat in the chip until eventually the
+next key triggered a new interrupt. It stood out especially in setup,
+because the whole screen redraws after every keypress there.
 
-**Behoben**
+The same bug used to sit in the **timer** and is already documented in
+[[07 Fallstricke]] — I didn't think of it while rebuilding the keyboard.
 
-- **Die Uhr des TB-32 ließ sich nicht stellen.** `CMOS._refresh_clock()` las
-  bei jedem Zugriff die Uhr des Wirts — jeder geschriebene Wert war sofort
-  wieder überschrieben. Der Baustein merkt sich jetzt einen **Versatz in
-  Sekunden** (CMOS-Register `0x30`–`0x33`); Schreiben auf ein Uhrenregister
-  rechnet ihn neu aus, wie das Drehen an einem echten RTC
-- **Bildschirm voller Nullen beim Reiter Security.** Zwei Ursachen: der
-  aktive Reiter lag in `BDA_SCRATCH`, wo `vid_putn` seine Ziffern
-  formatiert — und `vid_puthex` erwartet die Stellenzahl in `r3`, die ich
-  nicht gesetzt hatte. Eigener Platz `SETUP_TAB`/`SETUP_ROW`/`SETUP_SAVE`
-  ab `0x600`
-- **Endlosschleife beim Zeichnen**: Zeilenzahl lag in `r11`, einem
-  Kratzregister, das jeder Unterprogrammaufruf zerstören darf
+**Fixed:** the handler now drains the chip in a loop as long as the
+status port reports a key.
+
+**New:** self-test checks this case (two keys in the same frame),
+44 → **45**.
 
 ---
 
-## CPU-Optimierung: rund 3,4× schneller
+## BIOS Setup With Tabs, Adjustable Clock, Secure Boot
 
-**Geändert** — alles in `hardware/cpu.py` und `pc.py`, gemessen mit
+**New**
+
+- Setup has four tabs: **Main, Hardware, Cooling, Security**.
+  Left/Right switches, `SET_TABS` and `setup_tabs` in
+  `firmware/setup.asm`
+- **Time and date adjustable** via a field editor
+  (`setup_edit_felder`) — Up/Down changes, Left/Right switches the
+  field
+- **Cooling:** fan control and throttle limit in CMOS
+  (`CM_FANMODE`, `CM_TEMPLIMIT`), applied to the ports by
+  `kuehlung_anwenden` during POST. Temperature, fan, throttling, and
+  peak value live
+- **Secure Boot:** checksum over boot sector, kernel, and the first
+  16 KB of ROM, remembered in `CM_SUM0`–`CM_SUM3`. If it doesn't match,
+  the machine halts and offers `DEL` as the way into setup. Off by
+  default
+- New ports in `const.inc`: `P_TEMP`, `P_FAN`, `P_THROTTLE`,
+  `P_TEMPLIMIT`, `P_FANMODE`, `P_TEMPMAX`
+- Self-test extended by three checks: 41 → **44**
+
+**Fixed**
+
+- **The TB-32's clock couldn't be set.** `CMOS._refresh_clock()` read
+  the host's clock on every access — any written value was immediately
+  overwritten again. The chip now remembers an **offset in seconds**
+  (CMOS registers `0x30`–`0x33`); writing to a clock register
+  recalculates it, like turning the hands on a real RTC
+- **Screen full of zeros on the Security tab.** Two causes: the active
+  tab lived in `BDA_SCRATCH`, where `vid_putn` formats its digits — and
+  `vid_puthex` expects the digit count in `r3`, which I hadn't set.
+  Dedicated space `SETUP_TAB`/`SETUP_ROW`/`SETUP_SAVE` starting at
+  `0x600`
+- **Infinite loop while drawing:** the line count sat in `r11`, a
+  scratch register that any subroutine call is allowed to clobber
+
+---
+
+## CPU Optimization: About 3.4× Faster
+
+**Changed** — all in `hardware/cpu.py` and `pc.py`, measured with
 `tools/opstat.py`:
 
-| | vorher | jetzt |
+| | before | now |
 |---|---|---|
-| Rohdurchsatz | 1,74 Mio Befehle/s | **3,11 Mio/s** |
-| im Fenster nutzbar | ~0,83 Mio/s | **2,82 Mio/s bei 63 Bildern/s** |
+| Raw throughput | 1.74 million instructions/s | **3.11 million/s** |
+| usable in the window | ~0.83 million/s | **2.82 million/s at 63 fps** |
 
-1. Speicher als 32-Bit-Sicht (`memoryview(ram).cast("I")`) — ein Zugriff
-   statt vier Bytes plus Schieben; krumme Adressen fallen auf den alten Weg
-   zurück
-2. Ausführungskette nach **gemessener** Häufigkeit sortiert (`push`/`pop`
-   sind zusammen 40 % aller Befehle und standen an Stelle 13 und 14)
-3. `rb`, `imm`, `simm` holt nur noch der Zweig, der sie braucht
-4. Anstehende Interrupts und Haltepunktmenge in lokalen Variablen; die
-   Halt-Prüfung nur noch dort, wo ein Halt entstehen kann
-5. `pc.py` gibt der CPU das ganze Bild abzüglich Zeichenzeit statt fester
-   8 ms
+1. Memory as a 32-bit view (`memoryview(ram).cast("I")`) — one access
+   instead of four bytes plus shifting; misaligned addresses fall back
+   to the old path
+2. Dispatch chain sorted by **measured** frequency (`push`/`pop`
+   together make up 40% of all instructions and used to sit at
+   position 13 and 14)
+3. `rb`, `imm`, `simm` are only fetched by the branch that needs them
+4. Pending interrupts and breakpoint set in local variables; the halt
+   check now only happens where a halt can actually occur
+5. `pc.py` gives the CPU the whole frame minus drawing time instead of
+   a fixed 8 ms
 
-**Neu:** `tools/opstat.py` misst die Befehlshäufigkeit.
-
----
-
-## Datenverlust beim Bauen
-
-**Behoben — der schwerste Fehler dieser Runde.** `build.py` las das *ganze*
-Plattenabbild, tauschte Bootsektor und Kernel und schrieb alles zurück. Lief
-nebenher der Emulator (der seine Sektoren sofort in dieselbe Datei
-schreibt), waren dessen Dateien danach auf dem Stand von vor dem Bauen —
-Colins übersetzte Programme also weg. `tools/tbfs.py` hatte denselben
-Fehler in `save()`.
-
-Jetzt schreibt `build.py` nur Sektor 0 und die Kernelsektoren (`r+b` mit
-gezielten `seek`s) und fasst das Dateisystem ab Sektor 512 nicht mehr an.
-`tbfs.py` merkt sich in `self.dirty`, welche Sektoren es geändert hat.
+**New:** `tools/opstat.py` measures instruction frequency.
 
 ---
 
-## Schreibtisch: Symbole, Doppelklick, Ziehen
+## Data Loss While Building
 
-**Neu**
+**Fixed — the most serious bug of this round.** `build.py` read the
+*entire* disk image, swapped in the boot sector and kernel, and wrote
+it all back. If the emulator was running alongside it (writing its own
+sectors straight back into the same file), its files ended up back at
+their pre-build state afterward — Colin's compiled programs, gone.
+`tools/tbfs.py` had the same bug in `save()`.
 
-- **`\DESKTOP` als echter Ordner** trägt die Symbole — kein Sonderfall, die
-  Kommandozeile sieht ihn wie jeden anderen
-- Symbole **frei verschiebbar**, Anordnung in `\DESKTOP\ICONS.DAT`
-  (`icon_pos[]`, ein Wort je Verzeichniseintrag)
-- **Doppelklick öffnet** (Liste wie Symbol), `eintrag_oeffnen` ist die eine
-  Stelle, die entscheidet was das heißt
-- Ziehen: aus einem Fenster auf den Schreibtisch verschiebt nach `\DESKTOP`,
-  vom Schreibtisch auf ein Dateifenster in dessen Ordner
-- Symbole neu gezeichnet: Blatt mit Eselsohr und farbigem Endungsstreifen,
-  Ordner mit Reiter, Programm als Fenster mit Startpfeil
-- Dateien **verschieben** über `fs_move` — im TBFS nur ein geändertes Feld
-  im Verzeichniseintrag, kein Sektor wird bewegt
-- Knopfleiste der Dateiverwaltung von sechs auf vier Knöpfe, nach
-  Häufigkeit sortiert, Positionen in *einer* Tabelle (`fb_x`, `fb_breite`)
-
-**Behoben**
-
-- **Klicks landeten im falschen Fenster**: gezeichnet wurde nach
-  Stapelreihenfolge, geprüft nach Fensternummer
-- **Dateiverwaltung zeigte hart 11 Zeilen ohne Blättern** — in `\SOURCE`
-  waren die letzten drei Dateien unsichtbar
-- **Endloses Scrollen** im Editor-Auswahlbildschirm: nur die untere Grenze
-  war geprüft
-- **Doppelklick auf ein Programm im Schreibtischordner** scheiterte mit
-  „is not recognized" — der Suchpfad ist aktueller Ordner → `\SYSTEM` →
-  `\PROGS`, `\DESKTOP` steht nicht darin. `eintrag_oeffnen` setzt jetzt
-  vorher `cwd`
-- **Grafische Programme übermalten den Schreibtisch**: wer den
-  Bildschirmmodus umschaltet, bekommt jetzt den ganzen Schirm (`gui_fremd`),
-  und `term_aktiv` wird dabei abgeschaltet — sonst kam keine Taste an
-- **`New` behielt den Dateinamen** — `Save` hätte die geöffnete Datei
-  geleert
-- **Text lief aus den Knöpfen**: `g_button` zentriert nur, es kürzt nicht
-- **Symbolname lief aus dem Bild**: gekürzt wurde nur die Mittenrechnung
-- **Das × saß nicht mittig**: die Zeichensatzmuster sind 5×7 in einer
-  8×8-Zelle; Kreuz und Vollbildzeichen werden jetzt selbst gemalt
-- **Zahl über Beschriftung** im Uhrfenster
+Now `build.py` only writes sector 0 and the kernel sectors (`r+b` with
+targeted `seek`s) and no longer touches the file system starting at
+sector 512. `tbfs.py` tracks in `self.dirty` which sectors it has
+changed.
 
 ---
 
-## Editor, Terminalfenster, Übersetzungsfenster
+## Desktop: Icons, Double-Click, Dragging
 
-**Neu**
+**New**
 
-- **Startbildschirm** des Editors: neue Datei (`.C`, `.ASM`, `.PY`, `.MD`
-  mit Vorlage) oder vorhandene öffnen, `Up` direkt an der Liste,
-  `< Back` in der Knopfleiste
-- **Maus im Editor**: Klick setzt die Schreibmarke, Ziehen markiert,
-  Mausrad blättert (neuer Port `0x63` fürs Rad)
-- **Zwischenablage** bei `0x130000`, `Strg+C/X/V/A`; `Cmd+C`/`Cmd+V`
-  tauschen mit der macOS-Zwischenablage
-- **Fenstergröße und Vollbild** für TOOBAD-OS-Fenster *und* das
-  Emulatorfenster
-- **Übersetzungsfenster** mit Balken, Prozent und Statuszeile; `cc.c` meldet
-  seine drei Phasen über Syscall 29
-- **Zurückblättern im Terminalfenster**: Ringpuffer bei `0x124000`,
-  200 Zeilen, `term_sicht()` rechnet über einen gedachten Gesamtstrom
+- **`\DESKTOP` as a real folder** carries the icons — no special case,
+  the command line sees it like any other folder
+- Icons **freely movable**, layout in `\DESKTOP\ICONS.DAT`
+  (`icon_pos[]`, one word per directory entry)
+- **Double-click opens** (list like icon), `eintrag_oeffnen` is the one
+  place that decides what that means
+- Dragging: from a window onto the desktop moves to `\DESKTOP`, from
+  the desktop onto a file window moves into its folder
+- Icons redrawn: page with a dog-ear and a colored extension stripe,
+  folder with a tab, program as a window with a start arrow
+- Files **moved** via `fs_move` — in TBFS this is just a changed field
+  in the directory entry, no sector gets moved
+- File manager toolbar reduced from six buttons to four, sorted by
+  frequency, positions in *one* table (`fb_x`, `fb_breite`)
 
-**Behoben**
+**Fixed**
 
-- **`WIN` im Terminalfenster** startete einen zweiten Schreibtisch — und
-  `gui_running` wurde nur beim Menüpunkt *Exit* zurückgesetzt, nicht bei ESC
-- **`continue` sprang am Neuzeichnen vorbei**: Startmenü → Editor öffnete
-  das Fenster, der Bildschirm zeigte weiter das Menü
-
----
-
-## Programme und Werkzeuge
-
-**Neu**
-
-- **`programs/gfxlib.c`** — Grafik für eigene Programme: Blitter, Schrift,
-  vergrößerte Schrift direkt in den Bildspeicher, Knöpfe, Maus
-- **Syscall 30** gibt die Adresse des Zeichensatzes
-- **`programs/calc.c`** — Taschenrechner, rechnet in Tausendsteln, weil der
-  TB-32 kein Fließkomma hat
-- **`programs/crash.c`** — Stresstest und Fehlerinjektor: Burn-in bis zur
-  Drosselung, Farbchaos, Flackern, dazu fünf echte Abstürze. Läuft mit `/B`
-  im Hintergrund, während der Schreibtisch weiterläuft. Absichtlich **nur
-  als Quelltext** ausgeliefert (`NUR_QUELLTEXT` in `build.py`)
-- **`.PY` startet unter eigenem Namen** — die Shell hängt `PY.TBX` davor
-- `screenshot.py` kann mit `--type "10.0:text|ENTER"` zu bestimmten Zeiten
-  tippen
-
-**Behoben**
-
-- **`sleep()`/`beep()` froren die ganze Maschine ein**, wenn ein Programm
-  sie über einen Systemaufruf erreichte: `hlt` wartet auf den Timer, aber
-  bei `INT 0x40` sind die Interrupts gesperrt. `asm("sti")` in `lib.c`
-- **Ein Hintergrundprogramm klaute die Tastatur** — `TASKLIST` kam als
-  `ASKLIST` an. Mit `/B` gestartete Prozesse werden bei `getkey()` schlafen
-  gelegt
-- **`START X.TBX ARG /B` lief im Vordergrund**: `/B` wurde nur als zweites
-  Wort erkannt
-- **Der Kernel wuchs in die Puffer des Dateisystems** und überschrieb sein
-  eigenes Verzeichnis — Fenstertitel standen als Dateinamen da. Puffer nach
-  `0xB0000`, `build.py` prüft den Abstand
-- Grenzen von `cc.c` gefunden und dokumentiert: kein `?:`, kein `asm()`,
-  keine Variablen mitten im Block, höchstens 5 Argumente — und `#include`
-  wird **auch in Kommentaren** gefunden
+- **Clicks landed in the wrong window:** drawing followed stacking
+  order, checking followed window number
+- **File manager showed a hard-coded 11 rows with no scrolling** — in
+  `\SOURCE`, the last three files were invisible
+- **Endless scrolling** in the editor's selection screen: only the
+  lower bound was checked
+- **Double-clicking a program in the desktop folder** failed with
+  "is not recognized" — the search path is current folder →
+  `\SYSTEM` → `\PROGS`, and `\DESKTOP` isn't in it.
+  `eintrag_oeffnen` now sets `cwd` beforehand
+- **Graphical programs painted over the desktop:** whoever switches the
+  screen mode now gets the whole screen (`gui_fremd`), and
+  `term_aktiv` is switched off in the process — otherwise no key got
+  through
+- **`New` kept the file name** — `Save` would have wiped the open file
+- **Text ran out of buttons:** `g_button` only centers, it doesn't
+  truncate
+- **Icon name ran off the picture:** only the centering math was
+  clipped
+- **The × wasn't centered:** the font glyphs are 5×7 in an 8×8 cell;
+  the cross and fullscreen glyphs are now drawn by hand
+- **Number over label** in the clock window
 
 ---
 
-## Doku
+## Editor, Terminal Window, Compile Window
 
-- [[12 Abkuerzungen und Namen]] — was TBX, TBFS, TC, TCC, CC heißen sollen
-- [[13 BIOS-Dienste und was fehlt]] — Dienstliste, Setup, Secure Boot und
-  die bekannten Lücken
-- Diese Seite
+**New**
 
-Verwandt: [[00 START HIER]], [[07 Fallstricke]]
+- **Start screen** for the editor: new file (`.C`, `.ASM`, `.PY`, `.MD`
+  with a template) or open an existing one, `Up` right in the list,
+  `< Back` in the button bar
+- **Mouse in the editor:** click sets the caret, dragging selects,
+  mouse wheel scrolls (new port `0x63` for the wheel)
+- **Clipboard** at `0x130000`, `Ctrl+C/X/V/A`; `Cmd+C`/`Cmd+V` exchange
+  with the macOS clipboard
+- **Window size and fullscreen** for TOOBAD-OS windows *and* the
+  emulator window
+- **Compile window** with a progress bar, percentage, and status line;
+  `cc.c` reports its three phases via syscall 29
+- **Scrollback in the terminal window:** ring buffer at `0x124000`,
+  200 lines, `term_sicht()` computes over an imagined total stream
+
+**Fixed**
+
+- **`WIN` inside the terminal window** started a second desktop — and
+  `gui_running` was only reset on the *Exit* menu item, not on ESC
+- **`continue` skipped past the redraw:** start menu → editor opened
+  the window, but the screen kept showing the menu
+
+---
+
+## Programs and Tools
+
+**New**
+
+- **`programs/gfxlib.c`** — graphics for your own programs: blitter,
+  font, enlarged font straight into the screen buffer, buttons, mouse
+- **Syscall 30** returns the font address
+- **`programs/calc.c`** — calculator, computes in thousandths, because
+  the TB-32 has no floating point
+- **`programs/crash.c`** — stress test and fault injector: burn-in until
+  throttling, color chaos, flicker, plus five real crashes. Runs with
+  `/B` in the background while the desktop keeps going. Deliberately
+  shipped **as source only** (`NUR_QUELLTEXT` in `build.py`)
+- **`.PY` starts under its own name** — the shell prepends `PY.TBX`
+- `screenshot.py` can type at specific times with
+  `--type "10.0:text|ENTER"`
+
+**Fixed**
+
+- **`sleep()`/`beep()` froze the whole machine** when a program reached
+  them via a system call: `hlt` waits for the timer, but interrupts are
+  disabled during `INT 0x40`. `asm("sti")` in `lib.c`
+- **A background program stole the keyboard** — `TASKLIST` arrived as
+  `ASKLIST`. Processes started with `/B` are now put to sleep in
+  `getkey()`
+- **`START X.TBX ARG /B` ran in the foreground:** `/B` was only
+  recognized as the second word
+- **The kernel grew into the file system's buffers** and overwrote its
+  own directory — window titles showed up as file names. Buffers moved
+  past `0xB0000`, `build.py` checks the gap
+- Limits of `cc.c` found and documented: no `?:`, no `asm()`, no
+  variables mid-block, at most 5 arguments — and `#include` is also
+  found **inside comments**
+
+---
+
+## Docs
+
+- [[12 Abkuerzungen und Namen]] — what TBX, TBFS, TC, TCC, CC are meant
+  to stand for
+- [[13 BIOS-Dienste und was fehlt]] — service list, setup, Secure Boot,
+  and the known gaps
+- This page
+
+Related: [[00 START HIER]], [[07 Fallstricke]]

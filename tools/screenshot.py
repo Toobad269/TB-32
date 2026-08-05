@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """
-Bootet den PC ohne Fenster und speichert ein Bildschirmfoto als PNG.
-So kann ich pruefen, wie der Bildschirm wirklich aussieht.
+Boots the PC without a window and saves a screenshot as PNG.
+This lets me check what the screen actually looks like.
 
-    python3 tools/screenshot.py bild.png [sekunden] [--keys "DEL,DOWN,ENTER"]
+    python3 tools/screenshot.py image.png [seconds] [--keys "DEL,DOWN,ENTER"]
         [--type "10.0:text|ENTER"]  [--mouse "6:x:y:click"]
 """
 
@@ -48,8 +48,8 @@ def main():
     start_typing = int(float(sys.argv[sys.argv.index("--after") + 1]) / dt) \
         if "--after" in sys.argv else int(2.4 / dt)
 
-    # Tippen zu bestimmten Zeiten:  --type "10.0:hallo|, 12.0:ENTER"
-    # (mehrere Eintraege durch Komma, Sondertasten mit Namen wie bei --keys)
+    # Typing at specific times:  --type "10.0:hello|, 12.0:ENTER"
+    # (multiple entries separated by commas, special keys named as in --keys)
     tippen = []
     if "--type" in sys.argv:
         for teil in sys.argv[sys.argv.index("--type") + 1].split(","):
@@ -63,7 +63,7 @@ def main():
                         folge.append((0, ord(ch)))
             tippen.append([float(sek), folge])
 
-    # Mausskript:  --mouse "sekunde:x:y:aktion, ..."  (aktion: move|click|down|up)
+    # Mouse script:  --mouse "second:x:y:action, ..."  (action: move|click|down|up)
     maus = []
     if "--mouse" in sys.argv:
         for teil in sys.argv[sys.argv.index("--mouse") + 1].split(","):
@@ -110,7 +110,7 @@ def main():
     else:
         monitor.render(m.vga, target, force=True)
     pygame.image.save(target, out)
-    print(f"{out} gespeichert  ({m.total_instructions:,} Befehle ausgeführt)")
+    print(f"{out} saved  ({m.total_instructions:,} instructions executed)")
     m.shutdown()
 
 

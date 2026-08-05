@@ -1,14 +1,14 @@
 """
-Die TB-32 CPU -- das Herz des Rechners.
+The TB-32 CPU -- the heart of the machine.
 
-Sie macht exakt das, was jeder echte Prozessor macht, in einer Endlosschleife:
-    1. HOLEN    (fetch)   -- 4 Bytes an der Adresse im Programmzähler lesen
-    2. DEKODIEREN(decode) -- welcher Befehl ist das, welche Register?
-    3. AUSFÜHREN (execute)-- rechnen, Speicher anfassen, springen
-    4. Interrupts prüfen  -- meldet sich Hardware (Timer, Tastatur)?
+It does exactly what every real processor does, in an endless loop:
+    1. FETCH             -- read 4 bytes at the address in the program counter
+    2. DECODE             -- which instruction is this, which registers?
+    3. EXECUTE            -- compute, touch memory, jump
+    4. Check interrupts   -- is hardware (timer, keyboard) signaling?
 
-Alles darüber (BIOS, Betriebssystem, Programme) ist NICHT in Python geschrieben,
-sondern läuft als echter Maschinencode auf dieser CPU.
+Everything above this (BIOS, operating system, programs) is NOT written in
+Python -- it runs as real machine code on this CPU.
 """
 
 from hardware.isa import (
@@ -34,53 +34,53 @@ class CPU:
         self.powered = True
 
         self.cycles = 0
-        self.irq_pending = 0          # Bitmaske: Bit n = IRQ n liegt an
-        self.irq_vectors = {}         # Bit -> Interruptnummer
+        self.irq_pending = 0          # bitmask: bit n = IRQ n is pending
+        self.irq_vectors = {}         # bit -> interrupt number
         self.breakpoints = set()
         self.trace = False
         self.last_fault = None
         self._view()
 
     def _view(self):
-        """Sicht auf den Arbeitsspeicher als 32-Bit-Woerter.
+        """View of main memory as 32-bit words.
 
-        Jeder Befehl ist vier Byte lang und liegt auf einer durch vier
-        teilbaren Adresse. Ihn Byte fuer Byte zusammenzuschieben kostet vier
-        Zugriffe plus Schieben und Verodern -- ueber diese Sicht ist es ein
-        einziger Zugriff. Das ist der groesste einzelne Hebel im Emulator,
-        weil es bei JEDEM Befehl anfaellt.
+        Every instruction is four bytes long and sits at an address
+        divisible by four. Assembling it byte by byte costs four accesses
+        plus shifting and OR-ing -- through this view it's a single access.
+        This is the single biggest lever in the emulator, because it applies
+        to EVERY instruction.
 
-        Achtung: Die Sicht haengt an genau diesem bytearray. bus.ram wird
-        beim Einschalten nur ueberschrieben (ram[:] = ...), nicht ersetzt --
-        deshalb bleibt sie gueltig. Wer bus.ram jemals neu zuweist, muss
-        _view() erneut aufrufen.""" 
+        Note: this view is tied to this exact bytearray. bus.ram is only
+        overwritten on power-on (ram[:] = ...), never replaced -- so the
+        view stays valid. Anyone who ever reassigns bus.ram must call
+        _view() again."""
         self.words = memoryview(self.bus.ram).cast("I")
 
     # -- Reset -------------------------------------------------------------
 
     def reset(self):
         self.r = [0] * 16
-        self.r[15] = 0x000FFFF0       # Stack wächst nach unten
+        self.r[15] = 0x000FFFF0       # stack grows downward
         self.pc = RESET_VECTOR
         self.flags = 0
         self.halted = False
         self.cycles = 0
         self.irq_pending = 0
 
-    # -- Hardware-Interrupt anmelden --------------------------------------
+    # -- Register a hardware interrupt --------------------------------------
 
     def raise_irq(self, vector):
-        """Ein Gerät meldet sich. Wird beim nächsten Befehl bearbeitet."""
+        """A device is signaling. Handled before the next instruction."""
         self.irq_pending |= 1 << vector
         if self.flags & FLAG_I:
             self.halted = False
 
     def _enter_interrupt(self, vector):
-        """Wie beim echten PC: Flags und Rücksprungadresse auf den Stack,
-        Interrupts sperren, und über die Vektortabelle zum Handler springen."""
+        """Like on a real PC: push flags and return address onto the stack,
+        disable interrupts, and jump to the handler via the vector table."""
         handler = self.bus.read32(IVT_BASE + vector * 4)
         if handler == 0:
-            return False                      # kein Handler installiert
+            return False                      # no handler installed
         sp = (self.r[15] - 4) & MASK
         self.bus.write32(sp, self.flags)
         sp = (sp - 4) & MASK
@@ -93,7 +93,7 @@ class CPU:
 
     def software_interrupt(self, vector):
         if not self._enter_interrupt(vector):
-            self.last_fault = f"INT 0x{vector:02X} ohne Handler bei PC=0x{self.pc:08X}"
+            self.last_fault = f"INT 0x{vector:02X} with no handler at PC=0x{self.pc:08X}"
             self.halted = True
 
     # -- Flags -------------------------------------------------------------
@@ -127,7 +127,7 @@ class CPU:
         if res & SIGN:
             f |= FLAG_N
         if a < b:
-            f |= FLAG_C                       # "Borrow" = unsigned kleiner
+            f |= FLAG_C                       # "borrow" = unsigned less-than
         if ((a ^ b) & (a ^ res)) & SIGN:
             f |= FLAG_V
         self.flags = f
@@ -156,16 +156,16 @@ class CPU:
         if cond == 14: return not Z and (N == V)  # signed >
         return False
 
-    # -- Der eigentliche Prozessor-Takt ------------------------------------
+    # -- The actual processor clock ------------------------------------
 
     def run(self, budget):
-        """Führt bis zu <budget> Befehle aus. Gibt zurück, wie viele es waren.
+        """Executes up to <budget> instructions. Returns how many that was.
 
-        Der Programmzähler und das Flagregister leben während der Schleife in
-        lokalen Variablen -- in Python kostet jeder Zugriff auf self.xxx ein
-        Vielfaches davon, und diese beiden werden bei JEDEM Befehl angefasst.
-        Vor jedem Aufruf, der sie braucht (Interrupts), werden sie
-        zurückgeschrieben und danach wieder eingelesen."""
+        The program counter and the flags register live in local variables
+        for the duration of the loop -- in Python every access to self.xxx
+        costs a multiple of that, and these two are touched on EVERY
+        instruction. Before any call that needs them (interrupts), they are
+        written back and read in again afterward."""
         bus = self.bus
         ram = bus.ram
         words = self.words
@@ -173,18 +173,19 @@ class CPU:
         pc = self.pc
         flags = self.flags
         executed = 0
-        # Die anstehenden Interrupts liegen waehrend der Schleife in einer
-        # lokalen Variable. Das darf man, weil alle drei Quellen (Timer,
-        # Tastatur, Maus) von AUSSERHALB dieser Schleife melden -- aus
-        # run_slice und der Fensterschleife. Nur die Portbefehle unten lesen
-        # sicherheitshalber neu, falls je ein Baustein beim Zugriff meldet.
+        # Pending interrupts live in a local variable for the duration of
+        # the loop. That's fine, because all three sources (timer,
+        # keyboard, mouse) signal from OUTSIDE this loop -- from run_slice
+        # and the window loop. Only the port instructions below re-read it,
+        # just in case a device signals during the access.
         irq = self.irq_pending
-        # Haltepunkte aendert nur der Debugger, nie die laufende Maschine --
-        # also einmal holen statt bei jedem Befehl nachzuschlagen.
+        # Breakpoints are only ever changed by the debugger, never by the
+        # running machine -- so fetch them once instead of looking them up
+        # on every instruction.
         bp = self.breakpoints
 
         while executed < budget:
-            # --- Interrupts vor dem nächsten Befehl bearbeiten -------------
+            # --- Handle interrupts before the next instruction -------------
             if irq and (flags & FLAG_I):
                 bit = (self.irq_pending & -self.irq_pending).bit_length() - 1
                 self.irq_pending &= ~(1 << bit)
@@ -194,13 +195,13 @@ class CPU:
                 pc = self.pc
                 flags = self.flags
                 irq = self.irq_pending
-                if self.halted:              # kein Handler -> Panik
+                if self.halted:              # no handler -> panic
                     self.cycles += executed
                     return executed
 
-            # --- HOLEN ----------------------------------------------------
+            # --- FETCH ----------------------------------------------------
             if pc < RAM_SIZE:
-                if pc & 3:                      # krumme Adresse: Byte fuer Byte
+                if pc & 3:                      # misaligned address: byte by byte
                     word = ram[pc] | (ram[pc + 1] << 8) | (ram[pc + 2] << 16) | (ram[pc + 3] << 24)
                 else:
                     word = words[pc >> 2]
@@ -210,20 +211,21 @@ class CPU:
             npc = pc + 4
             executed += 1
 
-            # --- DEKODIEREN -----------------------------------------------
-            # Nur was JEDER Befehl braucht. rb, imm und simm holt sich der
-            # jeweilige Zweig selbst -- push, pop und mov (zusammen ueber die
-            # Haelfte aller Befehle) brauchen sie gar nicht.
+            # --- DECODE -----------------------------------------------
+            # Only what EVERY instruction needs. rb, imm, and simm are
+            # fetched by the individual branch itself -- push, pop, and mov
+            # (together over half of all instructions) don't need them at
+            # all.
             op = word >> 24
             rd = (word >> 20) & 0xF
             ra = (word >> 16) & 0xF
 
-            # --- AUSFÜHREN ------------------------------------------------
-            # Reihenfolge nach GEMESSENER Häufigkeit: Python prüft die Kette
-            # von oben nach unten, jeder Vergleich kostet Zeit. Während eines
-            # Compilerlaufs sind push und pop zusammen 40 % aller Befehle,
-            # ldw 13 %, mov 11 % -- die stehen deshalb ganz vorn.
-            # Nachmessen: tools/opstat.py
+            # --- EXECUTE ------------------------------------------------
+            # Ordered by MEASURED frequency: Python checks the chain from
+            # top to bottom, and every comparison costs time. During a
+            # compiler run, push and pop together make up 40% of all
+            # instructions, ldw 13%, mov 11% -- so those come first.
+            # Re-measure with: tools/opstat.py
 
             if op == 0x40:                   # push
                 sp = (r[15] - 4) & MASK
@@ -287,7 +289,7 @@ class CPU:
                 simm = imm - 0x10000 if imm & 0x8000 else imm
                 r[rd] = simm & MASK
 
-            elif op == 0x50:                   # jmp / bedingter Sprung
+            elif op == 0x50:                   # jmp / conditional jump
                 if rd == 0:
                     nimm = True
                 elif rd == 1:   nimm = (flags & 1) != 0          # jz
@@ -330,7 +332,7 @@ class CPU:
                 simm = imm - 0x10000 if imm & 0x8000 else imm
                 r[rd] = (r[ra] + simm) & MASK
 
-            elif op == 0x18:                   # ldb (mit Nullen aufgefüllt)
+            elif op == 0x18:                   # ldb (zero-extended)
                 imm = word & 0xFFFF
                 simm = imm - 0x10000 if imm & 0x8000 else imm
                 a = (r[ra] + simm) & MASK
@@ -446,7 +448,7 @@ class CPU:
 
             elif op == 0x06:                   # brk
                 self.halted = True
-                self.last_fault = f"Haltepunkt bei 0x{pc:08X}"
+                self.last_fault = f"Breakpoint hit at 0x{pc:08X}"
                 self.pc = npc
                 self.flags = flags
                 self.cycles += executed
@@ -487,7 +489,7 @@ class CPU:
                 if b == 0:
                     self.pc = npc
                     self.flags = flags
-                    self.software_interrupt(0x00)   # Division durch Null
+                    self.software_interrupt(0x00)   # division by zero
                     pc = self.pc
                     flags = self.flags
                     if self.halted:
@@ -646,7 +648,7 @@ class CPU:
             elif op == 0x60:                   # in rd, port
                 imm = word & 0xFFFF
                 r[rd] = bus.port_in(imm) & MASK
-                irq = self.irq_pending         # falls der Baustein gemeldet hat
+                irq = self.irq_pending         # in case the device signaled
 
             elif op == 0x61:                   # inr rd, ra
                 r[rd] = bus.port_in(r[ra] & 0xFFFF) & MASK
@@ -675,14 +677,14 @@ class CPU:
                     return executed
 
             else:
-                self.last_fault = (f"Ungültiger Befehl 0x{word:08X} "
-                                   f"(Opcode 0x{op:02X}) bei 0x{pc:08X}")
+                self.last_fault = (f"Invalid instruction 0x{word:08X} "
+                                   f"(opcode 0x{op:02X}) at 0x{pc:08X}")
                 self.pc = npc
                 self.flags = flags
                 self.software_interrupt(0x06)
                 npc = self.pc
                 flags = self.flags
-                if self.halted:              # kein Handler fuer den Fehler
+                if self.halted:              # no handler for the fault
                     self.pc = npc
                     self.flags = flags
                     self.cycles += executed
@@ -691,7 +693,7 @@ class CPU:
             pc = npc
             if bp and pc in bp:
                 self.halted = True
-                self.last_fault = f"Haltepunkt bei 0x{pc:08X}"
+                self.last_fault = f"Breakpoint hit at 0x{pc:08X}"
                 break
 
         self.pc = pc
@@ -699,7 +701,7 @@ class CPU:
         self.cycles += executed
         return executed
 
-    # -- Für den Debugger --------------------------------------------------
+    # -- For the debugger --------------------------------------------------
 
     def dump(self):
         lines = [f"PC=0x{self.pc:08X}  FLAGS={self.flags:04X} "

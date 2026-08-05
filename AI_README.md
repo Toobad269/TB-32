@@ -1,218 +1,219 @@
-# AI_README — alles, was ein Assistent über dieses Projekt wissen muss
+# AI_README — everything an assistant needs to know about this project
 
-Diese Datei ist für eine KI geschrieben, die einem Menschen bei TOOBAD TB-32
-helfen soll. Sie enthält den Aufbau, jeden Befehl, jede Oberfläche und die
-Fallen, die hier schon jemanden Stunden gekostet haben.
+This file is written for an AI that is meant to help a human with TOOBAD
+TB-32. It contains the architecture, every command, every interface, and
+the pitfalls that have already cost someone hours here.
 
-**Die eine Regel, aus der alles folgt:** Python emuliert **nur die Chips**.
-BIOS, Betriebssystem, Fenster und alle Programme sind echter
-TB-32-Maschinencode. Wer eine Funktion vermisst, baut sie in TB-32-Code —
-nicht in Python. Wer das umgeht, hat das Projekt verfehlt.
+**The one rule everything else follows from:** Python emulates **only the
+chips**. BIOS, operating system, windows, and all programs are real
+TB-32 machine code. If you're missing a feature, build it in TB-32 code —
+not in Python. Bypassing this misses the point of the project.
 
 ---
 
-## 1. Starten
+## 1. Starting up
 
 ```bash
-python3 build.py     # BIOS, Kernel, Programme und Laufwerk bauen — IMMER zuerst
-python3 pc.py        # den Rechner einschalten
-python3 pc.py --scale 3      # größeres Fenster
-python3 pc.py --turbo        # so schnell wie der Wirt kann
-python3 reset.py     # Werkszustand (fragt nach; --bios nur der Chip, --ja ohne Frage)
+python3 build.py     # build BIOS, kernel, programs, and drive — ALWAYS first
+python3 pc.py        # power on the machine
+python3 pc.py --scale 3      # larger window
+python3 pc.py --turbo        # as fast as the host can go
+python3 reset.py     # factory state (asks for confirmation; --bios chip only, --ja skips the question)
 ```
 
-Nach dem Start laufen **fünf Sekunden Bedenkzeit** mit blauem Startbild.
-Erst danach bekommt die CPU Strom. Wer in dieser Zeit `DEL` drückt, landet im
-BIOS-Setup — der Tastendruck wird aufgehoben und später ausgeliefert.
+After power-on, **five seconds of grace period** run with a blue splash
+screen. Only after that does the CPU get power. Pressing `DEL` during
+this time drops you into BIOS Setup — the keypress is held and delivered
+later.
 
-Ohne Fenster, für Tests und für dich als Assistent:
+Without a window, for tests and for you as an assistant:
 
 ```bash
-python3 tools/headless.py 8                       # 8 s booten, Bildschirm als Text
-python3 tools/headless.py 8 --keys "DIR,ENTER"    # dabei tippen
-python3 tools/headless.py 8 --after 0.5 --keys "DEL"   # ins Setup
-python3 tools/screenshot.py /tmp/x.png 12         # PNG, mit --keys und --mouse
+python3 tools/headless.py 8                       # boot for 8 s, screen as text
+python3 tools/headless.py 8 --keys "DIR,ENTER"    # type while booting
+python3 tools/headless.py 8 --after 0.5 --keys "DEL"   # into Setup
+python3 tools/screenshot.py /tmp/x.png 12         # PNG, with --keys and --mouse
 ```
 
-## 2. Tasten am Gehäuse
+## 2. Case keys
 
-Sie gehören dem **Fenster**, nicht dem virtuellen Rechner — sie wirken
-deshalb überall, auch im BIOS, wo noch kein Betriebssystem läuft.
+They belong to the **window**, not the virtual machine — so they work
+everywhere, even in the BIOS, where no operating system is running yet.
 
-| Taste | Wirkung |
+| Key | Effect |
 |---|---|
-| `ü` | Einschaltknopf, wenn der Rechner aus ist |
-| `DEL` (macOS `fn`+`⌫`) oder `F2` | BIOS-Setup; schon während der Bedenkzeit drückbar |
-| `Strg`+`K` | **alles kopieren, ohne Rückmeldung.** Textmodus: der ganze Bildschirm. Grafikmodus: das System liefert den Text des obersten Fensters — **jedes** Fenster, siehe 11.13 |
-| `Strg`+`V` / `Cmd`+`V` | vom Wirtsrechner einfügen |
-| `Cmd`+`C` | Auswahl aus TOOBAD-OS zum Wirt |
-| `Strg`+`R` | Reset (kein Neustart des Netzteils, also ohne Bedenkzeit) |
-| `F11` / `F12` | Vollbild / Einblendung mit Takt, Temperatur, Bildrate |
-| `Strg`+`Q` | beenden |
-| `Bild↑` / `Bild↓` | im Textmodus zurückblättern |
+| `ü` | Power button, when the machine is off |
+| `DEL` (macOS `fn`+`⌫`) or `F2` | BIOS Setup; can be pressed even during the grace period |
+| `Strg`+`K` | **copy everything, with no feedback.** Text mode: the whole screen. Graphics mode: the system supplies the text of the topmost window — **every** window, see 11.13 |
+| `Strg`+`V` / `Cmd`+`V` | paste from the host machine |
+| `Cmd`+`C` | copy selection from TOOBAD-OS to the host |
+| `Strg`+`R` | Reset (no power-supply restart, so no grace period) |
+| `F11` / `F12` | fullscreen / overlay with clock speed, temperature, frame rate |
+| `Strg`+`Q` | quit |
+| `Bild↑` / `Bild↓` | scroll back in text mode |
 
-## 3. Kommandozeile
+## 3. Command line
 
-| Befehl | Aufruf | was er tut |
+| Command | Usage | what it does |
 |---|---|---|
-| `DIR` | `DIR` | Inhalt des aktuellen Ordners |
-| `CD` / `CHDIR` | `CD name` \| `CD ..` | Ordner wechseln |
-| `MD` / `MKDIR` | `MD name` | Ordner anlegen |
-| `RD` / `RMDIR` | `RD name` | leeren Ordner löschen |
-| `COPY` | `COPY quelle ziel` | Datei kopieren |
-| `REN` | `REN alt neu` | umbenennen |
-| `DEL` / `ERASE` | `DEL name` | **in den Papierkorb** `\RECYCLED`; wer dort löscht, löscht endgültig |
-| `TYPE` | `TYPE name` | Datei ausgeben |
-| `MORE` | `MORE name` | seitenweise |
-| `FC` | `FC a b` | zwei Dateien vergleichen |
-| `DUMP` | `DUMP name` | Hexdump |
-| `FORMAT` | `FORMAT` | Laufwerk neu formatieren |
-| `CHKDSK` | `CHKDSK` | Dateisystem prüfen |
-| `VOL` | `VOL` | Laufwerksname |
-| `VER` | `VER` | Version von System und BIOS |
-| `MEM` | `MEM` | Speicherbelegung |
-| `SYSTEMINFO` | `SYSTEMINFO` | alles über die Maschine |
-| `TEMP` | `TEMP` | Temperatur, Lüfter, Drosselung |
-| `DATE` / `TIME` | | Datum / Uhrzeit |
-| `CLS` | | Bildschirm löschen |
-| `COLOR` | `COLOR nn` | Farbattribut setzen |
-| `ECHO` | `ECHO text` | Text ausgeben |
-| `START` | `START prog.tbx` | Programm starten |
-| `TASKLIST` | | laufende Prozesse |
-| `TASKKILL` | `TASKKILL nr` | Prozess beenden |
-| `EDIT` | `EDIT name` | Editor (der Coder im Textmodus) |
-| `DISPTEST` | | Bildschirmtest |
-| `WIN` / `DESKTOP` | | **Schreibtisch starten** |
-| `SHUTDOWN` / `REBOOT` / `EXIT` | | ausschalten / neu starten / zurück |
-| `HELP` | | dieselbe Liste im System |
+| `DIR` | `DIR` | contents of the current folder |
+| `CD` / `CHDIR` | `CD name` \| `CD ..` | change folder |
+| `MD` / `MKDIR` | `MD name` | create folder |
+| `RD` / `RMDIR` | `RD name` | delete empty folder |
+| `COPY` | `COPY source dest` | copy file |
+| `REN` | `REN old new` | rename |
+| `DEL` / `ERASE` | `DEL name` | **to the recycle bin** `\RECYCLED`; deleting there is permanent |
+| `TYPE` | `TYPE name` | print file |
+| `MORE` | `MORE name` | page by page |
+| `FC` | `FC a b` | compare two files |
+| `DUMP` | `DUMP name` | hex dump |
+| `FORMAT` | `FORMAT` | reformat the drive |
+| `CHKDSK` | `CHKDSK` | check the filesystem |
+| `VOL` | `VOL` | drive label |
+| `VER` | `VER` | system and BIOS version |
+| `MEM` | `MEM` | memory usage |
+| `SYSTEMINFO` | `SYSTEMINFO` | everything about the machine |
+| `TEMP` | `TEMP` | temperature, fan, throttling |
+| `DATE` / `TIME` | | date / time |
+| `CLS` | | clear screen |
+| `COLOR` | `COLOR nn` | set color attribute |
+| `ECHO` | `ECHO text` | print text |
+| `START` | `START prog.tbx` | start a program |
+| `TASKLIST` | | running processes |
+| `TASKKILL` | `TASKKILL nr` | end a process |
+| `EDIT` | `EDIT name` | editor (the Coder in text mode) |
+| `DISPTEST` | | screen test |
+| `WIN` / `DESKTOP` | | **start the desktop** |
+| `SHUTDOWN` / `REBOOT` / `EXIT` | | power off / restart / go back |
+| `HELP` | | same list within the system |
 
-Ein Programm startet man auch **ohne** `START`, einfach mit seinem Namen.
+A program can also be started **without** `START`, simply by its name.
 
-Namen sind **maximal 15 Zeichen**, Groß-/Kleinschreibung ist beim Suchen
-egal. Programme werden gesucht in: aktueller Ordner → `\SYSTEM` → `\PROGS`.
+Names are **at most 15 characters**; case doesn't matter when searching.
+Programs are looked up in: current folder → `\SYSTEM` → `\PROGS`.
 
-Ordner auf dem Laufwerk: `\SYSTEM` (Werkzeuge und die Systemdateien),
-`\PROGS` (Programme), `\SOURCE` (Quelltexte), `\RECYCLED` (Papierkorb),
-`\DESKTOP` (Symbole).
+Folders on the drive: `\SYSTEM` (tools and system files), `\PROGS`
+(programs), `\SOURCE` (source code), `\RECYCLED` (recycle bin),
+`\DESKTOP` (icons).
 
-## 4. Programme
+## 4. Programs
 
-| Aufruf | was es tut |
+| Usage | what it does |
 |---|---|
-| `CC quelle.c ziel.tbx` | C-Compiler **auf dem Gerät**. Übersetzt sich selbst |
-| `ASM quelle.asm ziel.tbx` | Assembler auf dem Gerät. Kann `.org`, `.equ`, `.include`, Ausdrücke mit Klammern, `ldwa`/`stwa` — genug für ein **komplettes BIOS** |
-| `PY datei.py` | kleiner Python-Interpreter |
-| `CALC` | Taschenrechner |
-| `FLAPPY` | Spiel im Grafikmodus |
-| `BENCH` `MEMTEST` `KELLERTEST` | Messwerkzeuge |
-| `CRASH` | löst absichtlich Fehler aus, um die Behandlung zu prüfen |
+| `CC source.c dest.tbx` | C compiler **on the device**. Compiles itself |
+| `ASM source.asm dest.tbx` | Assembler on the device. Supports `.org`, `.equ`, `.include`, parenthesized expressions, `ldwa`/`stwa` — enough for a **complete BIOS** |
+| `PY file.py` | small Python interpreter |
+| `CALC` | calculator |
+| `FLAPPY` | game in graphics mode |
+| `BENCH` `MEMTEST` `KELLERTEST` | measurement tools |
+| `CRASH` | deliberately triggers errors to test error handling |
 
-## 5. Der Schreibtisch
+## 5. The Desktop
 
-`WIN` startet ihn, *Exit desktop* im Startmenü führt zurück. Startmenü:
+`WIN` starts it, *Exit desktop* in the Start menu goes back. Start menu:
 File Manager, Command Prompt, Coder, System Monitor, Control Panel, Paint,
 Word, Clock, About, Exit desktop.
 
 ### Coder
 
-Editor mit Syntaxfarben und Suche. **Die Knopfleiste richtet sich nach der
-Art des Quelltextes** — erkannt an der Kennung `TBBI` im Kopf:
+Editor with syntax highlighting and search. **The button bar depends on
+the kind of source file** — detected by the `TBBI` marker in the header:
 
-| Quelltext | Knöpfe |
+| Source | Buttons |
 |---|---|
 | C / Assembler | `< Back  New  Save  Name  Build  Run  Find` |
-| Python | dasselbe **ohne Build** — eine `.PY` wird nicht übersetzt |
-| BIOS | `< Back  New  Save  Name  Find  Test  Flash` — kein Build, kein Run |
+| Python | the same **without Build** — a `.PY` file isn't compiled |
+| BIOS | `< Back  New  Save  Name  Find  Test  Flash` — no Build, no Run |
 
-`New` fragt **zuerst** nach dem Speicherort; bricht man ab, entsteht keine
-Datei. Danach speichert `Save` ohne weitere Nachfrage. Das `?` oben rechts
-öffnet die Anleitung zum BIOS-Schreiben auf dem Gerät.
+`New` asks **first** for the save location; canceling creates no file.
+After that, `Save` saves without asking again. The `?` in the top right
+opens the on-device guide to writing a BIOS.
 
-### Paint und Word
+### Paint and Word
 
-Paint: Werkzeuge, Strichstärke, Füllen, Rückgängig, Format `.TBI`.
-Word: Auswahl, Rechtsklickmenü, Textfarben, Listen, Seitenumbruch,
-eingebettete Paint-Bilder mit Größenänderung, Format `.TBW`.
-Beide fragen bei `New` zuerst nach dem Speicherort.
+Paint: tools, stroke width, fill, undo, format `.TBI`.
+Word: selection, right-click menu, text colors, lists, page breaks,
+embedded Paint images with resizing, format `.TBW`.
+Both ask for the save location first on `New`.
 
-### Dateidialog
+### File dialog
 
-Alle Programme benutzen dasselbe Fenster (`system/dialog.c`), gefiltert nach
-Endung. `DEL` verschiebt nach `\RECYCLED`; wer **dort** löscht, löscht
-endgültig.
+All programs use the same window (`system/dialog.c`), filtered by
+extension. `DEL` moves to `\RECYCLED`; deleting **there** is permanent.
 
-## 6. BIOS und Firmware
+## 6. BIOS and firmware
 
-Setup mit `DEL`, fünf Reiter: **Main, Hardware, Cooling, Security, Firmware**.
+Setup via `DEL`, five tabs: **Main, Hardware, Cooling, Security, Firmware**.
 
-Der BIOS-Chip ist austauschbar. Ein Abbild hat einen **48-Byte-Kopf**:
+The BIOS chip is swappable. An image has a **48-byte header**:
 
-| Position | Inhalt |
+| Offset | Contents |
 |---|---|
-| `0x00` | Sprung über den Kopf |
-| `0x04` | die vier Zeichen `TBBI` |
-| `0x08` | Länge in Byte |
-| `0x0C` | Prüfsumme (`h = 0x1234`, je Wort `h = h*31 + wort`) |
-| `0x10` | Name, 32 Byte, mit Nullbyte — **das Mainboard zeigt ihn im Startbild** |
-| `0x30` | ab hier Code |
+| `0x00` | jump over the header |
+| `0x04` | the four characters `TBBI` |
+| `0x08` | length in bytes |
+| `0x0C` | checksum (`h = 0x1234`, per word `h = h*31 + word`) |
+| `0x10` | name, 32 bytes, null-terminated — **the mainboard shows it on the splash screen** |
+| `0x30` | code starts here |
 
-Länge und Prüfsumme trägt `build.py` ein (bzw. der Coder beim `Test`/`Flash`).
+Length and checksum are filled in by `build.py` (or by the Coder during
+`Test`/`Flash`).
 
-**Drei Netze, drei Zeitpunkte:** die Firmware prüft vor dem Brennen, das
-Mainboard prüft beim Einschalten und greift sonst zur Sicherung (Dual BIOS),
-und *Restore Backup BIOS* holt ein gültiges, aber hängendes Abbild zurück.
-Der **Einmal-Start** (`Test`) läuft nur für den nächsten Start; das Abbild
-liegt im Board, nicht auf der Platte.
+**Three safety nets, three points in time:** the firmware checks before
+burning, the mainboard checks at power-on and falls back to the backup
+otherwise (Dual BIOS), and *Restore Backup BIOS* brings back a valid
+image that got stuck. The **one-shot start** (`Test`) applies only to the
+next boot; the image lives on the board, not on the disk.
 
-Vollständige Anleitung mit allen Diensten: `Doku/16 Eigenes BIOS schreiben`.
+Full guide with all services: `Doku/16 Eigenes BIOS schreiben`.
 
-## 7. Architektur — die vollständigen Tabellen
+## 7. Architecture — the complete tables
 
-### Register
+### Registers
 
 | | |
 |---|---|
-| `r0` | Rückgabewert **und Arbeitsregister des Compilers** — jeder Ausdruck landet hier |
-| `r1`–`r5` | Argumente 1–5 (mehr gibt es nicht, der Compiler kann keine sechs) |
-| `r6`–`r9` | muss die gerufene Funktion sichern |
-| `r10`–`r12` | Kratzregister, dürfen jederzeit zerstört werden |
-| `r13` (`at`) | Hilfsregister des Assemblers — nach `ldwa`/`stwa` immer futsch |
-| `r14` (`fp`) | Framepointer |
-| `r15` (`sp`) | Stackpointer |
+| `r0` | return value **and the compiler's working register** — every expression ends up here |
+| `r1`–`r5` | arguments 1–5 (there is no more; the compiler can't handle six) |
+| `r6`–`r9` | must be preserved by the called function |
+| `r10`–`r12` | scratch registers, may be clobbered at any time |
+| `r13` (`at`) | assembler's helper register — always clobbered after `ldwa`/`stwa` |
+| `r14` (`fp`) | frame pointer |
+| `r15` (`sp`) | stack pointer |
 
-**Weil der Compiler alles in `r0` rechnet, muss jeder Interrupthandler `r0`
-sichern.**
+**Because the compiler computes everything in `r0`, every interrupt
+handler must save `r0`.**
 
-### Speicherkarte
+### Memory map
 
-| Adresse | was |
+| Address | what |
 |---|---|
-| `0x00000000` | Interruptvektoren, 256 × 4 Byte |
-| `0x00000400` | BIOS-Datenbereich (Cursor, Farbe, Ticks, Tastaturpuffer) |
-| `0x00007C00` | hierhin lädt der Bootsektor |
-| `0x00008000` | der Bootsektor liest das Verzeichnis hierhin |
-| `0x00010000` | **Kernel** |
-| `0x0007FFF0` | Stack der Firmware |
-| `0x00100000` | Bildschirmhistorie, 512 Zeilen |
-| `0x000B0000` | feste Puffer des Dateisystems — **der Kernel darf nicht bis hierher wachsen** |
-| `0x000D0000` | Textpuffer des Coders, 60 KB |
-| `0x00120000` | Terminalfenster |
-| `0x00130000` | Zwischenablage von TOOBAD-OS |
-| `0x00200000` | hierhin lädt das OS Programme |
-| `0x00600008` | Leinwand von Paint |
-| `0x00720000` | Text von Word |
-| `0x00770000` | Fenstertext für `Strg`+`K` |
-| `0x02000000` | Textbildspeicher, 80 × 25 × 2 Byte |
-| `0x02100000` | Grafikbildspeicher, 640 × 400, ein Byte je Punkt |
-| `0x0F000000` | **BIOS-ROM**, 64 KB, nur lesbar |
+| `0x00000000` | interrupt vectors, 256 × 4 bytes |
+| `0x00000400` | BIOS data area (cursor, color, ticks, keyboard buffer) |
+| `0x00007C00` | the boot sector loads here |
+| `0x00008000` | the boot sector reads the directory here |
+| `0x00010000` | **kernel** |
+| `0x0007FFF0` | firmware stack |
+| `0x00100000` | screen history, 512 lines |
+| `0x000B0000` | fixed filesystem buffers — **the kernel must not grow this far** |
+| `0x000D0000` | Coder's text buffer, 60 KB |
+| `0x00120000` | terminal window |
+| `0x00130000` | TOOBAD-OS clipboard |
+| `0x00200000` | the OS loads programs here |
+| `0x00600008` | Paint's canvas |
+| `0x00720000` | Word's text |
+| `0x00770000` | window text for `Strg`+`K` |
+| `0x02000000` | text video memory, 80 × 25 × 2 bytes |
+| `0x02100000` | graphics video memory, 640 × 400, one byte per pixel |
+| `0x0F000000` | **BIOS ROM**, 64 KB, read-only |
 
 RAM: 16 MB.
 
-### Befehlssatz — alle Opcodes
+### Instruction set — all opcodes
 
-Jeder Befehl ist **genau 4 Byte**. Formate: `n` ohne Operand, `r` ein
-Register, `rr`, `rrr`, `ri` Register+Konstante, `rri`, `mem` `[Basis+Offset]`,
-`j` Sprung, `c` Aufruf, `i` Konstante, `ir` Port+Register.
+Every instruction is **exactly 4 bytes**. Formats: `n` no operand, `r`
+one register, `rr`, `rrr`, `ri` register+constant, `rri`, `mem`
+`[base+offset]`, `j` jump, `c` call, `i` constant, `ir` port+register.
 
 | Opcode | Mnemonic | Format |
 |---|---|---|
@@ -277,440 +278,451 @@ Register, `rr`, `rrr`, `ri` Register+Konstante, `rri`, `mem` `[Basis+Offset]`,
 | `0x63` | `outr` | rr |
 | `0x64` | `int` | i |
 
-**Kodierung:** `r`-Formate `(op<<24)|(rd<<20)|(ra<<16)|(rb<<12)`,
-`i`-Formate `(op<<24)|(rd<<20)|(ra<<16)|(imm&0xFFFF)`,
-Sprünge `(op<<24)|(cond<<20)|(off&0xFFFFF)` mit `off = (ziel-pc)/4`.
+**Encoding:** `r` formats `(op<<24)|(rd<<20)|(ra<<16)|(rb<<12)`,
+`i` formats `(op<<24)|(rd<<20)|(ra<<16)|(imm&0xFFFF)`,
+jumps `(op<<24)|(cond<<20)|(off&0xFFFFF)` with `off = (target-pc)/4`.
 
-**Bedingungen** für `0x50`: `al`=0 `z`/`eq`=1 `nz`/`ne`=2 `c`/`b`=3
+**Conditions** for `0x50`: `al`=0 `z`/`eq`=1 `nz`/`ne`=2 `c`/`b`=3
 `nc`/`ae`=4 `n`=5 `nn`=6 `v`=7 `nv`=8 `be`=9 `a`=10 `l`=11 `ge`=12 `le`=13
 `g`=14.
 
-**Falle:** `cmp`, `cmpi`, `tst`, `tsti`, `jmpr`, `callr` benutzen **`rd`**,
-nicht `ra`. Wer das verwechselt, baut einen Emulator, der fast richtig ist.
+**Pitfall:** `cmp`, `cmpi`, `tst`, `tsti`, `jmpr`, `callr` use **`rd`**,
+not `ra`. Mixing this up gets you an emulator that's almost right.
 
-**Pseudo-Befehle** des Assemblers: `li rd, wert32` (wird `movi`+`movh`),
-`ldwa/ldha/ldba/stwa/stha/stba rd, ADRESSE` (wird `li at, ADRESSE` plus
-Zugriff über `at`).
+**Pseudo-instructions** of the assembler: `li rd, value32` (expands to
+`movi`+`movh`), `ldwa/ldha/ldba/stwa/stha/stba rd, ADDRESS` (expands to
+`li at, ADDRESS` plus access through `at`).
 
-**Direktiven:** `.org` `.equ` `.include` `.db` `.dw` `.space` `.align`.
-Ausdrücke können `+ - * /` und Klammern, Punkt vor Strich.
+**Directives:** `.org` `.equ` `.include` `.db` `.dw` `.space` `.align`.
+Expressions support `+ - * /` and parentheses, with standard precedence
+(`*`/`/` before `+`/`-`).
 
 ### Ports
 
-| Port | wofür |
+| Port | for what |
 |---|---|
-| `0x00`/`0x01` | Interruptcontroller: quittieren / Maske |
-| `0x10`/`0x11` | Timer: Frequenz setzen / Ticks lesen |
-| `0x20`/`0x21` | Tastatur: Zeichen holen / liegt eins bereit |
-| `0x30`–`0x35` | Platte: LBA, Anzahl, Adresse, Befehl (1 lesen, 2 schreiben), Status, Größe |
-| `0x40`–`0x43` | Grafikkarte: Modus (0 Text, 1 Grafik), Cursor, Palette |
-| `0x44`–`0x4C` | **Blitter**: x, y, w, h, Farbe, Kommando, Zeichen, Quelle, Hintergrund |
-| `0x4D`–`0x4F` | Hardware-Mauszeiger: x, y, an |
-| `0x50`/`0x51` | Lautsprecher: Frequenz / an |
-| `0x52`/`0x53` | Doppelpufferung an / Bild sichtbar machen |
-| `0x54` | Zoom für Blitter-Kommando 3 |
-| `0x56`–`0x5A` | **Blockkopierer**: Quelle, Ziel, Länge, Füllbyte, Kommando |
-| `0x60`–`0x63` | Maus: x, y, Tasten (Bit 0 links, 1 Mitte, **2 rechts**), Rad |
-| `0x70`/`0x71` | CMOS: Adresse / Wert |
-| `0x80` | Entwickler-Log |
-| `0x90` | Netzteil: 1 aus, 2 Neustart |
-| `0xA0`–`0xA5` | Temperatur, Lüfter, Drosselung, Grenze, Lüftermodus, Höchstwert |
-| `0xB0`–`0xB2` | **BIOS-Chip**: Befehl, Puffergröße, Adresse |
+| `0x00`/`0x01` | interrupt controller: acknowledge / mask |
+| `0x10`/`0x11` | timer: set frequency / read ticks |
+| `0x20`/`0x21` | keyboard: get character / one waiting |
+| `0x30`–`0x35` | disk: LBA, count, address, command (1 read, 2 write), status, size |
+| `0x40`–`0x43` | graphics card: mode (0 text, 1 graphics), cursor, palette |
+| `0x44`–`0x4C` | **Blitter**: x, y, w, h, color, command, character, source, background |
+| `0x4D`–`0x4F` | hardware mouse cursor: x, y, enabled |
+| `0x50`/`0x51` | speaker: frequency / on |
+| `0x52`/`0x53` | double buffering on / make frame visible |
+| `0x54` | zoom for Blitter command 3 |
+| `0x56`–`0x5A` | **Block copier**: source, destination, length, fill byte, command |
+| `0x60`–`0x63` | mouse: x, y, buttons (bit 0 left, 1 middle, **2 right**), wheel |
+| `0x70`/`0x71` | CMOS: address / value |
+| `0x80` | developer log |
+| `0x90` | power supply: 1 off, 2 restart |
+| `0xA0`–`0xA5` | temperature, fan, throttling, limit, fan mode, peak value |
+| `0xB0`–`0xB2` | **BIOS chip**: command, buffer size, address |
 
-**Blitter-Kommandos** (Port `0x49`): 1 Fläche, 2 Rahmen, 3 Zeichen,
-4 Bild, 5 kopieren, 6 Zeichenkette, 7 Bild skaliert.
-**Blockkopierer** (Port `0x5A`): 1 kopieren, 2 füllen, 3/4/5 suchen.
-**BIOS-Chip** (Port `0xB0`): 1 Datei vom Wirt holen, 2 Puffer in den RAM,
-3 brennen, 4 Sicherung zurück, 5 Puffer aus dem RAM, 6 für einen Start
-anmelden, 7 abmelden, 8 dauerhaft anmelden, 9 liegt ein Wunsch an.
+**Blitter commands** (port `0x49`): 1 filled area, 2 outline, 3 character,
+4 image, 5 copy, 6 string, 7 scaled image.
+**Block copier** (port `0x5A`): 1 copy, 2 fill, 3/4/5 search.
+**BIOS chip** (port `0xB0`): 1 fetch file from host, 2 buffer into RAM,
+3 burn, 4 restore backup, 5 buffer out of RAM, 6 register for one boot,
+7 unregister, 8 register permanently, 9 is a request pending.
 
-**Ein neuer Port braucht drei Einträge:** Konstante in `hardware/isa.py`,
-Behandlung im Gerät, Registrierung in `hardware/machine.py`. Fehlt der
-dritte, tut er nichts — ohne jede Meldung. `m.bus.unknown_ports` verrät es.
+**A new port needs three entries:** the constant in `hardware/isa.py`,
+handling in the device, registration in `hardware/machine.py`. Missing
+the third one, it does nothing — with no error at all. `m.bus.unknown_ports`
+reveals it.
 
-### BIOS-Dienste
+### BIOS services
 
-Funktionsnummer in `r0`, Argumente ab `r1`, Ergebnis in `r0`.
+Function number in `r0`, arguments from `r1` on, result in `r0`.
 
-**`INT 0x10` Bildschirm** — die Reihenfolge ist Pflicht:
+**`INT 0x10` screen** — this order is mandatory:
 
-| r0 | Name | Argumente |
+| r0 | Name | Arguments |
 |---|---|---|
-| 0 | putc | r1 Zeichen, r2 Attribut |
-| 1 | puts | r1 Zeiger, r2 Attribut |
+| 0 | putc | r1 character, r2 attribute |
+| 1 | puts | r1 pointer, r2 attribute |
 | 2 | setcursor | r1 x, r2 y |
-| 3 | clear | r1 Attribut |
+| 3 | clear | r1 attribute |
 | 4 | getcursor | → `y<<16 \| x` |
-| 5 | putat | r1 x, r2 y, r3 Zeichen, r4 Attribut |
-| 6 | putn | r1 Zahl, r2 Attribut |
-| 7 | puthex | r1 Wert, r2 Attribut, **r3 Stellen** |
-| 8 | setmode | r1 = 0 Text, 1 Grafik |
-| 9 | box | r1 x, r2 y, r3 w, r4 h, r5 Attribut |
-| 10 | fillrect | dito |
-| 11 | hline | r1 x, r2 y, r3 Länge, r4 Zeichen, r5 Attribut |
+| 5 | putat | r1 x, r2 y, r3 character, r4 attribute |
+| 6 | putn | r1 number, r2 attribute |
+| 7 | puthex | r1 value, r2 attribute, **r3 digits** |
+| 8 | setmode | r1 = 0 text, 1 graphics |
+| 9 | box | r1 x, r2 y, r3 w, r4 h, r5 attribute |
+| 10 | fillrect | same |
+| 11 | hline | r1 x, r2 y, r3 length, r4 character, r5 attribute |
 | 12 | scroll | — |
-| 13 | clearrow | r1 y, r2 Attribut |
-| 14 | putsat | r1 x, r2 y, r3 Text, r4 Attribut |
-| 15/16 | sbcount / sbline | Bildschirmhistorie |
+| 13 | clearrow | r1 y, r2 attribute |
+| 14 | putsat | r1 x, r2 y, r3 text, r4 attribute |
+| 15/16 | sbcount / sbline | screen history |
 
-`putc` **muss die Steuerzeichen 8, 9, 10 und 13 selbst behandeln.** Fehlt
-die 8, druckt die Rücktaste ein Kästchen statt zu löschen.
+`putc` **must handle control characters 8, 9, 10, and 13 itself.**
+Without 8, backspace prints a little box instead of deleting.
 
-**`INT 0x13` Platte:** 0 lesen (r1 Sektor, r2 Anzahl, r3 Adresse → r0
-Status), 1 schreiben, 2 Größe.
-**`INT 0x16` Tastatur:** 0 warten (→ `Scancode<<8 \| ASCII`), 1 nachsehen,
-2 leeren. Ins Warten gehört ein `hlt`.
-**`INT 0x1A` Zeit:** 0 Ticks (100/s), 1 Uhrzeit `h<<16\|m<<8\|s`,
-2 Datum `j<<16\|m<<8\|t`.
+**`INT 0x13` disk:** 0 read (r1 sector, r2 count, r3 address → r0
+status), 1 write, 2 size.
+**`INT 0x16` keyboard:** 0 wait (→ `scancode<<8 \| ASCII`), 1 peek,
+2 flush. The wait should include a `hlt`.
+**`INT 0x1A` time:** 0 ticks (100/s), 1 time of day `h<<16\|m<<8\|s`,
+2 date `y<<16\|m<<8\|d`.
 
-### Systemaufrufe des OS — `INT 0x40`
+### OS system calls — `INT 0x40`
 
-Nummer in `r0`, Argumente `r1`–`r4`.
+Number in `r0`, arguments `r1`–`r4`.
 
 | Nr | | Nr | |
 |---|---|---|---|
 | 0 | putc | 17 | setmode |
-| 1 | puts | 18 | out(port, wert) |
+| 1 | puts | 18 | out(port, value) |
 | 2 | getkey | 19 | in(port) |
 | 3 | cls | 20 | box |
 | 4 | exit | 21 | hline |
 | 5 | ticks | 22 | memkb |
 | 6 | putn | 23 | flushkeys |
-| 7 | setcursor | 24–27 | Verzeichnis abfragen |
-| 8 | putat | 28 | Fortschritt melden (0–100) |
-| 9 | haskey | 29 | Statustext melden |
-| 10 | fileread | 30 | Adresse des Zeichensatzes |
-| 11 | filewrite | 31 | Fläche/Rahmen malen |
-| 12 | clock | 32 | Zeichen malen |
-| 13 | date | 33 | fileread mit Suchpfad |
+| 7 | setcursor | 24–27 | query directory |
+| 8 | putat | 28 | report progress (0–100) |
+| 9 | haskey | 29 | report status text |
+| 10 | fileread | 30 | address of the character set |
+| 11 | filewrite | 31 | draw filled area/outline |
+| 12 | clock | 32 | draw character |
+| 13 | date | 33 | fileread with search path |
 | 14 | sleep | | |
 | 15 | beep | | |
 | 16 | disksize | | |
 
-`INT 0x41` gibt die Rechenzeit freiwillig ab.
+`INT 0x41` voluntarily yields CPU time.
 
-### Dateisystem TBFS
+### TBFS filesystem
 
 | | |
 |---|---|
-| Superblock | Sektor 512, Kennung `TBFS` = `0x54424653` |
-| Verzeichnis | Sektoren 513–520, 128 Einträge à 32 Byte |
-| Daten | ab Sektor 576 |
-| Eintrag | Name 16 Byte, Start `+16`, Größe `+20`, Info `+24`, Zeit `+28` |
-| Info | Art im untersten Byte (1 Datei, 2 Ordner), **Elternordner+1** in Bit 16–31 |
+| Superblock | sector 512, magic `TBFS` = `0x54424653` |
+| Directory | sectors 513–520, 128 entries of 32 bytes each |
+| Data | from sector 576 |
+| Entry | name 16 bytes, start `+16`, size `+20`, info `+24`, time `+28` |
+| Info | type in the lowest byte (1 file, 2 folder), **parent folder+1** in bits 16–31 |
 
-**Dateien liegen am Stück.** Nur deshalb passt ein Lader in 512 Byte.
-Der Aufbau steht an **vier** Stellen: `system/fs.c`, `tools/tbfs.py`,
-`system/boot.asm`, `firmware/setup.asm` — wer eine ändert, ändert alle.
+**Files are stored contiguously.** That's the only reason a loader fits
+in 512 bytes. The layout is defined in **four** places: `system/fs.c`,
+`tools/tbfs.py`, `system/boot.asm`, `firmware/setup.asm` — change one,
+and you must change all of them.
 
-Eigene Formate: `.TBX` Programm (lädt nach `0x200000`), `.TBI` Bild
-(Breite, Höhe, dann ein Byte je Punkt), `.TBW` Word-Dokument.
+Custom formats: `.TBX` program (loads to `0x200000`), `.TBI` image
+(width, height, then one byte per pixel), `.TBW` Word document.
 
-## 8. Bauen und Prüfen
+## 8. Building and testing
 
 ```bash
-python3 tools/selftest.py       # 62 Prüfungen vom Einschalten bis zum Desktop
-python3 tools/ctest.py          # Sprachtests für den Compiler
-python3 tools/bootstrap.py      # der Compiler übersetzt sich selbst
-python3 tools/emu_vergleich.py  # C gegen Python, Befehl für Befehl
+python3 tools/selftest.py       # 62 checks from power-on to the desktop
+python3 tools/ctest.py          # language tests for the compiler
+python3 tools/bootstrap.py      # the compiler compiles itself
+python3 tools/emu_vergleich.py  # C vs. Python, instruction by instruction
 ```
 
-Nach **jeder** Änderung an `hardware/cpu.py` oder `emu/cpu.c` gehört
-`emu_vergleich.py` gelaufen. Nach Änderungen am System `selftest.py`.
+After **every** change to `hardware/cpu.py` or `emu/cpu.c`,
+`emu_vergleich.py` needs to run. After changes to the system,
+`selftest.py`.
 
-## 9. Fallen — hier zuerst nachsehen, bevor du einen Fehler suchst
+## 9. Pitfalls — check here first before hunting for a bug
 
-1. **`cmp`, `cmpi`, `tst`, `jmpr`, `callr` benutzen `rd`, nicht `ra`.**
-2. **Text mitten im Code braucht `.align 4`.** Feste 4-Byte-Befehle: ohne
-   Auffüllung liegt jeder folgende Befehl schief, und der Rechner stirbt
-   noch vor dem ersten Bild.
-3. **„Kaputt" hieß hier schon zweimal „noch nicht fertig".** Prüfe erst, ob
-   die Rechnung überhaupt durch ist — ein Zwischenergebnis, das sich bei
-   jeder Messung ändert, ist meistens kein Fehler.
-4. **Kosten pro Bild nachrechnen.** Bei 2 MHz hat ein Bild rund 33.000
-   Befehle. Eine Schleife über 3000 Byte je Neuzeichnen frisst das allein
-   auf und sieht aus wie ein Hänger.
-5. **Ein Leerlauf ist erst dann einer, wenn die CPU `hlt` ausführt** — sonst
-   wird die Maschine heiß und drosselt sich selbst.
-6. **Zeichenreihenfolge und Trefferreihenfolge sind dasselbe Wissen.** Wer
-   die eine ändert, ändert die andere mit, sonst sind Fenster nicht mehr
-   anklickbar.
-7. **`g_button` zentriert nur, es kürzt nichts.** Beschriftungen gegen die
-   Breite rechnen — `g_text_max()` kürzt, wo die Länge unbekannt ist.
-8. **Ein neuer Port braucht drei Einträge:** Konstante in `isa.py`,
-   Behandlung im Gerät, Registrierung in `machine.py`. Sonst tut er nichts,
-   ohne jede Meldung (`m.bus.unknown_ports` verrät es).
-9. **`#define NAME wert /* Kommentar */`** nahm früher den Kommentar in den
-   Wert. Behoben, aber die Familie solcher Fehler bleibt.
-10. **Der TBFS-Aufbau steht an vier Stellen** (`fs.c`, `tbfs.py`,
-    `boot.asm`, `setup.asm`). Wer Sektornummern verschiebt, ändert alle vier.
+1. **`cmp`, `cmpi`, `tst`, `jmpr`, `callr` use `rd`, not `ra`.**
+2. **Text in the middle of code needs `.align 4`.** Instructions are a
+   fixed 4 bytes: without padding, every following instruction is
+   misaligned, and the machine dies before the first frame.
+3. **"Broken" has twice already meant "not finished yet" here.** Check
+   first whether the computation has even completed — an intermediate
+   result that changes on every measurement is usually not a bug.
+4. **Work out the cost per frame.** At 2 MHz, a frame has about 33,000
+   instructions. A loop over 3000 bytes per redraw eats that up on its
+   own and looks like a hang.
+5. **A loop only counts as idle once the CPU executes `hlt`** —
+   otherwise the machine heats up and throttles itself.
+6. **Draw order and hit-test order are the same knowledge.** Change one
+   and you must change the other, or windows stop being clickable.
+7. **`g_button` only centers, it never truncates.** Check labels against
+   the width — `g_text_max()` truncates where the length is unknown.
+8. **A new port needs three entries:** the constant in `isa.py`,
+   handling in the device, registration in `machine.py`. Otherwise it
+   does nothing, with no error at all (`m.bus.unknown_ports` reveals it).
+9. **`#define NAME value /* comment */`** used to pull the comment into
+   the value. Fixed now, but this family of bugs lingers.
+10. **The TBFS layout is defined in four places** (`fs.c`, `tbfs.py`,
+    `boot.asm`, `setup.asm`). Moving sector numbers means changing all
+    four.
 
-Ausführlich mit Symptom, Ursache und Fundstelle: `Doku/07 Fallstricke`.
+In detail, with symptom, cause, and location: `Doku/07 Fallstricke`.
 
-## 10. Wo was liegt
+## 10. Where things live
 
 | | |
 |---|---|
-| `pc.py` | **das Gehäuse**: Monitor, Tastatur, Maus, Ton, Startbild, Bedenkzeit. Keine Logik des Rechners |
-| `hardware/` | CPU, Bus, Geräte — die Chips |
-| `firmware/` | BIOS und Setup in Assembler, dazu `minimal.asm` als Vorlage |
-| `system/` | das Betriebssystem in C und Assembler |
-| `programs/` | Programme fürs Laufwerk, inklusive Compiler und Assembler |
-| `tools/` | Compiler, Assembler und Tests für den Wirtsrechner |
-| `emu/` | derselbe Emulator in C, ~150× schneller, Weg zum Raspberry Pi |
-| `Doku/` | **die Arbeitsreferenz** als Obsidian-Vault. Bei Unklarheit zuerst `00 START HIER`, Änderungen ins `14 Aenderungsjournal` |
+| `pc.py` | **the case**: monitor, keyboard, mouse, sound, splash screen, grace period. No machine logic |
+| `hardware/` | CPU, bus, devices — the chips |
+| `firmware/` | BIOS and Setup in assembler, plus `minimal.asm` as a template |
+| `system/` | the operating system in C and assembler |
+| `programs/` | programs for the drive, including the compiler and assembler |
+| `tools/` | compiler, assembler, and tests for the host machine |
+| `emu/` | the same emulator in C, ~150× faster, the path to the Raspberry Pi |
+| `Doku/` | **the working reference** as an Obsidian vault. When unclear, start with `00 START HIER`; log changes in `14 Aenderungsjournal` |
 
-**Wenn du hier mitarbeitest:** lies zuerst `Doku/00 START HIER`, halte dich
-an `Doku/05 Konventionen` (Oberfläche englisch, Kommentare deutsch), und
-trage jede Änderung ins `14 Aenderungsjournal` ein — mit der *Ursache*, nicht
-nur dem Symptom.
+**If you're contributing here:** read `Doku/00 START HIER` first, follow
+`Doku/05 Konventionen` (interface in English, comments in German), and
+log every change in `14 Aenderungsjournal` — with the *cause*, not just
+the symptom.
 
 ---
 
-# 11. Die Oberfläche, Fenster für Fenster
+# 11. The interface, window by window
 
-Dieser Abschnitt beschreibt jedes Fenster so genau, dass du einem Nutzer
-sagen kannst, wo er klicken muss, ohne selbst hinzusehen.
+This section describes every window precisely enough that you can tell a
+user exactly where to click without looking yourself.
 
-Grundmaße: Bildschirm **640 × 400**, Zeichen **8 × 8** im Grafikmodus.
-Aufgabenleiste ab **y = 378**. Titelleiste jedes Fensters **14 Punkte** hoch.
+Base dimensions: screen **640 × 400**, characters **8 × 8** in graphics
+mode. Taskbar starts at **y = 378**. Every window's title bar is
+**14 points** tall.
 
-## 11.1 Der Schreibtisch
+## 11.1 The Desktop
 
-**Aufgabenleiste unten.** Ganz links der Knopf **Start** (x 2, Breite 52).
-Rechts daneben je ein Knopf pro offenem Fenster (Breite 64, ab x 90) — ein
-Klick holt es nach vorn. Rechts außen die **Uhr**.
+**Taskbar at the bottom.** Far left the **Start** button (x 2, width 52).
+To its right, one button per open window (width 64, starting at x 90) —
+clicking one brings it to the front. Far right, the **clock**.
 
-**Startmenü** (Klick auf *Start*, Einträge 14 Punkte hoch, ab y 262):
+**Start menu** (click on *Start*, entries 14 points tall, starting at
+y 262):
 
-| # | Eintrag | öffnet |
+| # | Entry | opens |
 |---|---|---|
-| 0 | File Manager | Dateiverwaltung |
-| 1 | Command Prompt | Kommandozeile im Fenster |
-| 2 | Coder | Editor |
-| 3 | System Monitor | Prozesse und Messwerte |
-| 4 | Control Panel | Einstellungen |
-| 5 | Paint | Malprogramm |
-| 6 | Word | Textverarbeitung |
-| 7 | Clock | Uhr |
-| 8 | Settings | Passwort ändern, Rechner zurücksetzen |
-| 9 | About TOOBAD-OS | Systeminfo |
+| 0 | File Manager | file management |
+| 1 | Command Prompt | command line in a window |
+| 2 | Coder | editor |
+| 3 | System Monitor | processes and readings |
+| 4 | Control Panel | settings |
+| 5 | Paint | drawing program |
+| 6 | Word | word processor |
+| 7 | Clock | clock |
+| 8 | Settings | change password, reset the machine |
+| 9 | About TOOBAD-OS | system info |
 | 10 | Power options | Restart, Shut down, Sign out |
-| 11 | Exit desktop | zurück zur Kommandozeile |
+| 11 | Exit desktop | back to the command line |
 
-**ESC verlässt den Schreibtisch NICHT.** Bis 2.5.2 tat es das -- ein Erbe aus
-der Zeit, als die Textkonsole das Zuhause war. Seit der Rechner in den
-Schreibtisch startet, ist das eine Falle: eine versehentlich gedrückte Taste
-warf einen mitten aus Coder, Paint oder Word in die Konsole, mit
-ungesichertem Text. Der Weg hinaus ist ausschließlich *Exit desktop*.
+**ESC does NOT leave the desktop.** Up through 2.5.2 it did -- a holdover
+from when the text console was home base. Now that the machine boots
+straight into the desktop, that was a trap: an accidentally pressed key
+would throw you out of Coder, Paint, or Word into the console mid-edit,
+with unsaved text. The only way out is *Exit desktop*.
 
-**Benutzerkonto.** Genau eines, in `\USER.DAT` (24 Byte, versteckt): Name ab
-Byte 0, Prüfsumme des Passworts ab Byte 20. Die Datei liegt **immer im
-Hauptverzeichnis** -- `benutzer_anlegen()` und `benutzer_vorhanden()` setzen
-`cwd` dafür kurz auf die Wurzel, weil `fs_write`/`fs_read` sonst im gerade
-offenen Ordner arbeiten würden. `pw_summe("") == 0x1234`: ein leeres Passwort
-gilt als *nicht gesperrt*, der Anmeldeschirm entfällt. `build.py` legt **kein**
-Konto an -- der erste Start fragt danach. Testwerkzeuge legen sich über
-`test_konto()` in `tools/headless.py` selbst eines an.
+**User account.** Exactly one, in `\USER.DAT` (24 bytes, hidden): name
+from byte 0, password checksum from byte 20. The file always lives
+**in the root directory** -- `benutzer_anlegen()` and
+`benutzer_vorhanden()` briefly set `cwd` to the root for this, because
+`fs_write`/`fs_read` would otherwise operate in whatever folder is
+currently open. `pw_summe("") == 0x1234`: an empty password counts as
+*not locked*, and the login screen is skipped. `build.py` creates **no**
+account -- the first boot asks for one. Test tools create one for
+themselves via `test_konto()` in `tools/headless.py`.
 
-**Symbole auf dem Schreibtisch.** Dateien aus `\DESKTOP` liegen als Symbole
-da und lassen sich mit der Maus verschieben; die Positionen merkt sich
-`ICONS.DAT`. Doppelklick startet oder öffnet.
+**Desktop icons.** Files from `\DESKTOP` appear as icons and can be
+dragged with the mouse; `ICONS.DAT` remembers their positions.
+Double-click starts or opens them.
 
-**Fensterrahmen.** In der Titelleiste rechts: **Vollbild** (x = Breite−30,
-12 × 11) und **Schließen** (x = Breite−16). Unten rechts ein 12 × 12 großer
-Anfasser zum Vergrößern. Ziehen an der Titelleiste verschiebt.
+**Window frame.** In the title bar, on the right: **Maximize**
+(x = width−30, 12 × 11) and **Close** (x = width−16). Bottom right, a
+12 × 12 resize handle. Dragging the title bar moves the window.
 
-**Reihenfolge:** gemalt wird nach Fensternummer, `win_top` zuletzt — wer die
-höhere Nummer hat, liegt vorn. Die Klicksuche läuft **rückwärts**, damit sie
-zur Malreihenfolge passt.
+**Ordering:** windows are drawn by window number, with `win_top` last —
+the higher the number, the further to the front. Click hit-testing runs
+**backwards** to match the draw order.
 
 ## 11.2 File Manager
 
-Spalten **Name / Size / Type**. Ein Klick wählt, Doppelklick öffnet: Ordner
-wechselt hinein, `.TBX` startet, Textdateien gehen in den Coder, `.TBI` nach
-Paint, `.TBW` nach Word. Der Knopf **Up** rechts oben geht eine Ebene hoch.
-Dateien lassen sich per Maus auf den Schreibtisch ziehen.
-Blättern mit `Bild↑` / `Bild↓`, löschen mit `Entf` (in den Papierkorb).
+Columns **Name / Size / Type**. A click selects, double-click opens:
+folders navigate in, `.TBX` launches, text files go to the Coder, `.TBI`
+to Paint, `.TBW` to Word. The **Up** button top right goes up one level.
+Files can be dragged to the desktop with the mouse.
+Scroll with `Page Up` / `Page Down`, delete with `Del` (to the recycle bin).
 
 ## 11.3 Command Prompt
 
-Die Kommandozeile in einem Fenster, **70 × 22** Zeichen. Alles aus Abschnitt
-3 funktioniert hier. Eigene Historie mit `Bild↑` / `Bild↓`. Ausgaben von
-Programmen, die man aus dem Coder startet, landen ebenfalls hier.
+The command line in a window, **70 × 22** characters. Everything from
+section 3 works here. Its own history with `Page Up` / `Page Down`.
+Output from programs launched from the Coder also lands here.
 
 ## 11.4 Coder
 
-**Kopfzeile:** `File: NAME  in PFAD  Ln n  Col n  Bytes n`. Steht rechts eine
-Meldung (`saved`, `built`, `errors`, `building ...`, `not found`), weicht die
-Byte-Zahl — beide teilen sich den Platz. Ganz rechts das **`?`** (20 × 14),
-das die BIOS-Anleitung öffnet.
+**Header line:** `File: NAME  in PATH  Ln n  Col n  Bytes n`. When a
+message appears on the right (`saved`, `built`, `errors`, `building ...`,
+`not found`), the byte count yields — the two share the same space. Far
+right, the **`?`** (20 × 14) that opens the BIOS-writing guide.
 
-**Knopfleiste** — sie richtet sich nach der Art des Quelltextes, erkannt an
-der Kennung `TBBI` im Kopf. Die Knöpfe rücken zusammen, wenn einer fehlt:
+**Button bar** — it depends on the kind of source file, detected by the
+`TBBI` marker in the header. Buttons shift together when one is missing:
 
-| Art | Knöpfe (von links) |
+| Kind | Buttons (from the left) |
 |---|---|
-| C / Assembler | `< Back` `New` `Save` `Name` `Build` `Run` `Find` + Suchfeld |
-| Python | dasselbe **ohne** `Build` |
-| BIOS | `< Back` `New` `Save` `Name` `Find` + Suchfeld + `Test` `Flash` |
+| C / Assembler | `< Back` `New` `Save` `Name` `Build` `Run` `Find` + search field |
+| Python | the same **without** `Build` |
+| BIOS | `< Back` `New` `Save` `Name` `Find` + search field + `Test` `Flash` |
 
-Breiten: Back 50, New 38, Save 44, Name 46, Build 50, Run 40, Find 40,
-Suchfeld 100, Test 52, Flash 56 — je 4 Punkte Abstand.
+Widths: Back 50, New 38, Save 44, Name 46, Build 50, Run 40, Find 40,
+search field 100, Test 52, Flash 56 — 4 points of spacing between each.
 
-| Knopf | was er tut |
+| Button | what it does |
 |---|---|
-| `< Back` | zurück zur Startseite mit Dateiliste und Vorlagen |
-| `New` | fragt **zuerst** nach dem Speicherort. Abbrechen legt nichts an |
-| `Save` | speichert ohne Nachfrage, sobald der Platz feststeht |
-| `Name` | Dateinamen im Kopf bearbeiten |
-| `Build` | übersetzt: `.ASM` mit `ASM.TBX`, sonst mit `CC.TBX`. Fortschrittsfenster, bei Fehlern wird es zum Meldungsfenster (520 × 240) und `ENTER` springt in die erste Fehlerzeile |
-| `Run` | speichert, übersetzt bei Bedarf, startet — Ausgabe im Terminalfenster |
-| `Find` | Suchfeld; `ENTER` springt zum nächsten Treffer, `not found` erscheint rechts |
-| `Test` | baut ein BIOS, prüft es, fragt einmal — und startet den Rechner **einmal** damit |
-| `Flash` | dasselbe dauerhaft; danach fragt die **Firmware** in Rot ein zweites Mal |
+| `< Back` | back to the start page with the file list and templates |
+| `New` | asks **first** for the save location. Canceling creates nothing |
+| `Save` | saves without asking, once the location is set |
+| `Name` | edit the filename in the header |
+| `Build` | compiles: `.ASM` with `ASM.TBX`, otherwise with `CC.TBX`. A progress window; on errors it becomes a message window (520 × 240) and `ENTER` jumps to the first error line |
+| `Run` | saves, compiles if needed, runs — output in the terminal window |
+| `Find` | search field; `ENTER` jumps to the next match, `not found` appears on the right |
+| `Test` | builds a BIOS, checks it, asks once — and boots the machine **once** with it |
+| `Flash` | the same, but permanently; afterward, the **firmware** asks a second time, in red |
 
-**Startseite** (nach `< Back` oder beim ersten Öffnen): links die Vorlagen
-**C program .C**, **Assembler .ASM**, **Python script .PY**, **BIOS .ASM** —
-rechts die Dateiliste des aktuellen Ordners mit `Up`-Knopf.
+**Start page** (after `< Back` or on first open): on the left, the
+templates **C program .C**, **Assembler .ASM**, **Python script .PY**,
+**BIOS .ASM** — on the right, the current folder's file list with an
+`Up` button.
 
-**Im Text:** Syntaxfarben je nach Sprache, Auswahl mit der Maus, Rollen mit
-`Bild↑`/`Bild↓`, `Pos1`/`Ende`, `Strg`+`A/C/X/V`.
+**In the text:** syntax highlighting depending on the language, mouse
+selection, scrolling with `Page Up`/`Page Down`, `Home`/`End`,
+`Ctrl`+`A/C/X/V`.
 
 ## 11.5 Paint
 
-**Werkzeuge** (zwei Spalten, je 24 × 20 Punkte):
+**Tools** (two columns, 24 × 20 points each):
 
 | | | | |
 |---|---|---|---|
-| `Pen` Stift | `Era` Radierer | `Lin` Linie | `Box` Rechteck |
-| `Bx*` gefüllt | `Cir` Kreis | `Fil` Füllen | `Get` Pipette |
+| `Pen` | `Era` eraser | `Lin` line | `Box` rectangle |
+| `Bx*` filled | `Cir` circle | `Fil` fill | `Get` eyedropper |
 
-Darunter **Size** mit 1, 2, 4 Punkten Strichstärke, dann die **Farbpalette**,
-dann die Knöpfe **New**, **Undo**, **Save**, **Open** (je 47 × 14, untereinander).
+Below that, **Size** with 1, 2, 4-point stroke widths, then the **color
+palette**, then the buttons **New**, **Undo**, **Save**, **Open**
+(47 × 14 each, stacked).
 
-`New` fragt zuerst nach dem Speicherort. `Undo` macht einen Schritt
-rückgängig. Format `.TBI`: Breite und Höhe als Wort, dann ein Byte je Punkt.
-Beim Ziehen von Linie, Rechteck und Kreis erscheint eine Vorschau, die
-**auf die Leinwand begrenzt** ist.
+`New` asks for the save location first. `Undo` reverts one step. Format
+`.TBI`: width and height as a word, then one byte per pixel. While
+dragging a line, rectangle, or circle, a preview appears that's
+**clipped to the canvas**.
 
 ## 11.6 Word
 
-**Knopfleiste oben:** `B` fett, `U` unterstrichen, `A` Schriftfarbe,
-`A+`/`A*` Größe, `1.` nummerierte Liste, `*` Aufzählung, `<`/`>` Einzug,
-`><` Umbruch, dann `New`, `Save`, `Open`.
+**Button bar at the top:** `B` bold, `U` underline, `A` text color,
+`A+`/`A*` size, `1.` numbered list, `*` bullet list, `<`/`>` indent,
+`><` line break, then `New`, `Save`, `Open`.
 
-**Rechtsklick** öffnet ein Menü mit 14 Einträgen (166 Punkte breit, Zeilen
-14 hoch):
+**Right-click** opens a menu with 14 entries (166 points wide, rows
+14 tall):
 
 | | |
 |---|---|
-| Black, Red, Green, Blue, Orange, Grey | Textfarbe der Auswahl |
-| Copy `^C`, Cut `^X`, Paste `^V` | Zwischenablage |
-| Select all, Deselect | Auswahl |
-| Insert picture | Paint-Bild einfügen (Dateidialog, nur `.TBI`) |
-| Delete picture | angeklicktes Bild samt Absatz löschen |
-| Save as text | als reine Textdatei ausgeben |
+| Black, Red, Green, Blue, Orange, Grey | text color of the selection |
+| Copy `^C`, Cut `^X`, Paste `^V` | clipboard |
+| Select all, Deselect | selection |
+| Insert picture | insert a Paint image (file dialog, `.TBI` only) |
+| Delete picture | delete the clicked image along with its paragraph |
+| Save as text | save as a plain text file |
 
-**Tasten:** Pfeile, `Pos1`/`Ende`, `Bild↑`/`Bild↓`, `Entf`, `Rücktaste`,
-`ENTER`. Ein Bild ist ein ganzer Absatz — angeklickt löschen `Entf` oder
-`Rücktaste` es vollständig. Seitenumbruch alle **620 Punkte** Höhe, die
-Seitenzahl steht am Rand. Format `.TBW`.
+**Keys:** arrows, `Home`/`End`, `Page Up`/`Page Down`, `Delete`,
+`Backspace`, `ENTER`. An image is an entire paragraph — once clicked,
+`Delete` or `Backspace` removes it completely. Page breaks every
+**620 points** of height, with the page number in the margin. Format
+`.TBW`.
 
 ## 11.7 System Monitor
 
-Zeigt die Prozesstabelle (Nummer, Zustand, Name), Speicherbelegung, den
-eingestellten Takt, die gemessene Temperatur, die Lüfterdrehzahl und die
-Drosselung. Frischt sich einmal je Sekunde auf — **ohne selbst zu malen**,
-er fordert ein normales Neuzeichnen an, damit er nicht über andere Fenster
-schreibt.
+Shows the process table (number, state, name), memory usage, the
+configured clock speed, measured temperature, fan speed, and throttling.
+Refreshes once per second — **without drawing itself**; it requests a
+normal redraw so it doesn't paint over other windows.
 
 ## 11.8 Control Panel
 
-Fünf Zeilen, ein Klick auf eine Zeile ändert den Wert (er läuft im Kreis):
+Five rows; clicking a row changes the value (it cycles):
 
-| Zeile | Werte |
+| Row | Values |
 |---|---|
 | CPU Clock Speed | 0.4 / 1 / 2 / 4 / 8 MHz |
-| POST Beep | an / aus |
-| Quick Boot | an / aus — **überspringt die Pausen im Selbsttest** |
-| POST Messages | kurz / ausführlich |
-| Fan Control | automatisch / leise / volle Drehzahl |
+| POST Beep | on / off |
+| Quick Boot | on / off — **skips the pauses in the self-test** |
+| POST Messages | brief / verbose |
+| Fan Control | automatic / quiet / full speed |
 
-Darunter der Knopf **Save to CMOS** (96 × 16) — erst er macht die
-Einstellungen dauerhaft. Nach dem Klick steht rechts daneben für drei
-Sekunden **`Saved`** in Grün. Rechts die aktuelle Temperatur, die sich
-**einmal je Sekunde auffrischt** — das Fenster löst dafür wie Uhr und
-Monitor ein Neuzeichnen des ganzen Schreibtischs aus, weil nur der die
-Fensterreihenfolge kennt.
+Below that, the **Save to CMOS** button (96 × 16) — only this makes the
+settings permanent. After clicking, **`Saved`** appears next to it in
+green for three seconds. On the right, the current temperature, which
+**refreshes once per second** — like the clock and the monitor, this
+window triggers a redraw of the whole desktop for that, since only the
+desktop knows the window order.
 
 ## 11.9 Clock, About
 
-**Clock:** Uhrzeit, Datum und Betriebszeit. **About:** Systemname, Version,
-CPU, Speicher, Grafikkarte.
+**Clock:** time of day, date, and uptime. **About:** system name,
+version, CPU, memory, graphics card.
 
-## 11.10 Dateidialog
+## 11.10 File dialog
 
-Ein Fenster für alle Programme (`system/dialog.c`), 380 × 250.
+One window for all programs (`system/dialog.c`), 380 × 250.
 
-Oben links **Save as** / **Open** / **Picture**, daneben der aktuelle Pfad,
-rechts der Knopf **Up**. Darunter die Liste (Ordner mit `DIR`, Dateien mit
-Größe), gefiltert nach Endung — Paint sieht nur `.TBI`, Word nur `.TBW`,
-*Insert picture* nur Bilder. **Ordner werden immer gezeigt**, sonst käme man
-nicht hin.
+Top left **Save as** / **Open** / **Picture**, next to it the current
+path, and the **Up** button on the right. Below that, the list (folders
+marked `DIR`, files with size), filtered by extension — Paint only sees
+`.TBI`, Word only `.TBW`, *Insert picture* only images. **Folders are
+always shown**, otherwise you couldn't navigate into them.
 
-Unten das Feld **Name:** und rechts **OK** (44 × 18) und **Cancel** (56 × 18).
+At the bottom, the **Name:** field and, on the right, **OK** (44 × 18)
+and **Cancel** (56 × 18).
 
-**Tasten:** `↑`/`↓` wählen, `ENTER` bestätigt, `ESC` bricht ab,
-`Rücktaste` löscht im Namensfeld. Ein Klick auf einen Ordner geht hinein,
-ein Klick auf eine Datei ist beim Öffnen schon die Antwort.
+**Keys:** `↑`/`↓` select, `ENTER` confirms, `ESC` cancels, `Backspace`
+deletes in the name field. Clicking a folder navigates into it; clicking
+a file is already the answer when opening.
 
-## 11.11 Die Firmware-Fenster im Coder
+## 11.11 The firmware windows in the Coder
 
-**Rückfrage** (420 × 150): Name, Größe und Prüfsumme des Abbildes, darunter
-drei Zeilen Erklärung — beim Testen „läuft einmal, der Chip bleibt", beim
-Flashen „die Firmware fragt gleich noch einmal in Rot". Knöpfe
-**Test once** / **Continue** und **Cancel**.
+**Confirmation dialog** (420 × 150): name, size, and checksum of the
+image, followed by three lines of explanation — for Test: "runs once,
+the chip stays as is"; for Flash: "the firmware will ask once more, in
+red". Buttons **Test once** / **Continue** and **Cancel**.
 
-**Hilfe** (`?`, 460 × 300): 33 Zeilen über den Kopf, die Interruptvektoren,
-alle Bildschirmfunktionen, die Steuerzeichen und das Laden des Bootsektors.
-`Bild↑`/`Bild↓` blättert, `ESC` schließt.
+**Help** (`?`, 460 × 300): 33 lines about the header, the interrupt
+vectors, all screen functions, the control characters, and boot-sector
+loading. `Page Up`/`Page Down` scrolls, `ESC` closes.
 
-## 11.12 BIOS-Setup
+## 11.12 BIOS Setup
 
-`DEL` oder `F2`. Fünf Reiter, mit `←`/`→` gewechselt:
+`DEL` or `F2`. Five tabs, switched with `←`/`→`:
 
-| Reiter | Inhalt |
+| Tab | Contents |
 |---|---|
-| **Main** | Uhrzeit, Datum, Quick Boot, POST-Piepser, POST-Meldungen, Standardwerte laden |
-| **Hardware** | CPU-Takt, Startgerät, Speicher, Platte, Grafikkarte |
-| **Cooling** | Lüftermodus, Drosselgrenze, Temperatur, Lüfter, Drosselung, Höchstwert |
-| **Security** | Secure Boot, Prüfsumme, *Trust Current Boot Image* |
-| **Firmware** | Größe und Prüfsumme des Chips, *Flash BIOS from File*, *Restore Backup BIOS* |
+| **Main** | time, date, Quick Boot, POST beeper, POST messages, load defaults |
+| **Hardware** | CPU clock, boot device, memory, disk, graphics card |
+| **Cooling** | fan mode, throttle limit, temperature, fan, throttling, peak value |
+| **Security** | Secure Boot, checksum, *Trust Current Boot Image* |
+| **Firmware** | chip size and checksum, *Flash BIOS from File*, *Restore Backup BIOS* |
 
-**Tasten:** `↑`/`↓` Zeile, `←`/`→` Reiter, `ENTER` oder `+`/`−` ändern,
-`F5` Standardwerte, `F10` sichern und raus, `ESC` verwerfen und raus.
+**Keys:** `↑`/`↓` row, `←`/`→` tab, `ENTER` or `+`/`−` change, `F5`
+defaults, `F10` save and exit, `ESC` discard and exit.
 
-## 11.13 Wie `Strg`+`K` an den Text kommt
+## 11.13 How `Strg`+`K` gets to the text
 
-Im Grafikmodus stehen auf dem Schirm Bildpunkte, kein Text — das Gehäuse
-kann dort nichts auslesen. Also **fragt** es: `pc.py` setzt `wt_wunsch`, der
-Schreibtisch sieht das in seiner nächsten Schleifenrunde, legt den Text nach
-`0x00770000` und setzt `wt_len`. Das Gehäuse holt ihn eine Zwanzigstelsekunde
-später ab.
+In graphics mode, the screen holds pixels, not text — the case can't
+read anything from there. So it **asks**: `pc.py` sets `wt_wunsch`
+(request flag), the desktop sees this on its next loop iteration, places
+the text at `0x00770000`, and sets `wt_len` (length). The case picks it
+up one-twentieth of a second later.
 
-Vier Fenster antworten mit ihrem **vollen** Inhalt, nicht nur dem sichtbaren
-Ausschnitt: **Coder** (der ganze Quelltext), **Word** (der ganze Fließtext),
-**File Manager** und **Dateidialog** (Pfad und alle Einträge), **Terminal**
-(alle 22 Zeilen).
+Four windows respond with their **full** content, not just the visible
+portion: **Coder** (the entire source text), **Word** (the entire body
+text), **File Manager** and **file dialog** (path and all entries),
+**Terminal** (all 22 lines).
 
-Alle anderen — Control Panel, System Monitor, Clock, About, die
-Firmware-Fenster — **malen sich einfach noch einmal**, nur landet dabei
-jeder Text im Puffer statt auf dem Schirm (`wt_aktiv`). Texte in derselben
-Bildzeile bleiben mit zwei Leerzeichen zusammen, eine neue Bildzeile wird
-eine neue Textzeile.
+All others — Control Panel, System Monitor, Clock, About, the firmware
+windows — **simply draw themselves again**, except every piece of text
+lands in the buffer instead of on the screen (`wt_aktiv`). Text on the
+same pixel row is joined with two spaces; a new pixel row becomes a new
+text line.
 
-**Das ist der Grund, warum hier nichts nachgetragen werden muss:** ein neues
-Fenster liefert seinen Inhalt von allein, sobald es `g_text` und `g_num`
-benutzt. Wer eine eigene Malroutine schreibt, muss nur `if (wt_aktiv)`
-beachten.
+**This is why nothing needs to be added by hand here:** a new window
+supplies its content automatically as soon as it uses `g_text` and
+`g_num`. Anyone writing a custom draw routine only needs to honor
+`if (wt_aktiv)`.

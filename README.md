@@ -1,204 +1,208 @@
 # TOOBAD TB-32
 
-> **Beta.** Das Projekt ist in Arbeit und wird ohne jede Gewähr
-> veröffentlicht. Es gibt keine Zusicherung, dass es bei dir läuft, und
-> keine Haftung für irgendetwas.
+> **Beta.** The project is a work in progress and is published with no
+> warranty whatsoever. There's no guarantee it will run for you, and no
+> liability for anything.
 
-Ein vollständiger virtueller PC. Der Grundsatz: **Python emuliert nur die
-Chips.** BIOS, Betriebssystem, Oberfläche und alle Programme sind echter
-TB-32-Maschinencode, geschrieben in einer eigenen Assemblersprache und einem
-eigenen C-Dialekt.
-
-```bash
-python3 build.py     # BIOS, Kernel, Programme und Laufwerk bauen
-python3 pc.py        # den Rechner einschalten
-```
-
-Beim **ersten Start** richtet der Rechner sich ein: Benutzername, Passwort,
-Passwort wiederholen. Danach meldest du dich bei jedem Start mit diesem
-Passwort an. Ein leeres Passwort bedeutet: der Rechner ist offen und fragt
-nicht. Das Konto liegt als versteckte Datei `\USER.DAT` auf der virtuellen
-Platte -- gelöscht wird es über *Start ▸ Settings ▸ Reset this machine* oder
-auf dem Mac mit `python3 reset.py`.
-
-## Netzwerk
-
-Der TB-32 hat eine Netzwerkkarte und einen eigenen Netzwerk-Stapel — ARP, IP,
-ICMP, UDP, DNS und TCP sind **TB-32-Code**, kein Python.
-
-**`python3 pc.py` genügt.** Router und Vermittler starten mit — in eigenen
-Fäden im selben Prozess. Startest du ein zweites Fenster, merkt es, dass
-beide schon laufen, und startet sie kein zweites Mal.
+A complete virtual PC. The core principle: **Python emulates only the
+chips.** BIOS, operating system, interface, and all programs are real
+TB-32 machine code, written in a custom assembly language and a custom
+C dialect.
 
 ```bash
-python3 pc.py                 # Netz läuft mit
-python3 pc.py --kein-netz     # ohne Router und Vermittler
+python3 build.py     # build BIOS, kernel, programs, and drive
+python3 pc.py        # power on the machine
 ```
 
-Dann geht `HOST example.com` (nennt die Adresse) und `FETCH example.com`
-(holt die Seite wirklich — DNS, TCP-Verbindung, HTTP-Anfrage, Antwort).
-Zwei laufende Rechner sehen sich ebenfalls sofort: `NET` zeigt die eigene
-Adresse, `PING 10.0.0.1` erreicht den anderen.
+On the **first boot**, the machine sets itself up: username, password,
+repeat password. After that you sign in with that password on every
+boot. An empty password means: the machine is open and doesn't ask. The
+account lives as a hidden file `\USER.DAT` on the virtual drive -- delete
+it via *Start ▸ Settings ▸ Reset this machine* or, on the Mac, with
+`python3 reset.py`.
 
-Router und Vermittler laufen auch einzeln, wenn man ihnen beim Arbeiten
-zusehen will (`python3 router.py`, `python3 proxy.py`) — dann `pc.py
---kein-netz` benutzen.
+## Networking
 
-Und im Schreibtisch gibt es einen **Browser**: *Start ▸ Browser*, Adresse
-eintippen, ENTER. Überschriften, Absätze, Aufzählungen und anklickbare
-Verweise. Kein CSS, kein JavaScript, keine Bilder.
+The TB-32 has a network card and its own network stack — ARP, IP,
+ICMP, UDP, DNS, and TCP are all **TB-32 code**, not Python.
 
-Für **HTTPS** sorgt der Vermittler — der TB-32 spricht weiter nur HTTP,
-die Verschlüsselung macht ein Programm daneben.
+**`python3 pc.py` is all you need.** The router and proxy start
+alongside it — in their own threads within the same process. Start a
+second window and it notices both are already running and won't start
+them a second time.
 
-Der Vermittler ist voreingestellt (`127.0.0.1:8080`), `https://example.com`
-geht also sofort. Antwortet dort niemand, nimmt der Browser den unmittelbaren
-Weg — dann geht alles außer HTTPS. Ausschalten mit `NET PROXY OFF`.
+```bash
+python3 pc.py                 # network runs alongside
+python3 pc.py --kein-netz     # without router and proxy
+```
 
-Befehle: `NET`, `NET IP`, `NET GW`, `NET DNS`, `NET ARP`, `NET SEND`,
+Then `HOST example.com` (resolves the address) and `FETCH example.com`
+(actually fetches the page — DNS, TCP connection, HTTP request,
+response) both work. Two running machines also see each other
+immediately: `NET` shows the machine's own address, `PING 10.0.0.1`
+reaches the other one.
+
+The router and proxy can also run standalone if you want to watch them
+work (`python3 router.py`, `python3 proxy.py`) — then use `pc.py
+--kein-netz`.
+
+And on the desktop there's a **browser**: *Start ▸ Browser*, type an
+address, ENTER. Headings, paragraphs, lists, and clickable links. No
+CSS, no JavaScript, no images.
+
+The proxy handles **HTTPS** — the TB-32 itself still only speaks HTTP,
+and a separate program next to it handles encryption.
+
+The proxy is preconfigured (`127.0.0.1:8080`), so `https://example.com`
+works right away. If nothing answers there, the browser falls back to
+the direct route — then everything except HTTPS works. Turn it off with
+`NET PROXY OFF`.
+
+Commands: `NET`, `NET IP`, `NET GW`, `NET DNS`, `NET ARP`, `NET SEND`,
 `NET WATCH`, `PING`, `HOST`, `FETCH`.
 
-## Wo die Programme liegen
+## Where programs live
 
-Das Startmenü zeigt, was **da ist**: oben die eingebauten Fenster, darunter
-alles aus `\SYSTEM\PROGS` (Programme des Systems) und `\PROGS` (deine
-eigenen). Sieben auf einmal, der Rest über die Pfeile. Leg eine `.TBX` in
-einen der Ordner — beim nächsten Öffnen steht sie im Menü.
+The Start menu shows what's **there**: the built-in windows at the top,
+followed by everything from `\SYSTEM\PROGS` (the system's programs) and
+`\PROGS` (your own). Seven at a time, the rest via the arrows. Drop a
+`.TBX` into either folder — it shows up in the menu the next time it's
+opened.
 
-Was in `\SYSTEM` liegt, ist gegen Löschen geschützt: `DEL` verweigert und
-verweist auf `SUDO`. Das fragt einmal nach deinem Passwort und gibt fünf
-Minuten Ruhe. Ein Rechner ohne Passwort ist offen — dort fragt nichts.
+Anything in `\SYSTEM` is protected from deletion: `DEL` refuses and
+points you to `SUDO`. That asks for your password once and then leaves
+you alone for five minutes. A machine without a password is open — it
+doesn't ask there.
 
-## Eigene Fenster für eigene Programme
+## Custom windows for your own programs
 
-Ein Programm von der Platte kann ein Fenster auf dem Schreibtisch haben — es
-muss dafür nicht im Kernel stehen. `FENSTER.TBX` zeigt es:
+A program from the drive can have a window on the desktop — it doesn't
+need to be part of the kernel for that. `FENSTER.TBX` shows how:
 
 ```
-WIN                          (Schreibtisch)
-START FENSTER.TBX /B         im Command Prompt
+WIN                          (desktop)
+START FENSTER.TBX /B         in the Command Prompt
 ```
 
-Der Blitter malt dabei in den **eigenen Bildpuffer** des Programms (Ports
-0x5B–0x5D), der Schreibtisch setzt die Fenster daraus zusammen. Ereignisse
-(Tasten, Klicks, Schließen) holt das Programm über die Syscalls 40–44 ab;
-die Bibliothek dazu steht in `programs/gfxlib.c`.
+The Blitter draws into the program's **own frame buffer** (ports
+0x5B–0x5D), and the desktop composites the windows from that. The
+program picks up events (keys, clicks, close) via syscalls 40–44; the
+library for that lives in `programs/gfxlib.c`.
 
-## Tasten am Gehäuse
+## Case keys
 
-Diese Tasten gehören dem Fenster, nicht dem virtuellen Rechner — sie
-funktionieren deshalb überall, auch im BIOS, wo noch gar kein
-Betriebssystem läuft.
+These keys belong to the window, not the virtual machine — so they work
+everywhere, even in the BIOS, where no operating system is running yet.
 
-| Taste | Wirkung |
+| Key | Effect |
 |---|---|
-| `ü` | **Einschaltknopf**, wenn der Rechner aus ist. Danach fünf Sekunden Bedenkzeit mit Startbild |
-| `DEL` (auf dem Mac `fn`+`⌫`) oder `F2` | ins BIOS-Setup — schon während der Bedenkzeit drückbar |
-| **`Strg`+`K`** / `Cmd`+`K` | **alles kopieren, ohne Rückmeldung.** Im Textmodus der ganze Bildschirm (auch im BIOS und im Setup), im Grafikmodus der *vollständige* Text des Coders — nicht nur der sichtbare Ausschnitt |
-| `Strg`+`V` / `Cmd`+`V` | Text vom Wirtsrechner einfügen |
-| `Cmd`+`C` | die Auswahl aus TOOBAD-OS zurück zum Wirtsrechner |
-| `Strg`+`R` | Reset — der Knopf am Gehäuse |
-| `F11` / `F12` | Vollbild / Einblendung mit Takt, Temperatur und Bildrate |
-| `Strg`+`Q` | beenden |
+| `ü` | **Power button**, when the machine is off. Followed by a five-second grace period with the splash screen |
+| `DEL` (on the Mac `fn`+`⌫`) or `F2` | into BIOS Setup — can be pressed even during the grace period |
+| **`Strg`+`K`** / `Cmd`+`K` | **copy everything, with no feedback.** In text mode, the whole screen (including in the BIOS and in Setup); in graphics mode, the *full* text of the Coder — not just the visible portion |
+| `Strg`+`V` / `Cmd`+`V` | paste text from the host machine |
+| `Cmd`+`C` | copy the selection from TOOBAD-OS back to the host machine |
+| `Strg`+`R` | Reset — the button on the case |
+| `F11` / `F12` | fullscreen / overlay with clock speed, temperature, and frame rate |
+| `Strg`+`Q` | quit |
 
-## Was hier drin steckt
+## What's inside
 
 | | |
 |---|---|
-| **CPU** | TB-32 — 32 Bit, 16 Register, feste 4-Byte-Befehle, 57 Opcodes |
-| **BIOS** | eigene Firmware mit Setup, Secure Boot und austauschbarem Chip |
-| **OS** | TOOBAD-OS mit Dateisystem, Multitasking, Fenstern, Paint, Word, Coder |
-| **Werkzeuge** | Assembler und C-Compiler — **jeweils einmal für den Mac und einmal für den TB-32 selbst** |
-| **Emulator** | einmal in Python (Referenz), einmal in C (~150× schneller) |
+| **CPU** | TB-32 — 32-bit, 16 registers, fixed 4-byte instructions, 57 opcodes |
+| **BIOS** | custom firmware with Setup, Secure Boot, and a swappable chip |
+| **OS** | TOOBAD-OS with a filesystem, multitasking, windows, Paint, Word, Coder |
+| **Tools** | assembler and C compiler — **each one built once for the Mac and once for the TB-32 itself** |
+| **Emulator** | once in Python (reference), once in C (~150× faster) |
 
-Der Rechner baut seinen eigenen Compiler **und seine eigene Firmware** — das
-Ergebnis ist Byte für Byte dasselbe wie vom Mac-Werkzeug.
+The machine builds its own compiler **and its own firmware** — the
+result is byte-for-byte identical to what the Mac tool produces.
 
-## Worauf es läuft
+## What it runs on
 
 | | |
 |---|---|
-| **macOS** | hier entwickelt und getestet |
-| **Linux** | getestet — Bau, alle vier Testwerkzeuge und der Schreibtisch laufen durch. Zwei Sachen sind aber macOS-gebunden und tun hier schlicht nichts: die Zwischenablage zum Wirtsrechner (`pbcopy`/`pbpaste`) und der Dateidialog zum Flashen des BIOS (`osascript`) |
-| **Windows** | **nicht ausprobiert.** Es ist nur Python und pygame, sollte also laufen; dieselben zwei macOS-Bindungen fehlen dort ebenfalls |
-| **Raspberry Pi ohne Linux** | **geht noch nicht.** Der C-Emulator ist der Weg dorthin und rechnet nachweislich identisch, aber Startbild, Tastatur und Bildausgabe stecken bis heute in `pc.py`. Siehe `Doku/15 Weg zum Raspberry Pi` |
+| **macOS** | developed and tested here |
+| **Linux** | tested — the build, all four test tools, and the desktop all run through. Two things are tied to macOS, though, and simply do nothing here: the clipboard to the host machine (`pbcopy`/`pbpaste`) and the file dialog for flashing the BIOS (`osascript`) |
+| **Windows** | **not tried.** It's just Python and pygame, so it should run; the same two macOS bindings are missing there as well |
+| **Raspberry Pi without Linux** | **doesn't work yet.** The C emulator is the path there and has been proven to compute identically, but the splash screen, keyboard, and display output are still stuck in `pc.py` to this day. See `Doku/15 Weg zum Raspberry Pi` |
 
-Gebraucht wird Python 3 und `pygame`:
+You need Python 3 and `pygame`:
 
 ```bash
 pip3 install -r requirements.txt
 ```
 
-## Was das hier eigentlich ist
+## What this actually is
 
-Ein **CPU-Emulator**, ein **eigener Befehlssatz**, ein **Assembler**, ein
-**C-Compiler**, ein **BIOS** und ein **Betriebssystem mit Fenstern** — alles
-von Grund auf selbst gebaut, nichts übernommen. Wer sich für *osdev*,
-Retro-Computing, Compilerbau oder schlicht dafür interessiert, wie ein
-Rechner unter der Oberfläche funktioniert, findet hier jede Schicht
-einzeln und lesbar.
+A **CPU emulator**, a **custom instruction set**, an **assembler**, a
+**C compiler**, a **BIOS**, and an **operating system with windows** —
+all built from scratch, nothing borrowed. If you're into *osdev*,
+retro computing, compiler construction, or simply curious how a
+computer works under the hood, every layer is here, separate and
+readable.
 
-Der Rechner baut seinen eigenen Compiler und seine eigene Firmware selbst —
-das nennt man Bootstrapping, und es ist der eigentliche Prüfstein.
+The machine builds its own compiler and its own firmware — that's
+called bootstrapping, and it's the real test of correctness.
 
-## Was drauf ist
+## What's on it
 
-**Auf der Kommandozeile** (`HELP` zeigt sie im System selbst):
+**On the command line** (`HELP` shows the same list within the system):
 
 | | |
 |---|---|
-| Dateien | `DIR` `CD` `MD` `RD` `COPY` `REN` `DEL` `TYPE` `MORE` `FC` `DUMP` |
-| Laufwerk | `FORMAT` `CHKDSK` `VOL` |
+| Files | `DIR` `CD` `MD` `RD` `COPY` `REN` `DEL` `TYPE` `MORE` `FC` `DUMP` |
+| Drive | `FORMAT` `CHKDSK` `VOL` |
 | System | `VER` `MEM` `SYSTEMINFO` `TEMP` `DATE` `TIME` `CLS` `COLOR` `ECHO` |
-| Prozesse | `START` `TASKLIST` `TASKKILL` |
-| Oberfläche | `WIN` startet den Schreibtisch |
-| Ende | `SHUTDOWN` `REBOOT` `EXIT` |
+| Processes | `START` `TASKLIST` `TASKKILL` |
+| Interface | `WIN` starts the desktop |
+| Exit | `SHUTDOWN` `REBOOT` `EXIT` |
 
-**Programme auf dem Laufwerk:**
-
-| | |
-|---|---|
-| `CC` | C-Compiler — **läuft auf dem TB-32 selbst und übersetzt sich selbst** |
-| `ASM` | Assembler, ebenfalls auf dem Gerät. Kann auch ein BIOS bauen |
-| `PY` | kleiner Python-Interpreter |
-| `CALC` | Taschenrechner |
-| `FLAPPY` | Spiel, zeigt die Grafikleistung |
-| `BENCH` `MEMTEST` `KELLERTEST` `CRASH` | Messen und Kaputtmachen zum Prüfen |
-
-**Auf dem Schreibtisch** (Startmenü):
+**Programs on the drive:**
 
 | | |
 |---|---|
-| **File Manager** | Dateien ansehen, umbenennen, löschen, per Maus ziehen |
-| **Command Prompt** | die Kommandozeile in einem Fenster |
-| **Coder** | Editor mit Syntaxfarben, Suche, Übersetzen, Starten — und **Firmware bauen** (`Test` / `Flash`) |
-| **Paint** | Malen mit Werkzeugen, Füllen, Rückgängig, eigenes Format `.TBI` |
-| **Word** | Textverarbeitung mit Auswahl, Farben, Listen, Seiten und **eingebetteten Bildern** |
-| **System Monitor** | Prozesse, Speicher, Takt, Temperatur |
-| **Control Panel** | CPU-Takt, Lüfter, POST-Einstellungen — schreibt ins CMOS |
-| **Clock** | Uhr und Laufzeit |
+| `CC` | C compiler — **runs on the TB-32 itself and compiles itself** |
+| `ASM` | assembler, also on the device. Can also build a BIOS |
+| `PY` | small Python interpreter |
+| `CALC` | calculator |
+| `FLAPPY` | game, shows off the graphics performance |
+| `BENCH` `MEMTEST` `KELLERTEST` `CRASH` | measuring and breaking things, for testing |
 
-## Doku
+**On the desktop** (Start menu):
 
-**Für KI-Assistenten:** [`AI_README.md`](AI_README.md) — Aufbau, jeder
-Befehl, jede Oberfläche und die Fallen, an einem Ort.
+| | |
+|---|---|
+| **File Manager** | view, rename, delete files, drag with the mouse |
+| **Command Prompt** | the command line in a window |
+| **Coder** | editor with syntax highlighting, search, compiling, running — and **building firmware** (`Test` / `Flash`) |
+| **Paint** | drawing with tools, fill, undo, its own format `.TBI` |
+| **Word** | word processing with selection, colors, lists, pages, and **embedded images** |
+| **System Monitor** | processes, memory, clock speed, temperature |
+| **Control Panel** | CPU clock, fan, POST settings — writes to CMOS |
+| **Clock** | clock and uptime |
 
-Die Arbeitsreferenz liegt in [`Doku/`](Doku/) als Obsidian-Vault. Anfangen
-bei `00 START HIER`. Besonders lesenswert: `07 Fallstricke` (teuer erkaufte
-Erkenntnisse) und `16 Eigenes BIOS schreiben`.
+## Docs
+
+**For AI assistants:** [`AI_README.md`](AI_README.md) — architecture,
+every command, every interface, and the pitfalls, all in one place.
+
+The working reference lives in [`Doku/`](Doku/) as an Obsidian vault.
+Start at `00 START HIER`. Especially worth reading: `07 Fallstricke`
+(hard-won lessons) and `16 Eigenes BIOS schreiben`.
 
 ## Tests
 
 ```bash
-python3 tools/selftest.py       # 62 Prüfungen vom Einschalten bis zum Desktop
-python3 tools/ctest.py          # Sprachtests für den Compiler
-python3 tools/bootstrap.py      # der Compiler übersetzt sich selbst
-python3 tools/emu_vergleich.py  # C gegen Python, Befehl für Befehl
+python3 tools/selftest.py       # 62 checks from power-on to the desktop
+python3 tools/ctest.py          # language tests for the compiler
+python3 tools/bootstrap.py      # the compiler compiles itself
+python3 tools/emu_vergleich.py  # C vs. Python, instruction by instruction
 ```
 
-Der letzte baut die C-Fassung des Emulators und braucht deshalb `make` und
-einen C-Compiler; die drei anderen kommen mit Python und pygame aus.
+The last one builds the C version of the emulator and therefore needs
+`make` and a C compiler; the other three need only Python and pygame.
 
-## Lizenz
+## License
 
-MIT — siehe [LICENSE](LICENSE). Mach damit, was du willst.
+MIT — see [LICENSE](LICENSE). Do whatever you want with it.

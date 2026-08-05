@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """
-Bootet den virtuellen PC ohne Fenster und gibt den Bildschirminhalt als Text
-aus. Damit kann ich Firmware testen, ohne jedes Mal hinzuschauen.
+Boots the virtual PC without a window and prints the screen contents as
+text. This lets me test firmware without having to look every time.
 
-    python3 tools/headless.py [sekunden] [--keys "DEL,ENTER"] [--regs]
+    python3 tools/headless.py [seconds] [--keys "DEL,ENTER"] [--regs]
 """
 
 import os
@@ -31,12 +31,12 @@ KEYNAMES = {
 
 
 def test_cmos():
-    """Ein eigenes CMOS fuer Testlaeufe: Startziel = Textkonsole.
+    """A dedicated CMOS for test runs: boot target = text console.
 
-    Seit der Rechner in den Schreibtisch startet, stehen im Textbildspeicher
-    nur noch die Reste von vorher -- jedes Werkzeug, das screen_text() liest,
-    waere blind. Es bekommt deshalb eine Kopie des CMOS mit Byte 0x1D = 1.
-    Das eigene CMOS des Nutzers bleibt unberuehrt, auch beim Herunterfahren."""
+    Since the machine now boots to the desktop, text video memory only
+    holds leftovers from before -- any tool reading screen_text() would be
+    blind. So it gets a copy of the CMOS with byte 0x1D = 1.
+    The user's own CMOS stays untouched, even on shutdown."""
     import shutil
     import tempfile
     ziel = os.path.join(tempfile.gettempdir(), "tb32_test_cmos.bin")
@@ -45,7 +45,7 @@ def test_cmos():
         shutil.copy(quelle, ziel)
     d = bytearray(open(ziel, "rb").read().ljust(64, b"\x00")) if os.path.exists(ziel) \
         else bytearray(64)
-    d[0x1D] = 1                       # 1 = Textkonsole
+    d[0x1D] = 1                       # 1 = text console
     with open(ziel, "wb") as f:
         f.write(bytes(d))
     return ziel
@@ -55,17 +55,17 @@ _platte_nr = 0
 
 
 def test_platte():
-    """Eine Arbeitskopie der Platte, auf der ein offenes Konto liegt.
+    """A working copy of the disk with an unlocked account on it.
 
-    Zwei Gruende fuer die Kopie. Erstens legt `build.py` kein Benutzerkonto
-    mehr an -- wer den Rechner herunterlaedt, soll seinen Benutzer selbst
-    einrichten. Ohne Konto staende jedes Werkzeug in der Ersteinrichtung und
-    wartete auf einen Namen; mit dem *eigenen* Konto des Nutzers kaeme es
-    nicht am Passwort vorbei. Zweitens hat ein Test auf der Platte des
-    Nutzers ohnehin nichts verloren: er schreibt und loescht Dateien.
+    Two reasons for the copy. First, `build.py` no longer creates a user
+    account -- whoever downloads the machine should set up their own user.
+    Without an account, every tool would sit at first-time setup waiting
+    for a name; and with the user's *own* account, it couldn't get past
+    the password. Second, a test has no business touching the user's own
+    disk anyway: it writes and deletes files.
 
-    Das Konto der Kopie heisst "user" und hat kein Passwort -- pw_summe("")
-    ist 0x1234, und das gilt als "nicht gesperrt"."""
+    The copy's account is called "user" and has no password -- pw_summe("")
+    is 0x1234, which counts as "not locked"."""
     import shutil
     import tempfile
     from tools.tbfs import TBFS
@@ -86,7 +86,7 @@ def test_platte():
         fs.delete("USER.DAT", -1)
     i = fs.put("USER.DAT", bytes(konto))
     e = fs._ent(i) + 24
-    fs._put32(e, fs._u32(e) | 256)                    # verstecken
+    fs._put32(e, fs._u32(e) | 256)                    # hide
     fs.markiere(513, 8)
     fs.save()
     return ziel
@@ -121,8 +121,8 @@ def main():
 
     dt = 1.0 / 60
     steps = int(seconds / dt)
-    # Tasten erst schicken, wenn der POST durch ist -- sonst wirft ihn
-    # die Wartschleife des BIOS weg.
+    # Only send keys once POST has finished -- otherwise the BIOS's
+    # wait loop discards them.
     start_typing = int(float(sys.argv[sys.argv.index("--after") + 1]) / dt) \
         if "--after" in sys.argv else int(2.4 / dt)
 
@@ -138,13 +138,13 @@ def main():
     for row in screen_text(m):
         print("|" + row.ljust(80) + "|")
     print("+" + "-" * 80 + "+")
-    print(f"Befehle ausgeführt: {m.total_instructions:,}   "
-          f"CPU {'ANGEHALTEN' if m.cpu.halted else 'läuft'}   "
+    print(f"Instructions executed: {m.total_instructions:,}   "
+          f"CPU {'HALTED' if m.cpu.halted else 'running'}   "
           f"PC=0x{m.cpu.pc:08X}")
     if m.cpu.last_fault:
-        print(f"Letzter Fehler: {m.cpu.last_fault}")
+        print(f"Last error: {m.cpu.last_fault}")
     if m.bus.unknown_ports:
-        print(f"Unbekannte Ports angesprochen: "
+        print(f"Unknown ports accessed: "
               f"{[hex(p) for p in sorted(m.bus.unknown_ports)]}")
     if "--regs" in sys.argv:
         print(m.cpu.dump())

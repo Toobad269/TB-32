@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 """
-Zaehlt, welche TB-32-Befehle waehrend einer typischen Last wirklich laufen.
+Counts which TB-32 instructions actually run during a typical workload.
 
-Die Ausfuehrungskette in hardware/cpu.py wird von oben nach unten geprueft --
-jeder Vergleich kostet Zeit. Wer sie umsortiert, sollte vorher hiermit messen
-statt zu raten.
+The dispatch chain in hardware/cpu.py is checked from top to bottom --
+every comparison costs time. Anyone reordering it should measure with
+this first instead of guessing.
 
     python3 tools/opstat.py
 """
@@ -41,7 +41,7 @@ def main():
 
     run(3.6)
     tippe("CD SOURCE")
-    tippe("CC CC.C X.TBX", 0.5)          # der Compiler ist die typische Last
+    tippe("CC CC.C X.TBX", 0.5)          # the compiler is the typical workload
 
     zaehler = collections.Counter()
     ram = m.bus.ram
@@ -56,10 +56,10 @@ def main():
 
     namen = {v[0]: k for k, v in INSTRUCTIONS.items()}
     gesamt = sum(zaehler.values())
-    print("Befehlshäufigkeit während eines Compilerlaufs:\n")
+    print("Instruction frequency during a compiler run:\n")
     for op, n in zaehler.most_common(20):
         print(f"   0x{op:02X}  {namen.get(op, '?'):8} {n * 100 / gesamt:5.1f} %")
-    print("\nDiese Reihenfolge sollte die Kette in hardware/cpu.py haben.")
+    print("\nThis is the order the dispatch chain in hardware/cpu.py should follow.")
 
 
 if __name__ == "__main__":

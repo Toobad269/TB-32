@@ -1,149 +1,150 @@
-# Fallstricke — teuer erkaufte Erkenntnisse
+# Pitfalls — Hard-Won Lessons
 
-Jeder Eintrag hat mich echte Suchzeit gekostet. Wenn etwas Ähnliches auftritt:
-zuerst hier nachsehen.
+Every entry here cost me real debugging time. If something similar comes up:
+check here first.
 
-## Schlafen hat nicht geschlafen — der Rechner wurde 65 Grad heiß
+## Sleep didn't sleep — the machine hit 65 degrees
 
-**Symptom:** Sobald ein Spiel mit Bildtakt lief, ging die Temperatur von 23
-auf **65 Grad**, der Chipsatz drosselte auf **60 %**, und das ganze System
-wurde zäh — es fühlte sich an wie eingefroren. Auslastung: 100 %, obwohl das
-Spiel den größten Teil jeder Bildzeit schlafen wollte.
+**Symptom:** As soon as a game with frame timing ran, the temperature went
+from 23 to **65 degrees**, the chipset throttled to **60%**, and the whole
+system turned sluggish — it felt like it had frozen. Load: 100%, even though
+the game wanted to sleep for most of every frame.
 
-**Ursache:** `proc_next()` gibt den **eigenen** Prozess zurück, wenn sonst
-niemand rechenbereit ist — sonst hätte der Umschalter gar keinen zum Nehmen.
-Damit war `proc_sleep()` wirkungslos: der Prozess legte sich schlafen, wurde
-im selben Interrupt wieder geweckt, legte sich schlafen … Bei einem einzigen
-laufenden Programm schlief also nie jemand, und der Prozessor lief Volllast.
+**Cause:** `proc_next()` returns the **calling** process itself when nobody
+else is ready to run — otherwise the scheduler would have nothing to pick.
+That made `proc_sleep()` pointless: the process went to sleep, got woken up
+again within the very same interrupt, went back to sleep … With only a
+single running program, nobody ever actually slept, and the processor ran at
+full load the whole time.
 
-Gefunden durch Abtasten des Befehlszählers gegen `kernel.sym`: die Spitze lag
-nicht im Spiel, sondern in `proc_next` / `proc_schedule` / `proc_sleep`.
+Found by sampling the instruction pointer against `kernel.sym`: the hot spot
+wasn't in the game, but in `proc_next` / `proc_schedule` / `proc_sleep`.
 
-**Behoben in:** `system/proc.c`. `proc_sleep()` wartet den Rest der Zeit
-selbst ab, mit **angehaltenem Prozessor** (`hlt`), und gibt vorher per
-`int 0x41` den anderen die Gelegenheit. Das `sti` davor ist Pflicht — wir
-stecken in einem Systemaufruf, dort sind die Interrupts gesperrt.
+**Fixed in:** `system/proc.c`. `proc_sleep()` now waits out the remaining
+time itself, with the **processor halted** (`hlt`), giving others a chance
+first via `int 0x41`. The `sti` before it is mandatory — we're inside a
+system call, where interrupts are disabled.
 
-| | vorher | nachher |
+| | before | after |
 |---|---|---|
-| Temperatur bei Flappy | 65,1 °C | 26,6 °C |
-| Drosselung | 60 % | 0 % |
-| Auslastung | 100 % | 10 % |
+| Temperature during Flappy | 65.1 °C | 26.6 °C |
+| Throttling | 60% | 0% |
+| Load | 100% | 10% |
 
-**Merke:** Ein „Leerlauf" ist erst dann einer, wenn der Prozessor wirklich
-`hlt` ausführt. Ob das passiert, sieht man an der Temperatur — das
-Wärmemodell ist hier ein ehrlicherer Messfühler als jede Zählung.
+**Lesson:** An "idle" state only counts as idle once the processor actually
+executes `hlt`. Whether that happens shows up in the temperature — the
+thermal model is a more honest sensor here than any counter.
 
-## Wer alleine malt, malt über alles drüber
+## Whoever paints alone paints over everything
 
-**Symptom:** Die Uhrzeit stand mitten im Control Panel, obwohl das
-Uhrfenster dahinter lag.
-**Ursache:** Die Uhr frischte sich einmal je Sekunde selbst auf —
-`app_clock(i)` malt aber nur ihren Inhalt, ohne zu wissen, welche Fenster
-davor liegen. Dasselbe galt für den System Monitor.
-**Behoben in:** `system/gui.c` — sie fordern jetzt ein normales
-Neuzeichnen an (`neu = 1`), und `draw_desktop()` kennt die Reihenfolge.
-**Merke:** In einem Fenstersystem darf **nur** die Stelle malen, die die
-Z-Reihenfolge kennt. Jede Abkürzung „ich zeichne schnell nur mein Fenster"
-ist genau dann falsch, wenn etwas davor liegt.
+**Symptom:** The clock appeared in the middle of the Control Panel, even
+though the clock window was actually behind it.
+**Cause:** The clock refreshed itself once per second — `app_clock(i)` only
+paints its own content, without knowing which windows sit in front of it.
+The same was true for the System Monitor.
+**Fixed in:** `system/gui.c` — they now request a normal redraw (`neu = 1`),
+and `draw_desktop()` knows the stacking order.
+**Lesson:** In a windowing system, **only** the code that knows the z-order
+is allowed to paint. Any shortcut of "I'll just quickly paint my own window"
+is wrong exactly when something else is in front of it.
 
-## Mauszustand gehört in die Ereignisse, nicht in eine Abfrage
+## Mouse state belongs in the events, not in a poll
 
-**Symptom:** Der Rechtsklick kam beim TB-32 nie an — das Menü in Word ging
-im Test auf, auf Colins Rechner nicht.
-**Ursache:** `pc.py` las die Tastenlage mit `pygame.mouse.get_pressed()`,
-ausgelöst durch ein Klick-Ereignis. Das liefert je nach Plattform beim
-Loslassen noch den alten Stand, und bei manchen Trackpads gar nichts für
-die rechte Taste.
-**Behoben in:** `pc.py` — der Zustand wird aus den Ereignissen selbst
-geführt (`e.button`: 1 links, 2 Mitte, 3 rechts). Dazu gilt Ctrl+Klick als
-Rechtsklick, wie auf dem Mac üblich.
-**Merke:** Wer Ereignisse bekommt, soll sie auch auswerten. Eine
-Zustandsabfrage im Ereignishandler ist immer einen Takt zu spät.
+**Symptom:** Right-click never arrived on the TB-32 — the menu in Word
+opened during testing but not on Colin's machine.
+**Cause:** `pc.py` read the button state with `pygame.mouse.get_pressed()`,
+triggered by a click event. Depending on the platform this returns the old
+state at release time, and on some trackpads nothing at all for the right
+button.
+**Fixed in:** `pc.py` — the state is now tracked from the events themselves
+(`e.button`: 1 left, 2 middle, 3 right). In addition, Ctrl+click counts as a
+right-click, as is customary on Mac.
+**Lesson:** Whoever receives events should evaluate them directly. A state
+poll inside an event handler is always one tick too late.
 
-## Mauszustand gehört in die Ereignisse, nicht in eine Abfrage
+## Mouse state belongs in the events, not in a poll
 
-## „Kaputt" hiess in Wahrheit „noch nicht fertig"
+## "Broken" actually meant "not finished yet"
 
-**Symptom:** Das Fuellwerkzeug in Paint fuellte nur drei Zeilen und hoerte
-dann auf. Jede Messung bestaetigte es: Zeilen = 3, Warteschlange = 4 Eintrage,
-und beim Auslesen der Zaehler standen sie auf 0.
+**Symptom:** The fill tool in Paint filled only three lines and then
+stopped. Every measurement confirmed it: lines = 3, queue = 4 entries, and
+reading the counters showed 0.
 
-**Ursache:** Nichts davon war ein Fehler. Die Funktion **rechnete noch**,
-als ich gemessen habe. Der Klick wartete 0,6 Sekunden, das Fuellen brauchte
-aber eine halbe Minute -- ein Funktionsaufruf mit vier Bereichspruefungen je
-Bildpunkt, 26.000-mal. Die scheinbar widerspruechlichen Zahlen (Zaehler im
-Speicher = 3 und 5, meine mitgeschriebenen Kopien = 2 und 4) waren einfach
-Momentaufnahmen aus verschiedenen Augenblicken.
+**Cause:** None of this was actually a bug. The function was **still
+computing** at the moment I measured it. The click waited 0.6 seconds, but
+the fill took a whole half minute -- a function call with four bounds
+checks per pixel, 26,000 times over. The seemingly contradictory numbers
+(counters in memory = 3 and 5, my own logged copies = 2 and 4) were simply
+snapshots from different moments in time.
 
-**Behoben durch Messen statt Raten:** Ein Blick auf den Befehlszaehler zeigte
-die Schleife munter weiterlaufen. Danach: Zeilen fuellt der Blockkopierer,
-die Laufgrenzen findet die Blocksuche der Hardware. Aus einer halben Minute
-wurde etwa eine Sekunde.
+**Fixed by measuring instead of guessing:** A look at the instruction
+pointer showed the loop still happily running. After that: the block
+copier fills the lines, and the hardware's block search finds the run
+boundaries. What was half a minute became about one second.
 
-**Und noch einmal, zwei Stunden spaeter:** Beim Coder blieb das
-Editorfenster leer, die Statuszeile fehlte, alle Zaehler sahen falsch aus.
-Wieder dasselbe -- das Bild war schlicht noch nicht fertig gemalt, weil die
-Syntaxfaerbung anfangs 476.000 Befehle je Neuzeichnen kostete. Dieser
-Fallstrick ist teuer genug, dass er zweimal zugeschlagen hat.
+**And again, two hours later:** In the Coder, the editor window stayed
+empty, the status line was missing, and every counter looked wrong. Same
+thing again -- the picture simply wasn't finished being painted yet,
+because syntax highlighting initially cost 476,000 instructions per
+redraw. This pitfall was expensive enough that it struck twice.
 
-**Merke:** Bevor man einen Fehler sucht, pruefen ob die Sache ueberhaupt
-fertig ist. Ein „falsches" Zwischenergebnis, das sich bei jeder Messung
-aendert, ist meistens kein Fehler, sondern eine laufende Rechnung. Und wenn
-sich mitgeschriebene Werte und der Speicherinhalt widersprechen, ist der
-Speicher aktueller -- nicht die Kopie.
+**Lesson:** Before hunting for a bug, check whether the thing is even
+done yet. A "wrong" intermediate result that keeps changing on every
+measurement is usually not a bug but an ongoing computation. And if
+logged values and memory contents disagree, memory is the current one --
+not the copy.
 
-## Ein unbekannter Port wird still verschluckt
+## An unknown port is silently swallowed
 
-**Symptom:** Die neu eingebaute Doppelpufferung blieb einfach aus. Kein
-Fehler, keine Meldung — `gx_doppelpuffer(1)` tat nichts.
-**Ursache:** `bus.port_out` schlägt den Port in `port_devices` nach; steht er
-nicht drin, landet er in `unknown_ports` und wird verworfen. Ich hatte den
-Port in `isa.py` und im Gerät eingetragen, aber nicht in der Geräteliste in
+**Symptom:** The newly built double buffering simply did nothing. No error,
+no message — `gx_doppelpuffer(1)` had no effect.
+**Cause:** `bus.port_out` looks the port up in `port_devices`; if it isn't
+listed there, it ends up in `unknown_ports` and is discarded. I had entered
+the port in `isa.py` and in the device, but not in the device list in
 `machine.py`.
-**Merke:** Ein neuer Port braucht **drei** Einträge: Konstante in `isa.py`,
-Behandlung im Gerät, und die Registrierung in `machine.py`. Wenn eine neue
-Hardwarefunktion „nichts tut", zuerst `m.bus.unknown_ports` ansehen.
+**Lesson:** A new port needs **three** entries: a constant in `isa.py`,
+handling in the device, and registration in `machine.py`. If a new hardware
+feature "does nothing," check `m.bus.unknown_ports` first.
 
-## Ein wiederverwendeter Prozessplatz erbt alte Marken
+## A reused process slot inherits old flags
 
-**Symptom:** Nach dem Übersetzen im Editor bekam das gestartete Programm
-keine einzige Taste. Aus der Textkonsole lief dasselbe Programm normal.
-**Ursache:** `p_bg[pid]` („im Hintergrund gestartet", bekommt absichtlich
-keine Tastatur) wurde gesetzt, aber nie gelöscht. Der Compiler läuft im
-Hintergrund und gibt seinen Platz frei; die danach gestartete Kommandozeile
-bekam denselben Platz **samt alter Marke**.
-**Behoben in:** `system/proc.c`, `proc_start()` setzt `p_bg[i] = 0`.
-**Merke:** Wer einen Platz wiederverwendet, muss *alle* Felder
-zurücksetzen — nicht die meisten. Und: wenn Tasten „nicht ankommen", erst am
-Tastenpuffer messen (`BDA_KEYHEAD` / `BDA_KEYTAIL`). Wächst `tail`, aber
-`head` steht still, dann liegt es nicht an der Tastatur, sondern daran, dass
-niemand liest.
+**Symptom:** After compiling in the editor, the launched program received
+not a single keystroke. The same program run from the text console worked
+fine.
+**Cause:** `p_bg[pid]` ("started in the background," deliberately gets no
+keyboard) was set but never cleared. The compiler runs in the background and
+frees its slot; the command line started afterward got the same slot
+**along with the old flag**.
+**Fixed in:** `system/proc.c`, `proc_start()` now sets `p_bg[i] = 0`.
+**Lesson:** Whoever reuses a slot has to reset *all* fields — not most of
+them. And: if keys "aren't arriving," measure the key buffer first
+(`BDA_KEYHEAD` / `BDA_KEYTAIL`). If `tail` grows but `head` stays put, the
+problem isn't the keyboard — it's that nobody is reading.
 
-## Wer nebenläufig malt, muss beim Malbefehl prüfen, nicht in der Schleife
+## Whoever paints concurrently must check at the drawing call, not in the loop
 
-**Symptom:** Der Schreibtisch malte seine Fenster ins Bild eines laufenden
-Vollbildspiels.
-**Ursache:** Die Prüfung „hat ein Programm den Schirm?" stand am Anfang der
-Hauptschleife. Schaltet das Programm mitten in einer Runde um, läuft der
-Rest dieser Runde trotzdem durch. Auch ein Wächter am Anfang von
-`draw_desktop()` reicht nicht — die Funktion malt viele Fenster
-nacheinander, und das Umschalten passiert mittendrin.
-**Behoben in:** `system/gui.c`, `gui_fremd` wird in `g_fill`, `g_frame` und
-`g_char` selbst geprüft.
-**Merke:** Bei zwei nebenläufigen Malern gehört die Prüfung so weit nach
-unten wie möglich — an die Stelle, die tatsächlich schreibt.
+**Symptom:** The desktop painted its windows onto the frame of a running
+fullscreen game.
+**Cause:** The check "does a program own the screen?" sat at the start of
+the main loop. If the program switches mid-frame, the rest of that frame
+still runs anyway. Even a guard at the start of `draw_desktop()` isn't
+enough — the function paints many windows one after another, and the switch
+happens in the middle of that.
+**Fixed in:** `system/gui.c`, `gui_fremd` is now checked inside `g_fill`,
+`g_frame`, and `g_char` themselves.
+**Lesson:** With two concurrent painters, the check belongs as far down as
+possible — at the spot that actually writes.
 
-## Ein `#include` **im Kommentar** hat echten Quelltext gefressen
+## An `#include` **inside a comment** ate real source code
 
-**Symptom:** `fs_read_lib` und Systemaufruf 33 verhielten sich, als gäbe es sie
-nicht — jeder Aufruf lieferte −1. Direkt daneben stehender, offensichtlich
-richtiger Code hatte keinerlei Wirkung. Eine Messung zeigte, dass sogar
-`fs_find_in("SOURCE", 0 - 1)` fehlschlug, obwohl derselbe Aufruf mit einer
-Zeichenkette *aus einem Programm* den Ordner problemlos fand.
+**Symptom:** `fs_read_lib` and system call 33 behaved as if they didn't
+exist — every call returned −1. Code right next to it, obviously correct,
+had no effect at all. A measurement showed that even
+`fs_find_in("SOURCE", 0 - 1)` failed, even though the very same call with a
+string *from a program* found the folder without any trouble.
 
-**Ursache:** Der Präprozessor arbeitet zeilenweise und prüfte nur, ob eine
-Zeile mit `#` beginnt. In `syscall.c` stand dieser Kommentar:
+**Cause:** The preprocessor works line by line and only checked whether a
+line starts with `#`. In `syscall.c` there was this comment:
 
 ```c
 /* Datei lesen mit Suchpfad: aktueller Ordner, dann \SOURCE. Fuer
@@ -151,364 +152,368 @@ Zeile mit `#` beginnt. In `syscall.c` stand dieser Kommentar:
 if (fn == 33) return fs_read_lib((char*)a1, a2, a3);
 ```
 
-Die zweite Zeile beginnt (nach Leerzeichen) mit `#` → der Präprozessor hielt
-sie für eine Anweisung und **ersetzte sie durch eine leere Zeile**. Damit war
-das schließende `*/` weg, der Kommentar blieb offen und verschlang alles bis
-zum nächsten `*/` — also den `if (fn == 33)` und den Anfang des nächsten
-Blocks. Die Klammernzählung zeigte es dann eindeutig: die Funktion `syscall`
-endete an einer Stelle, an der im Quelltext noch gar kein Ende steht.
+The second line begins (after leading whitespace) with `#` → the
+preprocessor took it for a directive and **replaced it with a blank line**.
+That removed the closing `*/`, so the comment stayed open and swallowed
+everything up to the next `*/` — including the `if (fn == 33)` and the start
+of the next block. Counting braces made it obvious: the function `syscall`
+ended at a point where the source code doesn't actually end.
 
-**Behoben in:** `tools/tcc.py` (`zeilen_im_kommentar()` — merkt sich für jede
-Zeile, ob sie mitten in einem Blockkommentar anfängt; beide Durchgänge,
-`#include` und `#define`, überspringen solche Zeilen) und genauso in
-`programs/cc.c` (`komm_folge()`), damit der Compiler auf dem Gerät denselben
-Schutz hat.
+**Fixed in:** `tools/tcc.py` (`zeilen_im_kommentar()` — tracks, for each
+line, whether it starts inside a block comment; both passes, `#include` and
+`#define`, skip such lines) and likewise in `programs/cc.c`
+(`komm_folge()`), so the on-device compiler gets the same protection.
 
-**Merke:** Ein zeilenweiser Präprozessor darf niemals Zeilen löschen, ohne zu
-wissen, ob sie in einem Kommentar stehen. Und: Wenn Code „keine Wirkung hat",
-obwohl er offensichtlich richtig ist, zuerst nachzählen, ob der Compiler ihn
-überhaupt sieht — Klammern zählen ist billiger als tagelang die Logik zu
-prüfen.
+**Lesson:** A line-based preprocessor must never delete lines without
+knowing whether they're inside a comment. And: if code "has no effect" even
+though it's obviously correct, first count whether the compiler even sees it
+at all — counting braces is cheaper than checking logic for days.
 
-## Der Prozessumschalter muss R0 sichern
+## The process switcher must save R0
 
-**Symptom:** Programme rechnen falsch oder stürzen ab, sobald Multitasking
-läuft.
-**Ursache:** `sched_irq_asm` sicherte r1–r14. Der Compiler benutzt aber **r0**
-als Arbeitsregister für *jeden* Ausdruck. Jeder Timerinterrupt zerstörte also
-mitten in der Rechnung ein Zwischenergebnis.
-**Behoben in:** `system/start.asm` (15 statt 14 Register) und `proc.c`
-(Stackaufbau neuer Prozesse).
+**Symptom:** Programs compute wrong results or crash as soon as
+multitasking is running.
+**Cause:** `sched_irq_asm` saved r1–r14. But the compiler uses **r0** as the
+working register for *every* expression. Every timer interrupt could
+therefore destroy an intermediate result right in the middle of a
+computation.
+**Fixed in:** `system/start.asm` (15 registers instead of 14) and `proc.c`
+(stack layout for new processes).
 
-## Wer im Systemaufruf hängenbleibt, muss `sti` machen
+## Whoever gets stuck inside a system call must issue `sti`
 
-**Symptom:** Nach dem Start eines Hintergrundprogramms fror das ganze System
-ein. `p_switches` blieb stehen.
-**Ursache:** Ein Programm beendet sich mit `int 0x40`. Beim Interrupt sperrt
-die CPU die Interrupts; freigegeben werden sie erst durch `iret`. `proc_exit()`
-kehrt aber nie zurück, sondern wartet in einer Schleife — **mit gesperrten
-Interrupts**. Kein Timer mehr, kein Scheduler, tot.
-**Behoben in:** `system/proc.c`, `asm("sti")` vor der Warteschleife.
-**Merke:** Jede Funktion, die aus einem Interrupt heraus nicht zurückkehrt,
-muss die Interrupts selbst freigeben.
+**Symptom:** After launching a background program, the whole system froze.
+`p_switches` stopped incrementing.
+**Cause:** A program exits with `int 0x40`. On an interrupt, the CPU
+disables interrupts; they're only re-enabled by `iret`. But `proc_exit()`
+never returns — it waits in a loop **with interrupts disabled**. No more
+timer, no more scheduler, dead.
+**Fixed in:** `system/proc.c`, `asm("sti")` before the wait loop.
+**Lesson:** Any function that doesn't return from within an interrupt has to
+re-enable interrupts itself.
 
-## `funktion()[i]` skalierte den Index falsch
+## `funktion()[i]` scaled the index incorrectly
 
-**Symptom:** Der Python-Tokenizer schrieb in fremden Speicher.
-**Ursache:** `tools/tcc.py` kannte den Rückgabetyp von Funktionen nicht und
-nahm für `f()[i]` immer 4 Byte Elementgröße — auch wenn `f()` ein `char*`
-liefert.
-**Behoben in:** `tcc.py`, `self.func_types` und `type_of()` für `call`.
+**Symptom:** The Python tokenizer wrote into foreign memory.
+**Cause:** `tools/tcc.py` didn't know the return type of functions and
+always assumed 4 bytes per element for `f()[i]` — even when `f()` returns a
+`char*`.
+**Fixed in:** `tcc.py`, `self.func_types` and `type_of()` for `call`.
 
-## Der Sektorzähler der Platte war 8 Bit breit
+## The disk's sector counter was 8 bits wide
 
-**Symptom:** Ab ~128 KB Programmgröße „Invalid opcode" beim Start.
-**Ursache:** `PORT_DISK_COUNT` maskierte mit `0xFF`. Bei 327 Sektoren wurden
-71 geladen, der Rest war Müll.
-**Behoben in:** `hardware/devices.py`, jetzt 16 Bit.
+**Symptom:** From ~128 KB of program size onward, "Invalid opcode" at
+startup.
+**Cause:** `PORT_DISK_COUNT` masked with `0xFF`. With 327 sectors, only 71
+got loaded, the rest was garbage.
+**Fixed in:** `hardware/devices.py`, now 16 bits.
 
-## Tastatureingabe hinkte einen Anschlag hinterher
+## Keyboard input lagged one keystroke behind
 
-**Symptom:** `w` tippen → nichts, `i` tippen → `w` erscheint.
-**Ursache:** `event.unicode` bei `KEYDOWN` ist bei SDL je nach Layout leer;
-das Zeichen kommt erst mit dem folgenden Text-Ereignis.
-**Behoben in:** `pc.py` — Zeichen über `pygame.TEXTINPUT`, Sondertasten über
+**Symptom:** Type `w` → nothing, type `i` → `w` appears.
+**Cause:** `event.unicode` on `KEYDOWN` is empty under SDL depending on the
+layout; the character only arrives with the following text event.
+**Fixed in:** `pc.py` — characters via `pygame.TEXTINPUT`, special keys via
 `KEYDOWN`.
 
-## Das Fenster darf nicht auf die CPU warten
+## The window must not wait on the CPU
 
-**Symptom:** Oberfläche wird zäh, wenn ein Programm rechnet.
-**Ursache:** CPU-Emulation und Zeichnen liefen in derselben Schleife ohne
-Zeitgrenze. Die Emulation schafft 1,5–3,5 Mio Befehle/s; bei 2 MHz Solltakt
-fraß sie das ganze Bild.
-**Behoben in:** `machine.run_slice(dt, max_ms)` — höchstens 8 ms echte
-Rechenzeit je Bild, in Häppchen von 4000 Befehlen (gröber greift die Frist
-nicht genau genug). Reicht es nicht, läuft die virtuelle Uhr langsamer.
+**Symptom:** The UI turns sluggish while a program is computing.
+**Cause:** CPU emulation and drawing ran in the same loop without any time
+limit. The emulation manages 1.5–3.5 million instructions/s; at a nominal
+clock of 2 MHz it ate up the entire frame.
+**Fixed in:** `machine.run_slice(dt, max_ms)` — at most 8ms of real compute
+time per frame, in chunks of 4000 instructions (anything coarser misses the
+deadline too imprecisely). If that's not enough, the virtual clock runs
+slower instead.
 
-## Textprogramme und Oberfläche teilen sich keinen Bildschirm
+## Text programs and the desktop don't share a screen
 
-**Symptom:** „Run" im File Manager → Desktop reagiert nicht mehr.
-**Ursache:** Das Programm lief im Hintergrund, schrieb in den unsichtbaren
-Textbildspeicher und fing mit `getkey()` alle Tasten ab — auch ESC.
-**Gelöst:** `gui_ausfuehren()` verlässt den Grafikmodus, lässt das Programm
-sichtbar laufen und kehrt danach zurück (wie Windows 3.1 mit DOS-Programmen).
+**Symptom:** "Run" in the File Manager → desktop stops responding.
+**Cause:** The program ran in the background, wrote to the invisible text
+screen buffer, and captured every key with `getkey()` — including ESC.
+**Solved:** `gui_ausfuehren()` leaves graphics mode, lets the program run
+visibly, and returns afterward (like Windows 3.1 with DOS programs).
 
-## Terminalprozess muss beim Verlassen sterben
+## The terminal process must die on exit
 
-**Symptom:** Nach dem Desktop war die normale Kommandozeile stumm.
-**Ursache:** Der cmd-Prozess lief weiter, `term_aktiv` blieb 1 — alle
-Ausgaben landeten im unsichtbaren Fensterpuffer.
-**Behoben in:** `gui.c`, Prozess beenden und `term_aktiv = 0` beim Verlassen
-und beim Schließen des Fensters.
+**Symptom:** After leaving the desktop, the normal command line was mute.
+**Cause:** The cmd process kept running, `term_aktiv` stayed at 1 — all
+output ended up in the invisible window buffer.
+**Fixed in:** `gui.c`, terminate the process and reset `term_aktiv = 0` both
+on exit and when the window is closed.
 
-## Ein Interrupt kann für mehrere Ereignisse stehen
+## One interrupt can stand for several events
 
-Der Interruptcontroller hat je Quelle **ein Bit**. Treffen zwei Ereignisse
-ein, bevor der Handler läuft, gibt es trotzdem nur einen Interrupt. Ein
-Handler, der genau *ein* Ereignis abholt, verliert deshalb das zweite —
-bis zufällig ein weiteres nachkommt.
+The interrupt controller has **one bit** per source. If two events arrive
+before the handler runs, there's still only one interrupt. A handler that
+picks up exactly *one* event therefore loses the second — until another one
+happens to come along by chance.
 
-Dieser Fehler ist mir in diesem Projekt **zweimal** passiert:
+This bug hit me **twice** in this project:
 
-- **Timer**: Uhr lief zu langsam (unten ausführlich)
-- **Tastatur**: `irq_kbd` holte eine Taste je Interrupt. Im BIOS-Setup
-  passierte beim ersten Pfeil nichts, der nächste Druck führte dann die
-  vorige Bewegung aus. Behoben, indem der Handler den Baustein in einer
-  Schleife leerräumt, solange `P_KBD_STATUS` etwas meldet
+- **Timer**: the clock ran too slow (details below)
+- **Keyboard**: `irq_kbd` fetched one key per interrupt. In the BIOS setup,
+  nothing happened on the first arrow press, and the next press then carried
+  out the previous movement. Fixed by having the handler drain the chip in a
+  loop for as long as `P_KBD_STATUS` reports something
 
-**Regel:** Ein Interrupthandler fragt den Baustein, *wie viel* anliegt — er
-nimmt nie an, dass es genau eins ist.
+**Rule:** An interrupt handler asks the chip *how much* is pending — it
+never assumes it's exactly one.
 
-## Der Timer-Tick darf nicht selbst gezählt werden
+## The timer tick must not be counted by hand
 
-**Symptom:** Uhr lief zu langsam, Wartezeiten zu lang.
-**Ursache:** Mehrere Ticks pro Zeitscheibe setzen nur *ein* Interrupt-Bit; der
-Handler zählte aber nur um eins hoch.
-**Behoben in:** `firmware/bios.asm` — der Handler liest den Zählerstand
-direkt vom Baustein (`in r1, P_TIMER_TICKS`).
+**Symptom:** The clock ran too slow, wait times too long.
+**Cause:** Several ticks per time slice only set *one* interrupt bit; the
+handler only counted up by one.
+**Fixed in:** `firmware/bios.asm` — the handler now reads the counter value
+directly from the chip (`in r1, P_TIMER_TICKS`).
 
-## `gui_running` wurde nur beim Menüpunkt „Exit" zurückgesetzt
+## `gui_running` was only reset by the "Exit" menu item
 
-**Symptom:** Nach dem ersten Verlassen des Desktops mit ESC startete `WIN`
-den Schreibtisch nie wieder — der Selbsttest fiel von 41 auf 39.
-**Ursache:** Der neue Schutz gegen einen zweiten Desktop fragt `gui_running`
-ab. Aus der Hauptschleife kommt man aber auch mit ESC (`break`) heraus, und
-dort blieb die Variable auf 1 stehen.
-**Behoben in:** `gui.c`, `gui_running = 0` am **Ende von `gui_main()`**.
-**Merke:** Ein Zustandsmerker gehört an die Stelle, an der der Zustand
-tatsächlich endet — nicht an jeden einzelnen Ausgang.
+**Symptom:** After leaving the desktop with ESC once, `WIN` never started
+the desktop again — the self-test dropped from 41 to 39.
+**Cause:** The new guard against a second desktop checks `gui_running`. But
+you can also leave the main loop via ESC (`break`), and there the variable
+stayed at 1.
+**Fixed in:** `gui.c`, `gui_running = 0` at the **end of `gui_main()`**.
+**Lesson:** A state flag belongs at the place where the state actually
+ends — not at every single exit point.
 
-## Der Ausschnitt sprang beim Blättern sofort zurück
+## The viewport snapped straight back while scrolling
 
-**Symptom:** Mausrad im Editor bewegte nichts.
-**Ursache:** `app_editor` führt den Ausschnitt bei jedem Zeichnen der
-Schreibmarke nach. Das Rad verschob `edg_top`, der nächste Bildaufbau zog es
-wieder zurück.
-**Behoben in:** `gui.c`, `edg_folgen` — Rad aus, Tippen und Klicken ein.
+**Symptom:** The mouse wheel in the editor didn't move anything.
+**Cause:** `app_editor` follows the viewport to the cursor on every redraw.
+The wheel moved `edg_top`, and the next screen refresh pulled it right back.
+**Fixed in:** `gui.c`, `edg_folgen` — off for the wheel, on for typing and
+clicking.
 
-## Der Kernel ist in seine eigenen Puffer hineingewachsen
+## The kernel grew into its own buffers
 
-**Symptom:** Die Dateiverwaltung zeigte statt `PROGS` und `SOURCE` plötzlich
-`@`, `ager` und `Filem` an. Die Kommandozeile (`DIR`) war dagegen richtig.
-**Ursache:** Die festen Puffer lagen ab `0x30000`, direkt hinter dem Kernel.
-Als der Kernel über 128 KB wuchs, überschrieb er das Verzeichnis im RAM mit
-seinen eigenen Daten — `wtitle` („File Manager") und `gui_pfad` („A:\")
-standen mitten in der Verzeichnistabelle. `DIR` las neu von der Platte und
-sah deshalb nichts davon.
-**Behoben in:** `fs.c` und `edit.c` — Puffer nach `0xB0000` verlegt; `build.py`
-bricht jetzt ab, wenn der Kernel bis dorthin reicht.
-**Merke:** Wer eine Größengrenze anhebt (hier: 255 → 511 Sektoren), muss
-prüfen, ob die **RAM**-Aufteilung das auch hergibt. Die Platte war nicht das
-Limit — der Speicher war es.
+**Symptom:** The file manager showed `@`, `ager`, and `Filem` instead of
+`PROGS` and `SOURCE`. The command line (`DIR`), by contrast, was correct.
+**Cause:** The fixed buffers sat at `0x30000`, right behind the kernel. Once
+the kernel grew past 128 KB, it overwrote the in-RAM directory with its own
+data — `wtitle` ("File Manager") and `gui_pfad` ("A:\") ended up sitting in
+the middle of the directory table. `DIR` re-read from disk and so saw none
+of this.
+**Fixed in:** `fs.c` and `edit.c` — buffers moved to after `0xB0000`;
+`build.py` now aborts if the kernel reaches that far.
+**Lesson:** Whoever raises a size limit (here: 255 → 511 sectors) has to
+check whether the **RAM** layout can actually accommodate it. The disk
+wasn't the limit — memory was.
 
-## Ein Programm darf nicht im Kernel schlafen gehen
+## A program must not go to sleep inside the kernel
 
-**Symptom:** Der Taschenrechner fror beim ersten Klick ein, die ganze
-Maschine stand.
-**Ursache:** `sleep()` (und damit `beep()`) wartet mit `hlt` auf den Timer.
-Ruft ein Programm das über `INT 0x40` auf, sind die Interrupts gesperrt — der
-Timer kommt nie, das `hlt` wacht nie auf. Derselbe Fehler wie oben bei
+**Symptom:** The calculator froze on the first click, the whole machine
+stood still.
+**Cause:** `sleep()` (and thus `beep()`) waits for the timer using `hlt`. If
+a program calls that via `INT 0x40`, interrupts are disabled — the timer
+never arrives, and the `hlt` never wakes up. Same bug as above with
 `proc_exit()`.
-**Behoben in:** `lib.c`, `asm("sti")` am Anfang von `sleep()`.
+**Fixed in:** `lib.c`, `asm("sti")` at the start of `sleep()`.
 
-## Klicks landeten im falschen Fenster
+## Clicks landed in the wrong window
 
-**Symptom:** Auf einen Knopf im vorderen Fenster geklickt — reagiert hat das
-Fenster darunter.
-**Ursache:** Gezeichnet wird nach Stapelreihenfolge (`win_top` zuletzt),
-geprüft wurde aber stur nach Fensternummer rückwärts. Lag das vorderste
-Fenster auf einem Platz mit kleinerer Nummer, gewann das falsche.
-**Behoben in:** `gui.c` — erst `win_top` prüfen, dann den Rest.
+**Symptom:** Clicked a button in the front window — the window behind it
+reacted.
+**Cause:** Drawing follows stacking order (`win_top` drawn last), but hit
+testing rigidly went by window number in reverse. If the frontmost window
+had a lower slot number, the wrong one won.
+**Fixed in:** `gui.c` — check `win_top` first, then the rest.
 
-## `continue` sprang am Neuzeichnen vorbei
+## `continue` skipped past the redraw
 
-**Symptom:** Startmenü → *Editor*: das Fenster wurde geöffnet (der Knopf in
-der Leiste erschien), aber der Bildschirm zeigte weiter das Menü.
-**Ursache:** Der Menüzweig setzt `neu = 1` und macht `continue` — das
-`if (neu) draw_desktop()` steht aber am **Schleifenende**. Beim nächsten
-Durchlauf wird `neu` sofort wieder auf 0 gesetzt.
-**Behoben in:** `gui.c`, der Zweig zeichnet selbst.
+**Symptom:** Start menu → *Editor*: the window opened (the taskbar button
+appeared), but the screen kept showing the menu.
+**Cause:** The menu branch sets `neu = 1` and does `continue` — but the
+`if (neu) draw_desktop()` sits at the **end of the loop**. On the next pass,
+`neu` gets reset to 0 right away.
+**Fixed in:** `gui.c`, the branch now draws itself.
 
-## Ein Hintergrundprogramm klaute die Tastatur
+## A background program stole the keyboard
 
-**Symptom:** Nach `START BENCH.TBX /B` kam von `TASKLIST` nur `ASKLIST` an.
-**Ursache:** `getkey()` liest den globalen Tastaturpuffer. Wer zuerst fragt,
-gewinnt — auch ein Programm im Hintergrund.
-**Behoben in:** `syscall.c` — mit `/B` gestartete Prozesse bekommen `p_bg = 1`
-und werden bei `getkey()` schlafen gelegt statt bedient.
+**Symptom:** After `START BENCH.TBX /B`, `TASKLIST` only received `ASKLIST`.
+**Cause:** `getkey()` reads the global keyboard buffer. Whoever asks first
+wins — even a program running in the background.
+**Fixed in:** `syscall.c` — processes started with `/B` get `p_bg = 1` and
+are put to sleep on `getkey()` instead of being served.
 
-## `START X.TBX ARG /B` lief im Vordergrund
+## `START X.TBX ARG /B` ran in the foreground
 
-**Symptom:** `START CRASH.TBX COLORS /B` blockierte die Kommandozeile, es kam
-nicht einmal die Meldung „Started in background".
-**Ursache:** `cmd_start` prüfte nur das **zweite Wort** auf `/B`. Stand ein
-Argument davor, war `/B` nur noch ein Argument.
-**Behoben in:** `kernel.c` — alle Wörter werden durchgegangen, `/B` darf
-überall stehen und fällt aus der Argumentliste heraus.
+**Symptom:** `START CRASH.TBX COLORS /B` blocked the command line, and not
+even the "Started in background" message appeared.
+**Cause:** `cmd_start` only checked the **second word** for `/B`. If an
+argument came before it, `/B` was just one more argument.
+**Fixed in:** `kernel.c` — all words are now scanned, `/B` may appear
+anywhere and is dropped from the argument list.
 
-## Doppelklick auf ein Programm im Schreibtischordner scheiterte
+## Double-clicking a program in the desktop folder failed
 
-**Symptom:** `'CALC.TBX' is not recognized as a command or program.` im
-Terminalfenster — obwohl das Symbol sichtbar auf dem Schreibtisch lag.
-**Ursache:** Das Fenster tippt den Dateinamen in die Shell, und deren
-Suchpfad ist *aktueller Ordner → `\SYSTEM` → `\PROGS`*. Die Datei lag in
-`\DESKTOP`, der Prompt stand in `A:\PROGS`.
-**Behoben in:** `gui.c`, `eintrag_oeffnen` setzt `cwd` auf den Ordner der
-Datei, bevor es den Befehl abschickt.
+**Symptom:** `'CALC.TBX' is not recognized as a command or program.` in the
+terminal window — even though the icon sat visibly on the desktop.
+**Cause:** The window types the file name into the shell, and the shell's
+search path is *current folder → `\SYSTEM` → `\PROGS`*. The file was in
+`\DESKTOP`, while the prompt stood in `A:\PROGS`.
+**Fixed in:** `gui.c`, `eintrag_oeffnen` now sets `cwd` to the file's folder
+before sending off the command.
 
-## Bauen loeschte die Dateien des laufenden PCs
+## Building deleted the running PC's files
 
-**Symptom:** Colin übersetzt Programme im PC, schließt den Emulator, startet
-neu — alles weg.
-**Ursache:** `build.py` las das **ganze** Plattenabbild ein, tauschte
-Bootsektor und Kernel aus und schrieb alles zurück. Lief nebenher der
-Emulator (der seine Sektoren sofort in dieselbe Datei schreibt), überschrieb
-der Rückschreibvorgang dessen Dateien mit dem alten Stand von vor dem Bauen.
-Genau dasselbe galt für `tools/tbfs.py`, dessen `save()` das Abbild komplett
-hinausschrieb.
-**Behoben in:** `build.py` schreibt jetzt **nur Sektor 0 und die
-Kernelsektoren** (`r+b`, gezielte `seek`s) und fasst das Dateisystem ab
-Sektor 512 gar nicht mehr an. `tbfs.py` merkt sich in `self.dirty`, welche
-Sektoren es geändert hat, und schreibt ausschließlich diese zurück.
-**Merke:** Ein Werkzeug, das eine Datei ändert, die ein anderes Programm
-offen hat, darf sie nie komplett neu schreiben — nur die Stellen, die es
-wirklich betrifft.
+**Symptom:** Colin compiles programs inside the PC, closes the emulator,
+restarts it — everything gone.
+**Cause:** `build.py` read the **entire** disk image, swapped in the new
+boot sector and kernel, and wrote everything back out. If the emulator was
+running alongside (writing its sectors straight back into the same file),
+that write-back overwrote its files with the old state from before the
+build. The exact same thing applied to `tools/tbfs.py`, whose `save()`
+wrote out the whole image.
+**Fixed in:** `build.py` now writes **only sector 0 and the kernel
+sectors** (`r+b`, targeted `seek`s) and no longer touches the filesystem
+from sector 512 onward at all. `tbfs.py` tracks in `self.dirty` which
+sectors it changed, and writes back only those.
+**Lesson:** A tool that modifies a file another program has open must never
+rewrite it completely — only the parts it actually touches.
 
-## Am Takt drehen hilft nichts, wenn der Wirt die Bremse ist
+## Turning up the clock doesn't help when the host is the bottleneck
 
-**Symptom:** „Können wir die CPU auf mehr als 8 MHz bringen?"
-**Befund:** Die Emulation schaffte 1,7 Mio Befehle/s — **21 %** der
-eingestellten 8 MHz. Eine größere Zahl im BIOS hätte nur die Anzeige
-verändert.
-**Gelöst:** Erst messen, dann optimieren. `hardware/cpu.py` (32-Bit-Sicht auf
-den Speicher, Kette nach gemessener Häufigkeit, faules Dekodieren, lokale
-Variablen statt `self.x`) und `pc.py` (Zeitbudget statt fester 8 ms) —
-zusammen etwa **3,4×** mehr Durchsatz im Fenster.
-**Merke:** Wer am Emulator schraubt, misst vorher mit `tools/opstat.py` und
-prüft danach mit Selbsttest **und Bootstrapping** — letzteres vergleicht zwei
-selbst erzeugte Compiler Byte für Byte und findet jeden Rechenfehler der CPU.
+**Symptom:** "Can we push the CPU above 8 MHz?"
+**Finding:** The emulation managed 1.7 million instructions/s — **21%** of
+the configured 8 MHz. A bigger number in the BIOS would only have changed
+the display.
+**Solved:** Measure first, then optimize. `hardware/cpu.py` (32-bit view of
+memory, dispatch chain ordered by measured frequency, lazy decoding, local
+variables instead of `self.x`) and `pc.py` (time budget instead of a fixed
+8ms) — together about **3.4×** more throughput within the frame budget.
+**Lesson:** Whoever tunes the emulator measures beforehand with
+`tools/opstat.py` and verifies afterward with the self-test **and
+bootstrapping** — the latter compares two self-generated compilers byte for
+byte and catches every computation error in the CPU.
 
-## Der Setup-Zustand lag im Zahlen-Kritzelblock
+## The setup state lived in the number scratch pad
 
-**Symptom:** Beim Wechsel auf den Reiter *Security* füllte sich der ganze
-Bildschirm mit Nullen.
-**Zwei Ursachen auf einmal**, beide lehrreich:
+**Symptom:** Switching to the *Security* tab filled the whole screen with
+zeros.
+**Two causes at once**, both instructive:
 
-1. Ich hatte den aktiven Reiter in `BDA_SCRATCH` abgelegt — genau dort
-   formatiert `vid_putn` aber seine Ziffern hin. Nach der ersten ausgegebenen
-   Zahl war der Reiter Datenmüll und die Zeichenschleife lief endlos.
-   Behoben: eigener Platz `SETUP_TAB`/`SETUP_ROW`/`SETUP_SAVE` ab `0x600`.
-2. `vid_puthex` erwartet die **Stellenzahl in `r3`** — die hatte ich nicht
-   gesetzt, also lief die Ziffernschleife über zufälligen Registerinhalt.
+1. I had stored the active tab in `BDA_SCRATCH` — but that's exactly where
+   `vid_putn` formats its digits. After the first number was printed, the
+   tab value was garbage and the character loop ran forever.
+   Fixed: a dedicated location `SETUP_TAB`/`SETUP_ROW`/`SETUP_SAVE` starting
+   at `0x600`.
+2. `vid_puthex` expects the **digit count in `r3`** — I hadn't set it, so
+   the digit loop ran over whatever random value happened to be in the
+   register.
 
-**Merke:** Wer einen fremden BIOS-Dienst aufruft, sieht sich seine Signatur
-an. Und ein Zwischenspeicher, der „gerade frei aussieht", gehört meist schon
-jemandem.
+**Lesson:** Whoever calls a foreign BIOS service reads its signature
+carefully. And a scratch buffer that "looks free right now" usually already
+belongs to someone.
 
-## Zeilenzahl in einem Kratzregister gehalten
+## Line count kept in a scratch register
 
-**Symptom:** Endlosschleife beim Zeichnen des Setups.
-**Ursache:** Ich hatte die Anzahl Zeilen in `r11` gehalten. `r10`–`r12` sind
-laut [[05 Konventionen]] **Kratzregister** — jeder Unterprogrammaufruf darf
-sie zerstören, und `vid_hline` tat das auch prompt.
-**Behoben:** Wert sofort nach dem Holen vergleichen, nicht zwischenlagern.
+**Symptom:** Infinite loop while drawing the setup screen.
+**Cause:** I had held the row count in `r11`. Per [[05 Konventionen]],
+`r10`–`r12` are **scratch registers** — any subroutine call is free to
+destroy them, and `vid_hline` promptly did.
+**Fixed:** Compare the value right after fetching it, don't cache it.
 
-## Kleinigkeiten, die trotzdem Zeit kosten
+## Small things that cost time anyway
 
-- **Zeichensatz kennt nur 32–127.** Blockzeichen (219, 176) im Grafikmodus
-  selbst als Rechtecke malen, sonst erscheinen Balken nicht.
-- **Fenster können aus dem Bild ragen** — `starte()` begrenzt die Position,
-  neue Fenstergrößen trotzdem prüfen.
-- **Zahlen ohne Hintergrund überlagern sich** beim Auffrischen. Entweder
-  `bg` setzen oder das ganze Fenster neu zeichnen.
-- **`#include` wird auch in Kommentaren gefunden** — von `tools/tcc.py` *und*
-  von `cc.c`, bei letzterem auch eingerückt. `gfxlib.c` hatte in seinem
-  Kopfkommentar ein Beispiel `#include "gfxlib.c"` stehen und band sich damit
-  selbst ein: neun Syntaxfehler in einer Zeile, die es gar nicht gab.
-- **Der Anfasser zum Ziehen muss nach dem Fensterinhalt gezeichnet werden**,
-  sonst malt die Anwendung ihn zu.
-- **Beschriftungen kürzen, nicht nur die Mitte rechnen.** In der Startleiste
-  stand „Compiling" (9 Zeichen = 72 Punkte) in einem 64 Punkte breiten Knopf
-  und ragte links und rechts heraus; bei den Schreibtischsymbolen lief der
-  Name aus dem Bild. `g_button` zentriert nur — es kürzt nichts.
-- **Zahl über Beschriftung gemalt.** Im Uhrfenster begann die Betriebszeit
-  bei `x+36`, das Wort „Up time" reichte aber bis `x+56` — die Ziffern lagen
-  im Text. Beschriftung links, Werte in einer festen Spalte, dann passiert
-  das nicht.
-- **Rollen ohne obere Grenze.** `if (top < 0) top = 0;` allein reicht nicht —
-  ohne `if (top > anzahl - zeilen)` scrollt man endlos ins Leere. Beide
-  Grenzen, immer.
-- **Feste Zeilenzahlen in Listen** halten nur, bis der Ordner voll genug ist.
-  Die Dateiverwaltung zeigte hart 11 Einträge ohne Blättern — die 14 Dateien
-  in `\SOURCE` passten nicht, und die fehlenden sahen aus, als gäbe es sie
-  gar nicht. Jede Liste braucht Zeilenzahl aus der Fenstergröße **und** einen
-  Ausschnitt zum Blättern.
-- **Tastaturpuffer läuft über**, wenn Testskripte während langer Rechenläufe
-  weiter tippen. In Tests auf den Prompt warten (`tools/bootstrap.py` macht es
-  richtig).
-- **Der Aufbau von TBFS steht jetzt an vier Stellen** — `system/fs.c`,
-  `tools/tbfs.py`, `system/boot.asm` und `firmware/setup.asm`. Die beiden
-  letzten sind Absicht und nicht wegzukürzen: der Bootsektor kann keine
-  BIOS-Routine aufrufen, und die Firmware läuft, bevor es einen Bootsektor
-  gibt. Wer Sektornummern oder Feldabstände verschiebt, muss **alle vier**
-  anfassen — sonst startet nichts mehr, und die Meldung zeigt auf den Kernel
-  statt auf das Dateisystem.
-- **Ein Semikolon in einer Zeichenkette schnitt die halbe Zeile ab.** Der
-  Assembler warf Kommentare mit `zeile.split(";")[0]` weg, ohne auf
-  Anführungszeichen zu achten. Aus
-  `.db "A bad image is refused; keeps a backup", 0` wurde stillschweigend
-  `.db "A bad image is refused` — Text ohne Ende, ohne Nullbyte, ohne
-  Fehlermeldung, und die Ausgabe lief in die nächste Zeichenkette weiter.
-  Behoben in `tools/assembler.py` (`ohne_kommentar`), aber die Lehre bleibt:
-  **naives Kommentar-Abschneiden ist ein Textzerstörer.**
-- **`vid_puthex` braucht die Stellenzahl in `r3`.** Vergessen heißt: der Wert
-  wird hunderte Male gedruckt, bis der ganze Bildschirm voll ist. Sieht aus
-  wie eine Endlosschleife, ist aber ein fehlendes Argument.
-- **Ein `putc` ohne Steuerzeichen macht die Rücktaste sichtbar.** Colins
-  erstes eigenes BIOS behandelte nur `\n`. Die 8, die `readline` zum Löschen
-  schickt, landete deshalb als Zeichen im Bildspeicher — CP437 stellt sie als
-  „◘" dar. Bei jedem Druck kam ein Kästchen dazu, der Text blieb stehen.
-  Das Tückische: der Puffer im Speicher war die ganze Zeit richtig, ENTER
-  führte brav den leeren Befehl aus. **Nur der Bildschirm log.** Wer eine
-  Ausgabefunktion neu schreibt, muss 8, 9, 10 und 13 abfangen, bevor er ein
-  Zeichen ablegt.
-- **Text mitten im Code muss auf vier Byte aufgefüllt werden.** Die neue
-  Flash-Rückfrage brachte 308 Byte Zeichenketten mitten ins BIOS — eine Zahl
-  ohne Rest durch 4. Jeder Befehl danach lag schief, und der Rechner starb
-  15 Befehle nach dem Reset, noch vor jedem Bild. Der TB-32 hat feste
-  4-Byte-Befehle: hinter `.db` gehört ein `.align 4`, sobald wieder Code
-  folgt. Bisher standen alle Texte am Dateiende, deshalb ist es nie
-  aufgefallen.
-- **`#define NAME wert /* Kommentar */` nahm den Kommentar in den Wert.**
-  Wer `NAME` dann irgendwo in einem Kommentar erwähnte, bekam ein `*/`
-  hineingesetzt — der Kommentar endete dort, und die Prosa dahinter wurde
-  als Quelltext gelesen. Der Fehler zeigte auf eine völlig harmlose Zeile.
-  Behoben in `tools/tcc.py`; `cc.c` war nie betroffen, es speichert
-  `#define`-Werte als Zahl.
-- **`s[:i] + neu + s[j:]` mit `j == -1` verschluckt die halbe Datei.**
-  `find` liefert −1, wenn es nichts findet, und `s[-1:]` ist das letzte
-  Zeichen. So habe ich `programs/asm.c` von 646 auf 434 Zeilen gekürzt und
-  musste den Rest neu schreiben. Bei jedem `find` prüfen, ob es −1 ist.
-- **Die Klicksuche muss dieselbe Reihenfolge haben wie das Malen.**
-  `draw_desktop()` malt die Fenster nach Nummer (0, 1, 2 …) und `win_top`
-  zuletzt — wer die höhere Nummer hat, liegt sichtbar weiter vorn. Die
-  Klicksuche lief aber **vorwärts** und nahm den ersten Treffer, also das
-  Fenster *dahinter*. Colin konnte den Command Prompt nicht mehr anklicken,
-  sobald ein Fenster mit kleinerer Nummer darunterlag. Jetzt läuft sie
-  rückwärts. **Merke:** Zeichenreihenfolge und Trefferreihenfolge sind
-  dasselbe Wissen — sie gehören zusammen geändert.
-- **Beim Messen erst prüfen, ob der Testaufbau die Sache überhaupt
-  enthält.** Beim Ruckeln im Coder habe ich dreimal danebengemessen: einmal
-  nur wache Stichproben gezählt (das ist bei einer wartenden Maschine fast
-  nur der Interrupt-Handler), einmal aus 120 Stichproben ein Profil gedeutet,
-  und einmal ohne gesetzten Dateinamen gemessen — **wodurch die
-  Syntaxfärbung gar nicht lief**, also genau der Teil fehlte, um den es
-  ging. Der Nutzer hatte den entscheidenden Hinweis: „bei Word ist es
-  flüssig" — und Word hat keine Färbung.
-- **Eine Prüfsumme muss messen, was wirklich startet.** Als der Kernel vom
-  festen Sektor 1 in die Datei `\SYSTEM\KERNEL.BIN` wanderte, hätte Secure
-  Boot weiter die alten Sektoren gerechnet: eine Prüfung, die nie anschlägt.
-  Das ist schlimmer als gar keine, weil es nach Sicherheit aussieht.
-  `secure_summe` sucht deshalb dieselbe Datei wie der Bootsektor.
+- **The character set only knows 32–127.** Draw block characters (219, 176)
+  in graphics mode as rectangles yourself, otherwise bars don't appear.
+- **Windows can stick out past the frame** — `starte()` clamps the position,
+  but new window sizes still need checking.
+- **Numbers without a background overlap each other** on refresh. Either set
+  `bg` or redraw the whole window.
+- **`#include` is also found inside comments** — by both `tools/tcc.py`
+  *and* `cc.c`, and for the latter even when indented. `gfxlib.c` had an
+  example `#include "gfxlib.c"` in its header comment and thereby included
+  itself: nine syntax errors on a line that didn't even exist.
+- **The resize handle must be drawn after the window content**, otherwise
+  the application paints over it.
+- **Truncate labels, don't just compute the center.** In the taskbar,
+  "Compiling" (9 characters = 72 points) sat in a 64-point-wide button and
+  stuck out on both sides; for desktop icons the name ran off the screen.
+  `g_button` only centers — it doesn't truncate anything.
+- **Number painted over the label.** In the clock window, uptime started at
+  `x+36`, but the word "Up time" reached to `x+56` — the digits landed right
+  on top of the text. Label on the left, values in a fixed column, and this
+  doesn't happen.
+- **Scrolling without an upper bound.** `if (top < 0) top = 0;` alone isn't
+  enough — without `if (top > anzahl - zeilen)` you scroll endlessly into
+  empty space. Both bounds, always.
+- **Fixed row counts in lists** only hold up until the folder gets full
+  enough. The file manager showed a hard-coded 11 entries with no scrolling —
+  the 14 files in `\SOURCE` didn't fit, and the missing ones looked as if
+  they didn't exist. Every list needs a row count derived from the window
+  size **and** a scrollable viewport.
+- **Keyboard buffer overflows** when test scripts keep typing during long
+  compute runs. Wait for the prompt in tests (`tools/bootstrap.py` does this
+  correctly).
+- **TBFS's layout now lives in four places** — `system/fs.c`,
+  `tools/tbfs.py`, `system/boot.asm`, and `firmware/setup.asm`. The latter
+  two are intentional and can't be trimmed away: the boot sector can't call
+  a BIOS routine, and the firmware runs before there even is a boot sector.
+  Whoever shifts sector numbers or field offsets must touch **all four** —
+  otherwise nothing boots, and the error message points at the kernel
+  instead of the filesystem.
+- **A semicolon inside a string cut off half the line.** The assembler
+  discarded comments with `zeile.split(";")[0]`, without paying any
+  attention to quotes. From
+  `.db "A bad image is refused; keeps a backup", 0` it silently produced
+  `.db "A bad image is refused` — text with no end, no null byte, no error
+  message, and the output ran on into the next string.
+  Fixed in `tools/assembler.py` (`ohne_kommentar`), but the lesson stands:
+  **naive comment stripping is a text destroyer.**
+- **`vid_puthex` needs the digit count in `r3`.** Forget it and the value
+  gets printed hundreds of times until the whole screen is full. Looks like
+  an infinite loop, but is really just a missing argument.
+- **A `putc` without control characters makes backspace visible.** Colin's
+  first homemade BIOS only handled `\n`. The 8 that `readline` sends to
+  delete a character therefore ended up as a character in the frame
+  buffer — CP437 renders it as "◘". Every keypress added another box, and
+  the text stayed put. The tricky part: the buffer in memory was correct
+  the whole time, and ENTER dutifully ran the empty command. **Only the
+  screen was lying.** Whoever rewrites an output function must intercept 8,
+  9, 10, and 13 before storing a character.
+- **Text placed mid-code has to be padded to four bytes.** The new flash
+  confirmation prompt added 308 bytes of strings in the middle of the BIOS —
+  a number not evenly divisible by 4. Every instruction after it landed
+  misaligned, and the machine died 15 instructions after reset, before any
+  screen output. The TB-32 has fixed 4-byte instructions: after a `.db`, an
+  `.align 4` is needed as soon as code follows again. Until now all strings
+  sat at the end of the file, so it never came up.
+- **`#define NAME wert /* Kommentar */` pulled the comment into the
+  value.** Whoever mentioned `NAME` anywhere inside a comment later got a
+  `*/` inserted there — the comment ended right there, and the prose after
+  it got read as source code. The error pointed at a completely harmless
+  line. Fixed in `tools/tcc.py`; `cc.c` was never affected, since it stores
+  `#define` values as numbers.
+- **`s[:i] + neu + s[j:]` with `j == -1` swallows half the file.**
+  `find` returns −1 when it finds nothing, and `s[-1:]` is the last
+  character. That's how I shrank `programs/asm.c` from 646 to 434 lines and
+  had to rewrite the rest. Always check whether a `find` result is −1.
+- **Hit testing must use the same order as painting.**
+  `draw_desktop()` paints windows by number (0, 1, 2 …), with `win_top`
+  last — whoever has the higher number appears visibly in front. Hit
+  testing, though, ran **forward** and took the first hit, i.e. the window
+  *behind* it. Colin could no longer click the Command Prompt once a window
+  with a lower number sat underneath it. It now runs backward. **Lesson:**
+  drawing order and hit-testing order are the same piece of knowledge — they
+  have to be changed together.
+- **When measuring, first check whether the test setup even contains the
+  thing you're looking for.** While chasing stutter in the Coder I missed
+  three times: once by counting only awake samples (which, on an otherwise
+  waiting machine, is almost entirely the interrupt handler), once by
+  reading a profile out of just 120 samples, and once by measuring with no
+  file name set — **which meant syntax highlighting didn't even run**,
+  i.e. exactly the part in question was missing. The user gave the crucial
+  hint: "it's smooth in Word" — and Word has no highlighting.
+- **A checksum must measure what actually boots.** When the kernel moved
+  from the fixed sector 1 into the file `\SYSTEM\KERNEL.BIN`, Secure Boot
+  would have kept computing over the old sectors — a check that never
+  triggers. That's worse than no check at all, because it looks like
+  security. `secure_summe` therefore looks up the same file the boot sector
+  does.
 
-Verwandt: [[04 Compiler TCC Grenzen]], [[06 Bauen und Testen]]
+Related: [[04 Compiler TCC Grenzen]], [[06 Bauen und Testen]]

@@ -1,8 +1,8 @@
 /* ==========================================================================
-   Kleine Bibliothek für TOOBAD-OS-Programme.
+   Small library for TOOBAD-OS programs.
 
-   Jede Funktion hier ist nur eine hübsche Verpackung für einen Systemaufruf.
-   Genau so sieht eine C-Bibliothek auf einem echten System aus.
+   Every function here is just a nice wrapper around a system call.
+   That's exactly what a C library looks like on a real system.
    ========================================================================== */
 
 int sc(int fn, int a1, int a2, int a3, int a4);     /* in prog_start.asm */
@@ -46,21 +46,21 @@ void hline(int x, int y, int l, int c) { sc(21, x, y, l, c); }
 int  memkb()                      { return sc(22, 0, 0, 0, 0); }
 int  filecount()                  { return sc(24, 0, 0, 0, 0); }
 int  fileread(char* n, int adr, int max) { return sc(10, (int)n, adr, max, 0); }
-/* wie fileread, sucht aber zusaetzlich in \SOURCE -- fuer #include */
+/* like fileread, but also searches in \SOURCE -- for #include */
 int  fileread_lib(char* n, int adr, int max) { return sc(33, (int)n, adr, max, 0); }
 int  filewrite(char* n, int adr, int len) { return sc(11, (int)n, adr, len, 0); }
 void setmode(int m)               { sc(17, m, 0, 0, 0); }
-/* Hardware direkt statt ueber den Kernel -- steht in prog_start.asm, und CC
-   auf dem Geraet setzt an der Aufrufstelle dieselben zwei Befehle ein. */
+/* Hardware directly instead of via the kernel -- lives in prog_start.asm, and
+   CC on the device emits the same two instructions at the call site. */
 void portout(int p, int v);
 int  portin(int p);
 void ende()                       { sc(4, 0, 0, 0, 0); }
 int  fontaddr()                   { return sc(30, 0, 0, 0, 0); }
-/* Zwischenablage: der Puffer liegt fest, die Laenge holt man sich. */
+/* Clipboard: the buffer is at a fixed address, the length is fetched. */
 #define CLIP_BUF  0x00130000
 #define CLIP_MAX  8192
 int  clip_holen()                 { return sc(45, 0, 0, 0, 0); }
-/* Ein Programm starten (im Hintergrund) und nachsehen, ob es noch laeuft. */
+/* Start a program (in the background) and check whether it's still running. */
 int  prog_starten(char* name, char* args) { return sc(47, (int)name, (int)args, 0, 0); }
 int  prog_laeuft(int pid)         { return sc(48, pid, 0, 0, 0) != 0; }
 int  build_fortschritt()          { return sc(49, 0, 0, 0, 0); }
@@ -69,15 +69,15 @@ void mitschrift_an()              { sc(51, 0, 0, 0, 0); }
 void mitschrift_aus()             { sc(52, 0, 0, 0, 0); }
 int  mitschrift_zeilen()          { return sc(53, 0, 0, 0, 0); }
 int  mitschrift_zeile(int n)      { return sc(54, n, 0, 0, 0); }
-/* Dateien im aktuellen Ordner: Name (16 Byte), Art, Groesse. */
+/* Files in the current folder: name (16 bytes), type, size. */
 int  ordner_eintrag(int n, int aus) { return sc(55, n, aus, 0, 0); }
 int  ordner_wechseln(char* name)  { return sc(56, (int)name, 0, 0, 0); }
 void ordner_pfad(char* aus)       { sc(57, (int)aus, 0, 0, 0); }
-/* --- Der gemeinsame Dateidialog des Systems ----------------------------
-   datei_dialog(modus, endung, vorschlag) macht ihn auf; danach fragt man
-   mit datei_gewaehlt(puffer) nach: 0 = noch offen, 1 = ausgewaehlt (der
-   Name steht im Puffer, der Ordner ist schon gewechselt), 2 = abgebrochen.
-   Modus: 0 = oeffnen, 1 = speichern, 2 = Bild einfuegen. */
+/* --- The system's shared file dialog -----------------------------------
+   datei_dialog(mode, extension, suggestion) opens it; afterwards you poll
+   with datei_gewaehlt(buffer): 0 = still open, 1 = chosen (the name is in
+   the buffer, the folder has already been switched), 2 = cancelled.
+   Mode: 0 = open, 1 = save, 2 = insert image. */
 #define DLG_OEFFNEN   0
 #define DLG_SPEICHERN 1
 #define DLG_BILD      2
@@ -86,26 +86,26 @@ void datei_dialog(int modus, char* endung, char* vorschlag) {
 }
 int  datei_gewaehlt(char* aus)    { return sc(91, (int)aus, 0, 0, 0); }
 
-/* --- Fortschritt melden -------------------------------------------------
-   Ein Programm, das lange rechnet (der Compiler etwa), sagt dem System, wie
-   weit es ist. Der Coder zeigt es an. CC und ASM riefen das bisher als nackte
-   Nummern auf -- jetzt hat es einen Namen. */
+/* --- Report progress -----------------------------------------------------
+   A program that takes a long time to compute (the compiler, for example)
+   tells the system how far along it is. The Coder displays it. CC and ASM
+   used to call this with bare numbers -- now it has a name. */
 void fortschritt(int prozent)     { sc(28, prozent, 0, 0, 0); }
 void fortschritt_text(char* s)    { sc(29, (int)s, 0, 0, 0); }
 
-/* --- Verzeichniseintraege ohne Umweg -------------------------------------
-   ordner_eintrag() ist der bequeme Weg; wer stattdessen die ganze Tabelle
-   durchgehen will (CHKDSK, Werkzeuge), kann es auch einzeln. */
+/* --- Directory entries without a detour ----------------------------------
+   ordner_eintrag() is the convenient way; anyone who instead wants to walk
+   the whole table (CHKDSK, tools) can also do it one entry at a time. */
 int  datei_anzahl()               { return sc(24, 0, 0, 0, 0); }
 char* datei_name(int i)           { return (char*)sc(25, i, 0, 0, 0); }
 int  datei_belegt(int i)          { return sc(26, i, 0, 0, 0); }
 int  datei_groesse(int i)         { return sc(27, i, 0, 0, 0); }
-/* BIOS: Anleitung zeigen, bauen und testen/brennen -- das bleibt im Kernel. */
+/* BIOS: show instructions, build and test/burn -- that stays in the kernel. */
 void bios_hilfe()                 { sc(58, 0, 0, 0, 0); }
 void bios_bauen(int modus, char* quelle) { sc(59, modus, (int)quelle, 0, 0); }
-/* Etwas in der Kommandozeile starten (dort landet auch seine Ausgabe). */
+/* Start something in the command line (its output ends up there too). */
 void im_fenster_starten(char* n)  { sc(60, (int)n, 0, 0, 0); }
-/* --- Netz: eine Steckdose fuer Programme ------------------------------- */
+/* --- Network: a socket for programs ------------------------------------ */
 int  netz_aufloesen(char* name)   { return sc(61, (int)name, 0, 0, 0); }
 int  netz_verbinden(int ip, int port) { return sc(62, ip, port, 0, 0); }
 int  netz_schreiben(int adr, int n)   { return sc(63, adr, n, 0, 0); }
@@ -116,7 +116,7 @@ void netz_ip_text(int ip, char* aus) { sc(67, ip, (int)aus, 0, 0); }
 int  netz_eigene_ip()             { return sc(68, 0, 0, 0, 0); }
 int  netz_proxy()                 { return sc(69, 0, 0, 0, 0); }
 int  netz_proxy_port()            { return sc(69, 1, 0, 0, 0); }
-/* --- Auskunft ueber das System (nur lesen) ----------------------------- */
+/* --- Information about the system (read-only) --------------------------- */
 #define MAXPROC 8
 int  proz_zustand(int i)          { return sc(70, i, 0, 0, 0); }
 char* proz_name(int i)            { return (char*)sc(71, i, 0, 0, 0); }
@@ -124,17 +124,17 @@ int  proz_ticks(int i)            { return sc(72, i, 0, 0, 0); }
 int  proz_wechsel()               { return sc(73, 0, 0, 0, 0); }
 int  platte_belegt()              { return sc(74, 0, 0, 0, 0); }
 int  platte_groesse()             { return sc(75, 0, 0, 0, 0); }
-/* --- Konto ------------------------------------------------------------- */
+/* --- Account ------------------------------------------------------------- */
 int  passwort_pruefen(char* pw)   { return sc(76, (int)pw, 0, 0, 0); }
 char* benutzer_name()             { return (char*)sc(77, 0, 0, 0, 0); }
 int  passwort_setzen(char* pw)    { return sc(78, (int)pw, 0, 0, 0); }
 int  pc_zuruecksetzen()           { return sc(79, 0, 0, 0, 0); }
 int  konto_offen()                { return sc(80, 0, 0, 0, 0); }
-/* --- Dateien ----------------------------------------------------------- */
+/* --- Files ---------------------------------------------------------------- */
 int  datei_loeschen(char* n)      { return sc(81, (int)n, 0, 0, 0); }
 int  datei_umbenennen(char* a, char* b) { return sc(82, (int)a, (int)b, 0, 0); }
 int  ordner_anlegen(char* n)      { return sc(83, (int)n, 0, 0, 0); }
-/* --- Die Kommandozeile: die Schale laeuft im Kernel, wir zeigen sie nur -- */
+/* --- The command line: the shell runs in the kernel, we just display it -- */
 #define TERM_PUFFER 0x00120000
 int  schale_start()               { return sc(84, 0, 0, 0, 0); }
 void schale_taste(int k)          { sc(85, k, 0, 0, 0); }
@@ -148,7 +148,7 @@ void clip_setzen(int n)           { sc(46, n, 0, 0, 0); }
 int keychar(int k) { return k & 255; }
 int keycode(int k) { return (k >> 8) & 255; }
 
-/* --- Zeichenketten und Speicher (laufen ganz im Programm) --------------- */
+/* --- Strings and memory (run entirely within the program) --------------- */
 
 int strlen(char* s) { int n; n = 0; while (*s) { n++; s++; } return n; }
 

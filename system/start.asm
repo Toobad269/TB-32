@@ -1,13 +1,14 @@
 ; ===========================================================================
-;  Startcode des Kernels + Brücke von C zu den BIOS-Diensten
+;  Kernel start code + bridge from C to the BIOS services
 ;
-;  Der Bootsektor springt hierher. Wir richten den Stack ein und rufen die
-;  C-Funktion main() auf. Alles Weitere ist in C geschrieben und wird vom
-;  selbst gebauten Compiler uebersetzt.
+;  The boot sector jumps here. We set up the stack and call the C function
+;  main(). Everything else is written in C and translated by the
+;  self-built compiler.
 ;
-;  Die sys_*-Funktionen benutzen dieselbe Aufrufkonvention wie der Compiler
-;  (Argumente in r1..r5, Rueckgabe in r0) -- deshalb sind sie so kurz: nur
-;  die Funktionsnummer nach r0 und den passenden Interrupt ausloesen.
+;  The sys_* functions use the same calling convention as the compiler
+;  (arguments in r1..r5, return value in r0) -- that's why they are so
+;  short: just put the function number after r0 and trigger the matching
+;  interrupt.
 ; ===========================================================================
 
 .include "../firmware/const.inc"
@@ -22,7 +23,7 @@ kernel_entry:
     hlt
     jmp .halt
 
-; --- Bildschirm (INT 0x10) -------------------------------------------------
+; --- Screen (INT 0x10) -------------------------------------------------
 sys_putc:       movi r0, 0
                 int INT_VIDEO
                 ret
@@ -75,7 +76,7 @@ sys_sbline:     movi r0, 16
                 int INT_VIDEO
                 ret
 
-; --- Festplatte (INT 0x13) -------------------------------------------------
+; --- Disk (INT 0x13) -------------------------------------------------------
 sys_diskread:   movi r0, 0
                 int INT_DISK
                 ret
@@ -86,7 +87,7 @@ sys_disksize:   movi r0, 2
                 int INT_DISK
                 ret
 
-; --- Tastatur (INT 0x16) ---------------------------------------------------
+; --- Keyboard (INT 0x16) -----------------------------------------------------
 sys_getkey:     movi r0, 0
                 int INT_KBD
                 ret
@@ -97,7 +98,7 @@ sys_flushkeys:  movi r0, 2
                 int INT_KBD
                 ret
 
-; --- Zeit (INT 0x1A) -------------------------------------------------------
+; --- Time (INT 0x1A) ---------------------------------------------------------
 sys_ticks:      movi r0, 0
                 int INT_TIME
                 ret
@@ -108,24 +109,24 @@ sys_date:       movi r0, 2
                 int INT_TIME
                 ret
 
-; --- Direkter Hardwarezugriff ---------------------------------------------
+; --- Direct hardware access -------------------------------------------------
 sys_in:                                   ; sys_in(port)
     inr r0, r1
     ret
-sys_out:                                  ; sys_out(port, wert)
+sys_out:                                  ; sys_out(port, value)
     outr r2, r1
     ret
 
 ; ---------------------------------------------------------------------------
-;  Ein ganzer Blitter-Befehl in EINEM Aufruf
+;  One whole blitter command in ONE call
 ;
-;  Vorher rief die Oberflaeche fuer jede gefuellte Flaeche sechsmal sys_out --
-;  jedes Mal Argumente auf den Stack, Sprung, Rahmen aufbauen, zurueck. Ein
-;  volles Neuzeichnen des Schreibtischs kostete dadurch ueber 400.000 Befehle
-;  und war acht Bilder lang beim Malen zuzusehen. Hier passiert dasselbe in
-;  gut einem Dutzend Befehlen.
+;  Previously the UI called sys_out six times for every filled rectangle --
+;  each time pushing arguments on the stack, jumping, building a frame,
+;  returning. A full redraw of the desktop cost over 400,000 instructions
+;  because of that, and took eight visible frames to paint. Here the same
+;  thing happens in a good dozen instructions.
 ;
-;  sys_blit(r1 = x | y<<16, r2 = w | h<<16, r3 = Farbe, r4 = Kommando)
+;  sys_blit(r1 = x | y<<16, r2 = w | h<<16, r3 = colour, r4 = command)
 ; ---------------------------------------------------------------------------
 sys_blit:
     andi r10, r1, 0xFFFF
@@ -140,7 +141,7 @@ sys_blit:
     out P_BLT_CMD, r4
     ret
 
-;  sys_blitchar(r1 = x | y<<16, r2 = Farbe, r3 = Zeichen, r4 = Hintergrund)
+;  sys_blitchar(r1 = x | y<<16, r2 = colour, r3 = character, r4 = background)
 sys_blitchar:
     andi r10, r1, 0xFFFF
     out P_BLT_X, r10
@@ -153,24 +154,24 @@ sys_blitchar:
     out P_BLT_CMD, r10
     ret
 
-sys_halt:                                 ; auf den naechsten Interrupt warten
+sys_halt:                                 ; wait for the next interrupt
     hlt
     ret
 
 ; ===========================================================================
-;  Prozessumschalter
+;  Process switcher
 ;
-;  Haengt am Timer-Interrupt. Beim Eintritt liegen Ruecksprungadresse und
-;  Flags des unterbrochenen Programms bereits auf dessen Stack (das macht die
-;  CPU). Wir legen alle Register obendrauf, uebergeben den Stackpointer an den
-;  Kernel, bekommen den Stackpointer des naechsten Prozesses zurueck und holen
-;  von dort dessen Register wieder hervor. Das iret laesst den anderen Prozess
-;  genau dort weiterlaufen, wo er zuletzt unterbrochen wurde.
+;  Hangs off the timer interrupt. On entry, the return address and flags of
+;  the interrupted program are already on its stack (the CPU does that). We
+;  push all the registers on top of that, pass the stack pointer to the
+;  kernel, get back the stack pointer of the next process, and pop its
+;  registers back out from there. The iret lets the other process continue
+;  running from exactly where it was last interrupted.
 ; ===========================================================================
 
 sched_irq_asm:
-    push r0                               ; r0 zuerst -- der Compiler rechnet
-    push r1                               ; alles darin, es darf nicht verloren gehen
+    push r0                               ; r0 first -- the compiler keeps
+    push r1                               ; everything in it, it must not be lost
     push r2
     push r3
     push r4
@@ -185,13 +186,13 @@ sched_irq_asm:
     push r13
     push r14
 
-    in r1, P_TIMER_TICKS                  ; Systemuhr weiterfuehren
+    in r1, P_TIMER_TICKS                  ; advance the system clock
     stwa BDA_TICKS, r1
     out P_PIC_ACK, r1
 
-    mov r1, sp                            ; alten Stackpointer uebergeben
+    mov r1, sp                            ; pass the old stack pointer along
     call proc_schedule
-    mov sp, r0                            ; auf den neuen Prozess umschalten
+    mov sp, r0                            ; switch to the new process
 
     pop r14
     pop r13
@@ -211,11 +212,11 @@ sched_irq_asm:
     iret
 
 ; ===========================================================================
-;  Systemaufruf-Schnittstelle (INT 0x40)
+;  System call interface (INT 0x40)
 ;
-;  Programme, die von der Platte geladen werden, kennen den Kernel nicht --
-;  sie loesen einfach INT 0x40 aus, mit der Funktionsnummer in r0. Genau so
-;  reden echte Programme mit ihrem Betriebssystem.
+;  Programs loaded from disk don't know the kernel -- they simply trigger
+;  INT 0x40, with the function number in r0. That's exactly how real
+;  programs talk to their operating system.
 ; ===========================================================================
 
 syscall_asm:
@@ -233,8 +234,8 @@ syscall_asm:
     push r12
     push r13
     push r14
-    mov r5, r4                            ; Argumente eine Stelle weiterruecken,
-    mov r4, r3                            ; damit die Funktionsnummer in r1 passt
+    mov r5, r4                            ; shift the arguments along by one slot,
+    mov r4, r3                            ; so the function number ends up in r1
     mov r3, r2
     mov r2, r1
     mov r1, r0
@@ -253,15 +254,15 @@ syscall_asm:
     pop r3
     pop r2
     pop r1
-    iret                                  ; r0 traegt hier das Ergebnis zurueck
+    iret                                  ; r0 carries the result back here
 
-; call_addr(adresse): springt in geladenen Programmcode
+; call_addr(address): jumps into loaded program code
 call_addr:
     callr r1
     ret
 
-; --- Speicher zeichenweise kopieren (schneller als in C) -------------------
-sys_memcpy:                               ; (ziel, quelle, anzahl)
+; --- Copy memory byte by byte (faster than in C) ----------------------------
+sys_memcpy:                               ; (dest, src, count)
     push r6
     mov r6, r1
 .loop:
@@ -278,7 +279,7 @@ sys_memcpy:                               ; (ziel, quelle, anzahl)
     pop r6
     ret
 
-sys_memset:                               ; (ziel, wert, anzahl)
+sys_memset:                               ; (dest, value, count)
     push r6
     mov r6, r1
 .loop:

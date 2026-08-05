@@ -1,33 +1,33 @@
 ; ===========================================================================
-;  Startcode für eigenständige TOOBAD-OS-Programme (.TBX)
+;  Startup code for standalone TOOBAD-OS programs (.TBX)
 ;
-;  So eine Datei liegt auf der Platte, wird vom Kernel an PROG_ADDR geladen
-;  und ab dem ersten Byte gestartet. Sie kennt den Kernel nicht -- sie spricht
-;  nur über INT 0x40 mit ihm.
+;  A file like this sits on disk, gets loaded by the kernel at PROG_ADDR
+;  and started from the first byte. It doesn't know the kernel -- it only
+;  talks to it via INT 0x40.
 ; ===========================================================================
 
-; Wohin dieses Programm gehoert, legt build.py fest: es stellt ein
-; .equ PROG_BASE, <Adresse> davor. Frueher stand hier fest 0x00200000 --
-; und damit lud JEDES Programm an dieselbe Stelle. Solange nur eines lief,
-; ging das gut. Seit mehrere gleichzeitig in Fenstern laufen, ueberschrieb
-; das zweite dem ersten den Code unter den Fuessen weg: Paint bekam wirre
-; Striche, wenn der Speichertest lief, und alles fror ein, sobald ein
-; drittes dazukam.
+; Where this program belongs is decided by build.py: it prepends a
+; .equ PROG_BASE, <address>. It used to be fixed at 0x00200000 --
+; which meant EVERY program loaded at the same spot. As long as only one
+; ran at a time, that was fine. Since several run at once in windows, the
+; second one would overwrite the first one's code out from under it:
+; Paint got garbled strokes while the memory test ran, and everything
+; froze as soon as a third one joined in.
 .org PROG_BASE
 
-; Ein kleiner Kopf, damit der Lader weiss, wohin das Programm gehoert.
-; Programme ohne diesen Kopf (etwa auf dem Geraet selbst uebersetzte) landen
-; wie frueher an der ersten Stelle -- das bleibt gueltig.
+; A small header so the loader knows where the program belongs.
+; Programs without this header (for example ones compiled on the device
+; itself) still land at the first slot as before -- that stays valid.
     .dw 0x54425850                     ; "TBXP"
-    .dw PROG_BASE                      ; hierhin gehoert es
+    .dw PROG_BASE                      ; this is where it belongs
 
 prog_entry:
     call main
-    movi r0, 4                         ; Systemaufruf 4 = beenden.
-    int 0x40                           ; Im Hintergrund kehrt das nie zurueck --
-    ret                                ; im Vordergrund geht es zur Shell zurueck.
+    movi r0, 4                         ; System call 4 = exit.
+    int 0x40                           ; In the background this never returns --
+    ret                                ; in the foreground it goes back to the shell.
 
-; sc(nummer, a1, a2, a3, a4) -- der Weg zum Betriebssystem
+; sc(number, a1, a2, a3, a4) -- the way to the operating system
 sc:
     mov r10, r1
     mov r1, r2
@@ -39,18 +39,19 @@ sc:
     ret
 
 ; ---------------------------------------------------------------------------
-;  Hardware ohne Umweg
+;  Hardware without a detour
 ;
-;  Ports sind auf dem TB-32 nicht geschuetzt -- ein Programm darf sie selbst
-;  bedienen. Der Weg ueber int 0x40 kostet dagegen das Sichern von 15
-;  Registern und eine lange Fallunterscheidung im Kernel. Bei vierzig
-;  Malbefehlen je Bild ist das der Unterschied zwischen ruckeln und laufen.
+;  Ports on the TB-32 are not protected -- a program is allowed to operate
+;  them directly. The route via int 0x40, by contrast, costs saving 15
+;  registers and a long case dispatch in the kernel. At forty drawing
+;  calls per frame, that's the difference between choppy and smooth.
 ;
-;  CC auf dem Geraet erzeugt fuer portout/portin dieselben zwei Befehle
-;  direkt an der Aufrufstelle -- beide Compiler kommen also aufs Gleiche.
+;  CC on the device emits the same two instructions for portout/portin
+;  directly at the call site -- so both compilers end up doing the same
+;  thing.
 ; ---------------------------------------------------------------------------
 
-; portout(port, wert) -- outr schreibt rd an den Port in ra, also r2 nach r1
+; portout(port, value) -- outr writes rd to the port in ra, i.e. r2 to r1
 portout:
     outr r2, r1
     ret

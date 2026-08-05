@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
 """
-TBFS von außen: Dateien zwischen dem Mac und der virtuellen Festplatte
-schieben. Das ist das Gegenstück zum Dateisystem in system/fs.c -- beide
-müssen exakt dasselbe Format sprechen.
+TBFS from the outside: move files between the Mac and the virtual hard
+disk. This is the counterpart to the filesystem in system/fs.c -- both
+must speak exactly the same format.
 
     python3 tools/tbfs.py list
-    python3 tools/tbfs.py put datei.txt [NAME.TXT]
-    python3 tools/tbfs.py get NAME.TXT [ziel]
+    python3 tools/tbfs.py put file.txt [NAME.TXT]
+    python3 tools/tbfs.py get NAME.TXT [target]
     python3 tools/tbfs.py del NAME.TXT
     python3 tools/tbfs.py format
 """
@@ -34,12 +34,13 @@ class TBFS:
         with open(path, "rb") as f:
             self.img = bytearray(f.read())
         self.total = len(self.img) // SECTOR
-        # Welche Sektoren wurden angefasst? Nur die werden zurückgeschrieben.
-        # Früher ging das ganze Abbild raus -- lief nebenher der Emulator und
-        # hatte etwas gespeichert, war das danach wieder weg.
+        # Which sectors were touched? Only those get written back.
+        # It used to write the whole image out -- if the emulator was
+        # running alongside and had saved something, it would be gone
+        # again afterward.
         self.dirty = set()
 
-    # -- Hilfen ------------------------------------------------------------
+    # -- Helpers -------------------------------------------------------
 
     def _sec(self, n):
         return n * SECTOR
@@ -52,7 +53,7 @@ class TBFS:
 
     def _put32(self, off, v):
         struct.pack_into("<I", self.img, off, v & 0xFFFFFFFF)
-        self.markiere(off // SECTOR)     # jeder Schreibzugriff meldet sich
+        self.markiere(off // SECTOR)     # every write reports itself
 
     def name(self, i):
         raw = bytes(self.img[self._ent(i):self._ent(i) + 16])
@@ -75,7 +76,7 @@ class TBFS:
             self.dirty.add(i)
 
     def save(self):
-        """Schreibt nur die geänderten Sektoren -- niemals das ganze Abbild."""
+        """Writes only the changed sectors -- never the whole image."""
         if not os.path.exists(self.path):
             with open(self.path, "wb") as f:
                 f.write(self.img)
@@ -88,7 +89,7 @@ class TBFS:
             f.flush()
         self.dirty.clear()
 
-    # -- Verwaltung --------------------------------------------------------
+    # -- Management ------------------------------------------------------
 
     def formatted(self):
         return self._u32(self._sec(SUPER)) == MAGIC
@@ -119,7 +120,7 @@ class TBFS:
         return -1
 
     def mkdir(self, name, ordner=-1):
-        """Legt einen Ordner an (oder liefert den vorhandenen)."""
+        """Creates a folder (or returns the existing one)."""
         if not self.formatted():
             self.format()
         i = self.find(name, ordner)
@@ -127,7 +128,7 @@ class TBFS:
             return i
         i = next((k for k in range(MAXFILES) if not self.typ(k)), -1)
         if i < 0:
-            raise SystemExit("Verzeichnis ist voll")
+            raise SystemExit("Directory is full")
         e = self._ent(i)
         self.img[e:e + ENTSIZE] = bytearray(ENTSIZE)
         self.markiere(DIR0, DIRSECS)
@@ -138,7 +139,7 @@ class TBFS:
         return i
 
     def pfad_ordner(self, pfad):
-        """Legt \"SYSTEM/UNTER\" an und gibt den letzten Ordner zurück."""
+        """Creates \"SYSTEM/SUB\" and returns the last folder."""
         ordner = -1
         for teil in pfad.replace("\\", "/").split("/"):
             if teil:
@@ -158,7 +159,7 @@ class TBFS:
                     start = end
                     again = True
         if start + n > self.total:
-            raise SystemExit("Kein Platz mehr auf der virtuellen Platte")
+            raise SystemExit("No more space on the virtual disk")
         return start
 
     def put(self, name, data, ordner=-1):
@@ -175,7 +176,7 @@ class TBFS:
             else:
                 idx = next((i for i in range(MAXFILES) if not self.typ(i)), -1)
                 if idx < 0:
-                    raise SystemExit("Verzeichnis ist voll")
+                    raise SystemExit("Directory is full")
             start = self.alloc(n)
         e = self._ent(idx)
         self.img[e:e + ENTSIZE] = bytearray(ENTSIZE)
@@ -219,7 +220,7 @@ def main():
 
     if befehl == "list":
         if not fs.formatted():
-            print("Die virtuelle Platte ist noch nicht formatiert.")
+            print("The virtual disk is not formatted yet.")
             return 0
 
         def zeige(ordner, tiefe):
@@ -245,21 +246,21 @@ def main():
         print(f"{src} -> A:\\{ziel.replace('/', chr(92))}")
     elif befehl == "mkdir":
         fs.pfad_ordner(sys.argv[2])
-        print(f"Ordner A:\\{sys.argv[2]} angelegt")
+        print(f"Folder A:\\{sys.argv[2]} created")
     elif befehl == "get":
         data = fs.get(sys.argv[2])
         if data is None:
-            print("Datei nicht gefunden")
+            print("File not found")
             return 1
         ziel = sys.argv[3] if len(sys.argv) > 3 else sys.argv[2]
         with open(ziel, "wb") as f:
             f.write(data)
-        print(f"A:\\{sys.argv[2]} -> {ziel} ({len(data)} Bytes)")
+        print(f"A:\\{sys.argv[2]} -> {ziel} ({len(data)} bytes)")
     elif befehl == "del":
-        print("gelöscht" if fs.delete(sys.argv[2]) else "nicht gefunden")
+        print("deleted" if fs.delete(sys.argv[2]) else "not found")
     elif befehl == "format":
         fs.format()
-        print("Virtuelle Platte formatiert.")
+        print("Virtual disk formatted.")
     else:
         print(__doc__)
         return 1

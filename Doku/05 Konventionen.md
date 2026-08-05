@@ -1,122 +1,126 @@
-# Konventionen
+# Conventions
 
-## Register
+## Registers
 
-| Register | Rolle |
+| Register | Role |
 |---|---|
-| `r0` | Rückgabewert **und Arbeitsregister des Compilers** — jeder Ausdruck landet hier |
-| `r1`–`r5` | Argumente 1–5 |
-| `r6`–`r9` | müssen von der gerufenen Funktion gesichert werden |
-| `r10`–`r12` | Kratzregister, dürfen jederzeit zerstört werden |
-| `r13` (`at`) | Hilfsregister des Assemblers — nach `ldwa`/`stwa` immer futsch |
-| `r14` (`fp`) | Framepointer |
-| `r15` (`sp`) | Stackpointer |
+| `r0` | Return value **and the compiler's working register** — every expression ends up here |
+| `r1`–`r5` | Arguments 1–5 |
+| `r6`–`r9` | must be saved by the called function |
+| `r10`–`r12` | scratch registers, may be clobbered at any time |
+| `r13` (`at`) | assembler's helper register — always clobbered after `ldwa`/`stwa` |
+| `r14` (`fp`) | frame pointer |
+| `r15` (`sp`) | stack pointer |
 
-Weil der Compiler alles in `r0` rechnet, **muss jeder Interrupthandler r0
-sichern** — siehe [[07 Fallstricke]].
+Because the compiler computes everything in `r0`, **every interrupt
+handler must save r0** — see [[07 Fallstricke]].
 
-## Aufruf einer Funktion
+## Calling a function
 
-Der Compiler wertet die Argumente aus, legt sie auf den Stack und holt sie
-rückwärts nach `r1`…`r5`. Prolog jeder Funktion:
+The compiler evaluates the arguments, pushes them onto the stack, and
+pops them back into `r1`…`r5` in reverse order. Prologue of every
+function:
 
 ```
 push fp
 mov fp, sp
-subi sp, sp, <rahmen>     ; Größe wird nachgetragen
+subi sp, sp, <frame>     ; size is filled in later
 push r6 … r9
-[Parameter in die Rahmenplätze speichern]
+[store parameters into the frame slots]
 ```
 
-Epilog: `mov sp, fp` / `pop fp` / `ret`.
+Epilogue: `mov sp, fp` / `pop fp` / `ret`.
 
-## BIOS-Dienste (Firmware)
+## BIOS services (firmware)
 
-Vollständige Liste und die bekannten Lücken: [[13 BIOS-Dienste und was fehlt]]
+Full list and known gaps: [[13 BIOS-Dienste und was fehlt]]
 
-Funktionsnummer in `r0`, Argumente in `r1`–`r5`, Ergebnis in `r0`.
+Function number in `r0`, arguments in `r1`–`r5`, result in `r0`.
 
-| Interrupt | Dienst |
+| Interrupt | Service |
 |---|---|
-| `INT 0x10` | Bildschirm: 0 putc, 1 puts, 2 setcursor, 3 cls, 4 getcursor, 5 putat, 6 putn, 7 puthex, 8 setmode, 9 box, 10 fillrect, 11 hline, 12 scroll, 13 clearrow, 14 putsat, **15 sbcount, 16 sbline** |
-| `INT 0x13` | Platte: 0 lesen, 1 schreiben, 2 Größe |
-| `INT 0x16` | Tastatur: 0 warten, 1 nachsehen, 2 leeren |
-| `INT 0x1A` | Zeit: 0 Ticks, 1 Uhrzeit, 2 Datum |
-| `INT 0x40` | **Systemaufruf des Betriebssystems** |
-| `INT 0x41` | Rechenzeit freiwillig abgeben (Scheduler) |
-| `IRQ 0x08` | Timer (100 Hz) — trägt bei aktivem Multitasking den Umschalter |
-| `IRQ 0x09` | Tastatur |
+| `INT 0x10` | Screen: 0 putc, 1 puts, 2 setcursor, 3 cls, 4 getcursor, 5 putat, 6 putn, 7 puthex, 8 setmode, 9 box, 10 fillrect, 11 hline, 12 scroll, 13 clearrow, 14 putsat, **15 sbcount, 16 sbline** |
+| `INT 0x13` | Disk: 0 read, 1 write, 2 size |
+| `INT 0x16` | Keyboard: 0 wait, 1 peek, 2 flush |
+| `INT 0x1A` | Time: 0 ticks, 1 clock, 2 date |
+| `INT 0x40` | **Operating system syscall** |
+| `INT 0x41` | Voluntarily yield CPU time (scheduler) |
+| `IRQ 0x08` | Timer (100 Hz) — carries the process switcher when multitasking is active |
+| `IRQ 0x09` | Keyboard |
 
-## Systemaufrufe (`INT 0x40`)
+## System calls (`INT 0x40`)
 
-Nummer in `r0`, Argumente `r1`–`r4`, Ergebnis in `r0`.
+Number in `r0`, arguments `r1`–`r4`, result in `r0`.
 
-| Nr | Bedeutung | Nr | Bedeutung |
+| No | Meaning | No | Meaning |
 |---|---|---|---|
 | 0 | putc(ch, attr) | 14 | sleep(ticks) |
-| 1 | puts(str, attr) | 15 | beep(freq, dauer) |
+| 1 | puts(str, attr) | 15 | beep(freq, duration) |
 | 2 | getkey() | 16 | disksize() |
 | 3 | cls(attr) | 17 | setmode(m) |
-| 4 | exit() | 18 | out(port, wert) |
+| 4 | exit() | 18 | out(port, value) |
 | 5 | ticks() | 19 | in(port) |
 | 6 | putn(n, attr) | 20 | box(x,y,w,h) |
 | 7 | setcursor(x, y) | 21 | hline(x,y,len,ch) |
 | 8 | putat(x,y,ch,attr) | 22 | memkb() |
 | 9 | haskey() | 23 | flushkeys() |
-| 10 | fileread(name, adr, max) | 24–27 | Verzeichnis abfragen |
-| 11 | filewrite(name, adr, len) | **28** | **Fortschritt melden (0–100)** |
-| 12 | clock() | **29** | **Statustext melden** |
-| 13 | date() | **30** | **Adresse des Zeichensatzes** |
-| | | **31** | **Fläche/Rahmen malen** (x\|y<<16, w\|h<<16, Farbe, Kommando) |
-| | | **32** | **Zeichen malen** (x\|y<<16, Farbe\|Zeichen<<16, Hintergrund) |
+| 10 | fileread(name, addr, max) | 24–27 | query directory |
+| 11 | filewrite(name, addr, len) | **28** | **report progress (0–100)** |
+| 12 | clock() | **29** | **report status text** |
+| 13 | date() | **30** | **address of the font** |
+| | | **31** | **draw filled area/outline** (x\|y<<16, w\|h<<16, color, command) |
+| | | **32** | **draw character** (x\|y<<16, color\|char<<16, background) |
 
-Syscall 28 und 29 füttern das Übersetzungsfenster; `cc.c` meldet darüber
-Fortschritt und Phase.
+Syscalls 28 and 29 feed the compile window; `cc.c` reports progress and
+phase through them.
 
-Die Ausgabe-Aufrufe (0, 1, 2, 3, 6, 9) gehen automatisch ins **Terminalfenster**,
-wenn `term_aktiv` gesetzt ist. Programme merken davon nichts.
+The output calls (0, 1, 2, 3, 6, 9) automatically go to the **terminal
+window** when `term_aktiv` is set. Programs don't notice.
 
-## Tastenkürzel
+## Keyboard shortcuts
 
-| Taste | Wirkung |
+| Key | Effect |
 |---|---|
-| `F11` | Vollbild des **Emulatorfensters** |
-| `Strg`+`Q` / `Cmd`+`Q` | Beenden |
-| `Strg`+`R` | Reset (Knopf am Gehäuse) |
-| `F12` | Einblendung mit Takt, Temperatur, Bildrate |
-| `Cmd`+`V` / `Strg`+`V` | Text vom Mac in TOOBAD-OS einfügen |
-| Taste halten | Rücktaste, Entfernen und Pfeile wiederholen nach 0,4 s alle 30 ms |
-| `Cmd`+`C` | Auswahl aus TOOBAD-OS zum Mac |
-| `Strg`+`A/C/X/V` | im Gast: alles / kopieren / ausschneiden / einfügen |
-| `ü` | **Einschaltknopf** — wirkt nur, wenn der Rechner aus ist |
-| `Strg`+`K` / `Cmd`+`K` | **alles kopieren**, still: im Textmodus der ganze Bildschirm (auch im BIOS und im Setup), im Grafikmodus der vollständige Text des Coders |
-| beim Einschalten | **5 s Bedenkzeit** (`EINSCHALT_HALT_S` in `pc.py`), Tasten daraus werden aufgehoben |
+| `F11` | Fullscreen of the **emulator window** |
+| `Ctrl`+`Q` / `Cmd`+`Q` | Quit |
+| `Ctrl`+`R` | Reset (case button) |
+| `F12` | Overlay with clock, temperature, frame rate |
+| `Cmd`+`V` / `Ctrl`+`V` | Paste text from the Mac into TOOBAD OS |
+| Hold a key | Backspace, Delete, and arrows repeat after 0.4 s every 30 ms |
+| `Cmd`+`C` | Copy selection from TOOBAD OS to the Mac |
+| `Ctrl`+`A/C/X/V` | inside the guest: select all / copy / cut / paste |
+| `ü` | **Power button** — only works when the machine is off |
+| `Ctrl`+`K` / `Cmd`+`K` | **copy everything**, silently: in text mode the whole screen (also in the BIOS and setup), in graphics mode the full text of the Coder |
+| at power-on | **5 s grace period** (`EINSCHALT_HALT_S` in `pc.py`), keys pressed during it are discarded |
 
-`Strg`+*Buchstabe* wird in `pc.py` allgemein als Steuerzeichen 1–26 an den
-Gast durchgereicht — die Abfrage steht **nach** Strg+Q und Strg+R.
+`Ctrl`+*letter* is generally passed through to the guest in `pc.py` as
+control character 1–26 — this check comes **after** Ctrl+Q and Ctrl+R.
 
-`Strg`+`K` sitzt im **Gehäuse** (`pc.py`, `alles_kopieren`) und nicht im
-System. Im BIOS und im Setup läuft gar kein Betriebssystem, das eine Taste
-auswerten könnte — von dort aus geht es überall. Es meldet bewusst nichts:
-wer die Taste drückt, weiß, was er wollte.
+`Ctrl`+`K` lives in the **case** (`pc.py`, `alles_kopieren`), not in the
+system. No operating system runs in the BIOS or setup that could
+evaluate a key — from there it works everywhere. It deliberately reports
+nothing: whoever presses the key knows what they wanted.
 
-Das `ü` steht bewusst **nicht** bei den Tastendrücken, sondern beim
-Text-Ereignis (`TEXTINPUT`). Bei `KEYDOWN` ist `event.unicode` je nach
-Layout leer oder trägt noch das Zeichen des vorigen Anschlags — Umlaute
-kommen nur über das Text-Ereignis zuverlässig an.
+The `ü` key is deliberately **not** handled among the key-press events,
+but at the text-input event (`TEXTINPUT`). At `KEYDOWN`,
+`event.unicode` is either empty or still carries the previous
+keystroke's character depending on layout — umlauts only arrive
+reliably via the text-input event.
 
-## Namensgebung
+## Naming
 
-- Oberfläche des Systems: **englisch** — und zwar restlos alles, was auf dem
-  Bildschirm des TB-32 landet, auch Firmware- und Bootsektormeldungen. Der
-  neue Bootsektor hatte deutsche Texte und stach sofort heraus.
-- Quelltext-Kommentare: **deutsch**
-- Variablen im OS-Quelltext: deutsch oder englisch gemischt, gewachsen —
-  nicht vereinheitlichen, das erzeugt nur Diffs ohne Nutzen.
+- System UI: **English** — and that means absolutely everything that
+  ends up on the TB-32's screen, including firmware and boot-sector
+  messages. The new boot sector had German text and stood out
+  immediately.
+- Source code comments: **German**
+- Variables in the OS source: a grown mix of German and English —
+  don't standardize them, that just creates diffs with no benefit.
 
-## Dateisystem
+## Filesystem
 
-Namen **max. 15 Zeichen**, Groß-/Kleinschreibung egal beim Suchen, in der
-Anzeige groß. Programme werden gesucht: aktueller Ordner → `\SYSTEM` → `\PROGS`.
+Names **max 15 characters**, case-insensitive when searching,
+uppercase in the display. Programs are searched for in: current folder
+→ `\SYSTEM` → `\PROGS`.
 
-Verwandt: [[01 Architektur TB-32]], [[04 Compiler TCC Grenzen]]
+Related: [[01 Architektur TB-32]], [[04 Compiler TCC Grenzen]]

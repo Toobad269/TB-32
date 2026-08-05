@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
 """
-Erzeugt den Zeichensatz für den Grafikmodus als C-Tabelle (system/font8.c).
+Generates the character set for graphics mode as a C table (system/font8.c).
 
-Im Grafikmodus kennt die Karte nur Pixel -- Buchstaben muss das Betriebssystem
-selbst malen. Deshalb ist hier jede Glyphe von Hand als 5x7-Punktmuster
-entworfen und wird in eine 8x8-Zelle einsortiert. Genau so hat man
-Bildschirmschriften früher gebaut.
+In graphics mode the card only knows pixels -- the operating system has to
+draw letters itself. That's why each glyph here is hand-designed as a 5x7
+dot pattern and placed into an 8x8 cell. This is exactly how screen fonts
+used to be built.
 
     python3 tools/mkfont.py
 """
@@ -14,7 +14,7 @@ import os
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
-# Jede Glyphe: 7 Zeilen à 5 Punkte. '#' = Pixel, '.' = leer.
+# Each glyph: 7 rows of 5 dots. '#' = pixel, '.' = empty.
 G = {
 " ": "..... ..... ..... ..... ..... ..... .....",
 "!": "..#.. ..#.. ..#.. ..#.. ..#.. ..... ..#..",
@@ -130,11 +130,11 @@ def glyph_bytes(spec):
 
 def main():
     lines = [
-        "/* 8x8-Zeichensatz für den Grafikmodus von TOOBAD-OS.",
-        "   Von Hand entworfen (5x7 Punkte in einer 8x8-Zelle) und von",
-        "   tools/mkfont.py in diese Tabelle gegossen. Jede Zeile eines",
-        "   Zeichens ist ein Byte; ein gesetztes Bit ist ein Pixel.",
-        "   Der Blitter der Grafikkarte liest die Tabelle direkt aus dem RAM. */",
+        "/* 8x8 character set for TOOBAD-OS graphics mode.",
+        "   Hand-designed (5x7 dots in an 8x8 cell) and cast into this",
+        "   table by tools/mkfont.py. Each row of a character is one",
+        "   byte; a set bit is a pixel.",
+        "   The graphics card's blitter reads the table directly from RAM. */",
         "",
         "char font8[768] = {",
     ]
@@ -146,16 +146,16 @@ def main():
             fehlend.append(ch)
             spec = G[" "]
         bs = glyph_bytes(spec)
-        name = "Leerzeichen" if ch == " " else ch
+        name = "Space" if ch == " " else ch
         lines.append("    " + ", ".join(str(b) for b in bs) + f",   /* {name} */")
     lines.append("};")
 
     path = os.path.join(ROOT, "system", "font8.c")
     with open(path, "w", encoding="utf-8") as f:
         f.write("\n".join(lines) + "\n")
-    print(f"{path} geschrieben ({96 - len(fehlend)} entworfene Zeichen)")
+    print(f"{path} written ({96 - len(fehlend)} designed characters)")
     if fehlend:
-        print("noch ohne Muster:", "".join(fehlend))
+        print("still without a pattern:", "".join(fehlend))
 
 
 if __name__ == "__main__":

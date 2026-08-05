@@ -1,10 +1,10 @@
 """
-Die Peripherie des Rechners: Grafikkarte, Tastatur, Festplatte, Timer,
-Lautsprecher, Maus, CMOS-Uhr, Netzwerkkarte und Netzteil.
+The computer's peripherals: graphics card, keyboard, hard disk, timer,
+speaker, mouse, CMOS clock, network card, and power supply.
 
-Jedes Gerät hängt an I/O-Ports (wie bei einem echten PC über IN/OUT) und
-manche zusätzlich an einem Speicherbereich (memory-mapped, z.B. der
-Bildspeicher der Grafikkarte).
+Each device hangs off I/O ports (like a real PC, via IN/OUT), and some
+also attach to a memory region (memory-mapped, e.g. the graphics card's
+video memory).
 """
 
 import os
@@ -34,34 +34,34 @@ from hardware.isa import (
 
 SECTOR = 512
 
-# Fuer jedes der 256 moeglichen Bitmuster einer Zeichensatzzeile: welche
-# Spalten sind gesetzt? Einmal ausgerechnet statt achtmal je Buchstabe.
+# For each of the 256 possible bit patterns of a font row: which
+# columns are set? Computed once instead of eight times per character.
 _GESETZT = tuple(tuple(c for c in range(8) if bits & (0x80 >> c))
                  for bits in range(256))
 
 
 # ---------------------------------------------------------------------------
-# Grafikkarte
+# Graphics card
 # ---------------------------------------------------------------------------
 
 class VGA:
-    """80x25 Textmodus (Zeichen + Farbattribut) und 640x400 Grafikmodus."""
+    """80x25 text mode (character + color attribute) and 640x400 graphics mode."""
 
     MODE_TEXT = 0
     MODE_GFX = 1
 
     def __init__(self):
         self.text = bytearray(VRAM_TEXT_SIZE)
-        # Zwei Bildseiten wie bei einer echten Grafikkarte.
-        #   self.gfx       -- hierhin wird gemalt (Bus und Blitter sehen sie)
-        #   self.gfx_sicht -- diese wird angezeigt
-        # Ohne Doppelpufferung sind beide dasselbe Feld, dann ist jeder
-        # Malbefehl sofort sichtbar -- so hat es der Schreibtisch immer
-        # gemacht und so bleibt es auch.
+        # Two video pages, like on a real graphics card.
+        #   self.gfx       -- this is what gets drawn to (the bus and blitter see it)
+        #   self.gfx_sicht -- this is what gets displayed
+        # Without double buffering both are the same array, so every
+        # draw command is instantly visible -- that's how the desktop has
+        # always worked, and it stays that way.
         self._seite_a = bytearray(VRAM_GFX_SIZE)
-        self._seite_b = None            # wird erst bei Bedarf angelegt
-        self.gfx = self._seite_a        # hierhin wird gemalt
-        self.gfx_sicht = self._seite_a  # diese wird angezeigt
+        self._seite_b = None            # only allocated when needed
+        self.gfx = self._seite_a        # this is what gets drawn to
+        self.gfx_sicht = self._seite_a  # this is what gets displayed
         self.doppel = 0
         self.mode = self.MODE_TEXT
         self.cursor = 0
@@ -69,19 +69,19 @@ class VGA:
         self.palette = self._default_palette()
         self.dirty = True
         self.bus = None
-        # Register des 2D-Beschleunigers
+        # Registers of the 2D accelerator
         self.blt = {"x": 0, "y": 0, "w": 0, "h": 0, "col": 15,
                     "chr": 32, "src": 0, "bg": 256, "zoom": 1,
                     "ziel": 0, "zielb": 0, "zielh": 0}
-        self._glyph_cache = {}          # (Bitmuster, Farbe, Hintergrund) -> 8 Bytes
-        self._zeile_cache = {}          # (Farbe, Breite) -> fertige Zeile
+        self._glyph_cache = {}          # (bit pattern, color, background) -> 8 bytes
+        self._zeile_cache = {}          # (color, width) -> finished row
         self.mcur_x = 320
         self.mcur_y = 200
         self.mcur_on = 0
         self.clear_text()
 
     def _default_palette(self):
-        """Die 16 klassischen PC-Farben, danach ein Farbwürfel und Graustufen."""
+        """The 16 classic PC colors, followed by a color cube and grayscale."""
         pal = [
             0x000000, 0x0000AA, 0x00AA00, 0x00AAAA,
             0xAA0000, 0xAA00AA, 0xAA5500, 0xAAAAAA,
@@ -103,19 +103,19 @@ class VGA:
             self.text[i + 1] = attr
         self.dirty = True
 
-    # -- 2D-Beschleuniger ---------------------------------------------------
+    # -- 2D accelerator -------------------------------------------------
 
     def _blit(self, cmd):
-        """Führt ein Zeichenkommando aus. Arbeitet direkt auf dem Bildspeicher,
-        deshalb ist es hunderte Male schneller als Pixel-für-Pixel über den Bus
-        -- genau wie der Blitter einer echten Grafikkarte."""
+        """Executes a draw command. Works directly on video memory,
+        which makes it hundreds of times faster than going pixel by pixel
+        over the bus -- just like the blitter on a real graphics card."""
         b = self.blt
         x, y, w, h = b["x"], b["y"], b["w"], b["h"]
         col = b["col"] & 0xFF
-        # Ziel: der Bildschirm, oder ein Puffer im Arbeitsspeicher. Alles
-        # Weitere rechnet mit GFX_W_L/GFX_H_L -- deshalb werden die hier zu
-        # Groessen des Ziels, und der Rest des Blitters merkt keinen
-        # Unterschied.
+        # Target: the screen, or a buffer in RAM. Everything below works
+        # with GFX_W_L/GFX_H_L -- so these are set here to the target's
+        # dimensions, and the rest of the blitter notices no
+        # difference.
         if b["ziel"]:
             GFX_W_L, GFX_H_L = b["zielb"], b["zielh"]
             if GFX_W_L <= 0 or GFX_H_L <= 0:
@@ -126,7 +126,7 @@ class VGA:
             fb = self.gfx
             self.dirty = True
 
-        if cmd == 1:                                   # gefüllte Fläche
+        if cmd == 1:                                   # filled area
             if w <= 0 or h <= 0:
                 return
             x0, y0 = max(0, x), max(0, y)
@@ -142,7 +142,7 @@ class VGA:
                     self._zeile_cache.clear()
                 self._zeile_cache[schl] = row
             if breit == GFX_W_L:
-                # ganze Zeilen: ein einziger Schreibvorgang statt h Stueck
+                # full rows: a single write instead of h separate ones
                 fb[y0 * GFX_W_L:y1 * GFX_W_L] = row * (y1 - y0)
             else:
                 off = y0 * GFX_W_L + x0
@@ -150,7 +150,7 @@ class VGA:
                     fb[off:off + breit] = row
                     off += GFX_W_L
 
-        elif cmd == 2:                                 # Rahmen
+        elif cmd == 2:                                 # frame/outline
             for xx in range(max(0, x), min(GFX_W_L, x + w)):
                 if 0 <= y < GFX_H_L:
                     fb[y * GFX_W_L + xx] = col
@@ -162,7 +162,7 @@ class VGA:
                 if 0 <= x + w - 1 < GFX_W_L:
                     fb[yy * GFX_W_L + x + w - 1] = col
 
-        elif cmd == 3:                                 # Zeichen aus dem Zeichensatz
+        elif cmd == 3:                                 # character from the font
             if self.bus is None:
                 return
             code = b["chr"] & 0xFF
@@ -172,9 +172,9 @@ class VGA:
             bg = b["bg"]
             muster = self.bus.read_block(base, 8)
             zoom = b["zoom"]
-            # Vergroessert malen kann jetzt die Karte. Vorher musste ein
-            # Programm dafuer 8*8*zoom*zoom Punkte einzeln schreiben -- bei
-            # Zoom 3 sind das 576 Schreibvorgaenge fuer EINE Ziffer.
+            # The card can now draw scaled up. Before, a program had to
+            # write 8*8*zoom*zoom pixels individually for this -- at
+            # zoom level 3 that's 576 writes for a SINGLE digit.
             if zoom > 1:
                 br = 8 * zoom
                 if 0 <= x <= GFX_W_L - br and 0 <= y <= GFX_H_L - br:
@@ -188,7 +188,7 @@ class VGA:
                                 zeile = bytes((col if bits & (0x80 >> (c // zoom))
                                                else bg) for c in range(br))
                             else:
-                                zeile = None       # durchsichtig: unten Punkte
+                                zeile = None       # transparent: dot-by-dot below
                             if zeile is not None:
                                 if len(cache) > 4096:
                                     cache.clear()
@@ -208,11 +208,11 @@ class VGA:
                                         fb[o2:o2 + zoom] = punkte
                                         o2 += GFX_W_L
                 return
-            # Der schnelle Weg: Buchstabe liegt ganz auf dem Schirm, also ohne
-            # Randpruefung je Bildpunkt. Mit Hintergrundfarbe wird jede der
-            # acht Zeilen als fertige Acht-Byte-Folge in einem Rutsch gesetzt;
-            # die Folgen wiederholen sich staendig und stehen deshalb im
-            # Zwischenspeicher. Vorher waren es 64 einzelne Schreibvorgaenge.
+            # The fast path: the character lies entirely on screen, so no
+            # bounds check per pixel. With a background color, each of the
+            # eight rows is written as a ready-made eight-byte sequence in
+            # one go; the sequences repeat constantly and are therefore
+            # cached. Before, this was 64 individual writes.
             if 0 <= x <= GFX_W_L - 8 and 0 <= y <= GFX_H_L - 8:
                 off = y * GFX_W_L + x
                 if bg < 256:
@@ -252,14 +252,14 @@ class VGA:
                     elif bg < 256:
                         fb[off + xx] = bg
 
-        elif cmd == 4:                                 # Bild aus dem RAM
+        elif cmd == 4:                                 # image from RAM
             if self.bus is None:
                 return
             data = self.bus.read_block(b["src"], w * h)
-            # Liegt das Bild ganz auf dem Schirm, geht jede Zeile in einem
-            # Stueck. Nur Zeilen, in denen wirklich ein durchsichtiger Punkt
-            # (255) vorkommt, muessen einzeln behandelt werden -- das "in"
-            # sucht danach im Maschinencode und ist praktisch umsonst.
+            # If the image lies entirely on screen, each row goes in one
+            # piece. Only rows that actually contain a transparent pixel
+            # (255) need to be handled individually -- the "in" check
+            # searches for that in machine code and is practically free.
             if 0 <= x and x + w <= GFX_W_L and 0 <= y and y + h <= GFX_H_L:
                 off = y * GFX_W_L + x
                 i = 0
@@ -280,17 +280,17 @@ class VGA:
                     for xx in range(x, x + w):
                         if 0 <= xx < GFX_W_L:
                             v = data[i + (xx - x)]
-                            if v != 255:               # 255 = durchsichtig
+                            if v != 255:               # 255 = transparent
                                 fb[yy * GFX_W_L + xx] = v
                 i += w
 
-        elif cmd == 6:                                 # Zeichenkette aus dem RAM
-            # Eine ganze Zeile in EINEM Befehl. Vorher schickte das
-            # Betriebssystem je Buchstabe einen eigenen Malbefehl -- eine
-            # Editorseite sind 1600 Stueck, und jeder kostet den Prozessor
-            # Dutzende Befehle. Jetzt ist es einer je Farbabschnitt.
-            #   CHR = Adresse des Textes, W = Laenge, SRC = Zeichensatz
-            # (der Zeichensatz bleibt so, wo er immer steht)
+        elif cmd == 6:                                 # string from RAM
+            # A whole row in ONE command. Before, the OS sent a separate
+            # draw command per character -- an editor page is 1600 of
+            # them, and each one costs the processor dozens of
+            # instructions. Now it's one per color segment.
+            #   CHR = address of the text, W = length, SRC = font
+            # (the font stays wherever it normally is)
             if self.bus is None or w <= 0:
                 return
             txt = self.bus.read_block(b["chr"], min(w, 256))
@@ -340,14 +340,14 @@ class VGA:
                                         o2 += GFX_W_L
                         off += GFX_W_L * zoom
 
-        elif cmd == 7:                                 # Bild skaliert aus dem RAM
-            # Nachster-Nachbar-Verfahren: fuer jede Zielzeile wird die
-            # passende Quellzeile ausgesucht, fuer jede Zielspalte die
-            # passende Quellspalte. Ohne Kommazahlen -- die Schrittweite
-            # steht als Bruch aus Quell- und Zielgroesse fest. Genau so
-            # skalieren Grafikkarten seit jeher.
-            #   SRC = Bildpunkte, CHR = Quellbreite | Quellhoehe<<16
-            #   X,Y = Ziel-Ecke, W,H = Zielgroesse
+        elif cmd == 7:                                 # image scaled from RAM
+            # Nearest-neighbor method: for each target row, the matching
+            # source row is picked, and for each target column, the
+            # matching source column. No floating point -- the step size
+            # is a fixed fraction of source and target size. This is
+            # exactly how graphics cards have always scaled.
+            #   SRC = pixels, CHR = source width | source height<<16
+            #   X,Y = target corner, W,H = target size
             if self.bus is None or w <= 0 or h <= 0:
                 return
             qb = b["chr"] & 0xFFFF
@@ -355,7 +355,7 @@ class VGA:
             if qb <= 0 or qh <= 0:
                 return
             quelle = self.bus.read_block(b["src"], qb * qh)
-            # Spaltenzuordnung einmal ausrechnen, nicht je Zeile
+            # Compute the column mapping once, not per row
             spalten = [(i * qb) // w for i in range(w)]
             for zy in range(h):
                 yy = y + zy
@@ -382,8 +382,8 @@ class VGA:
                 else:
                     fb[off:off + len(neu)] = neu
 
-        elif cmd == 5:                                 # Bereich kopieren
-            sx, sy = b["chr"], b["src"]                # Quelle in CHR/SRC
+        elif cmd == 5:                                 # copy region
+            sx, sy = b["chr"], b["src"]                # source in CHR/SRC
             for r in range(h):
                 s = (sy + r) * GFX_W_L + sx
                 d = (y + r) * GFX_W_L + x
@@ -391,17 +391,18 @@ class VGA:
                     fb[d:d + w] = fb[s:s + w]
 
     def doppel_setzen(self, an):
-        """Schaltet die zweite Bildseite ein oder aus."""
+        """Turns the second video page on or off."""
         if an and not self.doppel:
             if self._seite_b is None:
                 self._seite_b = bytearray(VRAM_GFX_SIZE)
-            # Die jeweils ANDERE der beiden festen Seiten wird zur Rueckseite.
-            # (Frueher stand hier eine Merkvariable, die nach dem Ausschalten
-            # auf dieselbe Seite zeigte -- beim zweiten Start eines Spiels
-            # waren dann beide Seiten dasselbe Feld und es flackerte wieder.)
+            # Whichever of the two fixed pages is NOT current becomes the back page.
+            # (There used to be a tracking variable here that, after
+            # switching off, pointed at the same page -- on a game's second
+            # start both pages then ended up being the same array and it
+            # flickered again.)
             andere = self._seite_b if self.gfx is self._seite_a else self._seite_a
-            andere[:] = self.gfx         # sonst blitzt beim ersten Tausch
-            self.gfx_sicht = self.gfx    # das vorletzte Bild auf
+            andere[:] = self.gfx         # otherwise it flashes on the first swap
+            self.gfx_sicht = self.gfx    # still shows the current image
             self.gfx = andere
             self.doppel = 1
         elif not an and self.doppel:
@@ -411,16 +412,17 @@ class VGA:
         self.dirty = True
 
     def tauschen(self, wie=1):
-        """Fertiges Bild sichtbar machen.
+        """Make the finished image visible.
 
-        wie = 1: die beiden Seiten **wechseln**. Schnell (nur zwei Zeiger),
-                 aber die neue Rueckseite enthaelt das vorletzte Bild --
-                 wer nur Teile malt, muss danach alles neu malen. Fuer
-                 Spiele, die ohnehin jedes Bild komplett zeichnen.
-        wie = 2: die Rueckseite auf die Vorderseite **kopieren**. Kostet
-                 einen Speicherblock, dafuer bleibt die Rueckseite stehen --
-                 damit funktionieren Teil-Neuzeichnungen. Genau das braucht
-                 der Schreibtisch, der immer nur ein Fenster neu malt."""
+        wie = 1: **swap** the two pages. Fast (just two pointers), but
+                 the new back page contains the previous frame --
+                 anything that only draws partial updates must redraw
+                 everything afterward. For games that redraw the whole
+                 image every frame anyway.
+        wie = 2: **copy** the back page onto the front page. Costs a
+                 memory block, but the back page is preserved -- which
+                 makes partial redraws work. That's exactly what the
+                 desktop needs, since it only ever redraws one window."""
         if not self.doppel:
             return
         if wie == 2:
@@ -428,14 +430,15 @@ class VGA:
             self.dirty = True
             return
         self.gfx, self.gfx_sicht = self.gfx_sicht, self.gfx
-        # Die neue Rueckseite enthaelt noch das vorletzte Bild. Wer alles
-        # neu malt, merkt davon nichts; wer nur Teile malt, will es haben.
+        # The new back page still contains the previous frame. Anything
+        # that redraws everything won't notice; anything doing partial
+        # redraws wants exactly that.
         self.dirty = True
 
     def port_out(self, port, value):
-        # Die Namen stehen jetzt oben in der Datei. Hier eine import-Zeile zu
-        # haben sah harmlos aus -- sie lief aber bei JEDEM Portzugriff, und
-        # ein Malbefehl schreibt sechs davon.
+        # The names now live at the top of the file. Having an import line
+        # here looked harmless -- but it ran on EVERY port access, and a
+        # single draw command writes six of them.
         if port == PORT_BLT_ZIEL:
             self.blt["ziel"] = value
             return
@@ -461,12 +464,12 @@ class VGA:
         elif port == PORT_MCUR_Y:  self.mcur_y = value; self.dirty = True
         elif port == PORT_MCUR_ON: self.mcur_on = value; self.dirty = True
         elif port == PORT_VGA_MODE:
-            # Ein Moduswechsel setzt den Blitter zurueck. Sonst schriebe der
-            # Schreibtisch in Riesenschrift weiter, wenn ein Programm mit
-            # gesetzter Vergroesserung abstuerzt.
+            # A mode change resets the blitter. Otherwise the desktop
+            # would keep drawing in giant letters if a program crashed
+            # while zoom was still set.
             self.blt["zoom"] = 1
             self.mode = value & 1
-            if value & 0x100:                 # Bit 8 gesetzt = Bildspeicher löschen
+            if value & 0x100:                 # bit 8 set = clear video memory
                 if self.mode == self.MODE_TEXT:
                     self.clear_text()
                 else:
@@ -488,9 +491,9 @@ class VGA:
             return self.mode
         if port == PORT_VGA_CURSOR:
             return self.cursor
-        # Lesbar, damit das Betriebssystem den Blitter-Zustand beim
-        # Prozesswechsel sichern kann: er gehoert dem Programm, das gerade
-        # malt, nicht dem naechsten.
+        # Readable so the OS can save the blitter state on a context
+        # switch: it belongs to the program that's currently drawing,
+        # not the next one.
         if port == PORT_BLT_ZIEL:
             return self.blt["ziel"]
         if port == PORT_BLT_ZIELB:
@@ -503,11 +506,11 @@ class VGA:
 
 
 # ---------------------------------------------------------------------------
-# Tastatur
+# Keyboard
 # ---------------------------------------------------------------------------
 
 class Keyboard:
-    """Puffert Tastendrücke wie ein PS/2-Controller und löst IRQ 1 aus."""
+    """Buffers keystrokes like a PS/2 controller and raises IRQ 1."""
 
     def __init__(self, cpu_ref):
         self.buffer = deque(maxlen=32)
@@ -533,24 +536,24 @@ class Keyboard:
         pass
 
 
-# Sondertasten: liegen als Scancode im oberen Byte, ASCII-Teil ist 0
+# Special keys: stored as a scancode in the upper byte, ASCII part is 0
 KEY_ESC, KEY_ENTER, KEY_BACKSPACE, KEY_TAB = 0x01, 0x1C, 0x0E, 0x0F
 KEY_UP, KEY_DOWN, KEY_LEFT, KEY_RIGHT = 0x48, 0x50, 0x4B, 0x4D
 KEY_F1, KEY_F2, KEY_F10, KEY_DEL = 0x3B, 0x3C, 0x44, 0x53
 KEY_HOME, KEY_END, KEY_PGUP, KEY_PGDN = 0x47, 0x4F, 0x49, 0x51
 KEY_INS, KEY_F5 = 0x52, 0x3F
-# F8 ist der klassische Weg ins Startmenue eines BIOS. F12 waere der
-# andere -- die Taste gehoert hier aber dem Fenster (Einblendung mit Takt
-# und Bildrate) und erreicht den virtuellen Rechner nie.
+# F8 is the classic way into a BIOS boot menu. F12 would be the other one --
+# but that key belongs to the window here (the overlay with clock speed and
+# frame rate) and never reaches the virtual machine.
 KEY_F8 = 0x42
 
 
 # ---------------------------------------------------------------------------
-# Festplatte
+# Hard disk
 # ---------------------------------------------------------------------------
 
 class Disk:
-    """Blockgerät mit 512-Byte-Sektoren. Überträgt per DMA direkt in den RAM."""
+    """Block device with 512-byte sectors. Transfers directly into RAM via DMA."""
 
     def __init__(self, path, size_sectors=8192):
         self.path = path
@@ -585,9 +588,9 @@ class Disk:
         if port == PORT_DISK_LBA:
             self.lba = value
         elif port == PORT_DISK_COUNT:
-            # 16 Bit Sektorzähler: bis 32 MB am Stück. Mit 8 Bit (wie bei den
-            # ganz frühen Controllern) wären bei 128 KB Schluss -- zu wenig,
-            # seit der C-Compiler auf dem Gerät selbst läuft.
+            # 16-bit sector counter: up to 32 MB at once. With 8 bits (as
+            # on the very earliest controllers) it would top out at 128 KB
+            # -- too little now that the C compiler runs on the device itself.
             self.count = max(1, value & 0xFFFF)
         elif port == PORT_DISK_ADDR:
             self.addr = value
@@ -605,14 +608,14 @@ class Disk:
         self.led = True
         self.busy_until = time.time() + 0.03
         if self.lba + self.count > self.size_sectors:
-            self.status = 1                       # außerhalb der Platte
+            self.status = 1                       # outside the disk
             return
         try:
             self.file.seek(self.lba * SECTOR)
-            if cmd == 1:                          # lesen
+            if cmd == 1:                          # read
                 data = self.file.read(self.count * SECTOR)
                 self.bus.write_block(self.addr, data)
-            elif cmd == 2:                        # schreiben
+            elif cmd == 2:                        # write
                 data = self.bus.read_block(self.addr, self.count * SECTOR)
                 self.file.write(data)
                 self.file.flush()
@@ -629,7 +632,7 @@ class Disk:
 # ---------------------------------------------------------------------------
 
 class Timer:
-    """Programmierbarer Intervall-Zähler: löst regelmäßig IRQ 0 aus."""
+    """Programmable interval counter: raises IRQ 0 periodically."""
 
     def __init__(self, cpu_ref):
         self.cpu = cpu_ref
@@ -661,7 +664,7 @@ class Timer:
 
 
 # ---------------------------------------------------------------------------
-# Lautsprecher
+# Speaker
 # ---------------------------------------------------------------------------
 
 class Speaker:
@@ -684,7 +687,7 @@ class Speaker:
 
 
 # ---------------------------------------------------------------------------
-# Maus
+# Mouse
 # ---------------------------------------------------------------------------
 
 class Mouse:
@@ -693,7 +696,7 @@ class Mouse:
         self.x = GFX_W // 2
         self.y = GFX_H // 2
         self.buttons = 0
-        self.wheel = 0            # aufgelaufene Rasten, positiv = nach oben
+        self.wheel = 0            # accumulated notches, positive = up
         self.enabled = False
 
     def move(self, x, y, buttons):
@@ -704,8 +707,8 @@ class Mouse:
 
     def port_in(self, port):
         if port == PORT_MOUSE_WHEEL:
-            # Einmal lesen heisst abholen -- danach steht der Zaehler wieder
-            # auf null, wie bei einem echten Radzaehler.
+            # Reading it once means collecting it -- afterward the counter
+            # resets to zero, just like a real wheel counter.
             w, self.wheel = self.wheel, 0
             return w & 0xFFFFFFFF
         if port == PORT_MOUSE_X:
@@ -723,7 +726,7 @@ class Mouse:
 
 
 # ---------------------------------------------------------------------------
-# CMOS + Echtzeituhr
+# CMOS + real-time clock
 # ---------------------------------------------------------------------------
 
 CMOS_SEC, CMOS_MIN, CMOS_HOUR = 0x00, 0x02, 0x04
@@ -739,15 +742,16 @@ CMOS_MAGIC     = 0x2F
 
 
 class CMOS:
-    """Batteriegepufferter Speicher: Uhr + die im BIOS-Setup gemachten
-    Einstellungen. Landet als Datei auf der echten Platte -- das ist die
-    Knopfzelle auf dem Mainboard."""
+    """Battery-backed memory: clock + the settings made in BIOS setup.
+    Ends up as a file on the real disk -- this is the coin-cell battery
+    on the mainboard."""
 
-    # Die Uhr geht ab jetzt selbst: gespeichert wird der Unterschied zur Uhr
-    # des Wirts, in Sekunden. Vorher war die Uhr des TB-32 nur eine Kopie der
-    # Mac-Uhr -- man konnte sie im BIOS-Setup gar nicht stellen, weil jeder
-    # Lesezugriff den geschriebenen Wert sofort wieder ueberbuegelte.
-    OFFSET_REG = 0x30                        # vier Byte, vorzeichenbehaftet
+    # The clock now runs on its own: what's stored is the difference from
+    # the host clock, in seconds. Before, the TB-32's clock was just a
+    # copy of the Mac's clock -- you couldn't even set it in BIOS setup,
+    # because every read immediately overwrote whatever value had just
+    # been written.
+    OFFSET_REG = 0x30                        # four bytes, signed
 
     def __init__(self, path):
         self.path = path
@@ -765,10 +769,10 @@ class CMOS:
 
     def reset_defaults(self):
         self.data = bytearray(64)
-        self.data[CMOS_BOOTDEV] = 0          # 0 = Festplatte
+        self.data[CMOS_BOOTDEV] = 0          # 0 = hard disk
         self.data[CMOS_QUICKBOOT] = 0
         self.data[CMOS_BEEP] = 1
-        self.data[CMOS_CPUSPEED] = 2         # Index in die Taktliste
+        self.data[CMOS_CPUSPEED] = 2         # index into the clock-speed list
         self.data[CMOS_RAMSIZE] = 16
         self.data[CMOS_VERBOSE] = 1
         self.data[CMOS_MAGIC] = 0x5A
@@ -790,18 +794,18 @@ class CMOS:
             int(self.offset).to_bytes(4, "little", signed=True)
 
     def _uhr_stellen(self, feld, wert):
-        """Ein Feld der Uhr setzen -- so, wie man an einem echten
-        Uhrenbaustein dreht: die Uhr laeuft danach von dort weiter."""
+        """Set one field of the clock -- the way you'd turn the dial on a
+        real clock chip: the clock then keeps running from there."""
         t = self._jetzt()
         teile = [t.tm_year, t.tm_mon, t.tm_mday, t.tm_hour, t.tm_min, t.tm_sec]
         if feld == 0:
-            wert = 2000 + (wert % 100)           # CM_YEAR haelt 0..99
+            wert = 2000 + (wert % 100)           # CM_YEAR holds 0..99
         teile[feld] = wert
         try:
             ziel = time.mktime((teile[0], teile[1], teile[2], teile[3],
                                 teile[4], teile[5], 0, 0, -1))
         except (ValueError, OverflowError):
-            return                                # z. B. 31. Februar: ignorieren
+            return                                # e.g. Feb 31: ignore
         self.offset = ziel - time.time()
         self._offset_sichern()
 
@@ -820,7 +824,7 @@ class CMOS:
         if port == PORT_CMOS_IDX:
             self.index = value & 0x3F
         elif port == PORT_CMOS_DATA:
-            if self.index == 0x3F:               # Sonderregister: speichern
+            if self.index == 0x3F:               # special register: save
                 self.save()
             elif self.index == CMOS_SEC:
                 self._uhr_stellen(5, value & 0xFF)
@@ -848,23 +852,21 @@ class CMOS:
 
 
 # ---------------------------------------------------------------------------
-# NVRAM -- der zweite batteriegepufferte Speicher
+# NVRAM -- the second battery-backed memory
 # ---------------------------------------------------------------------------
 
 class NVRAM:
-    """256 Byte, die einen Neustart überleben. Eigene Datei, eigene Ports.
+    """256 bytes that survive a restart. Its own file, its own ports.
 
-    Warum ein zweiter Baustein und nicht einfach ein größeres CMOS: Die 64
-    Byte an der Uhr sind ein Stück echter PC-Geschichte -- Adressbreite,
-    Prüfsumme und Registerbelegung hängen daran, und ein Firmen-BIOS braucht
-    Platz für Dinge, die dort nie hineinpassen (32 Byte Firmentext, acht
-    Ereignisse, Inventarangaben). Echte Mainboards haben genau denselben
-    Schritt gemacht.
+    Why a second chip rather than simply a larger CMOS: the 64 bytes at the
+    clock are a piece of real PC history -- address width, checksum and
+    register layout all hang off them, and a company BIOS needs room for
+    things that never fit there (32 bytes of owner text, eight events,
+    inventory data). Real mainboards took exactly the same step.
 
-    Gespeichert wird sofort bei jedem Schreibzugriff. Das ist unbequemer als
-    ein Sammelbefehl wie CM_SAVE, aber hier richtig: der Ereignisspeicher
-    protokolliert Dinge wie „Secure Boot hat angehalten", und danach kommt
-    kein geordnetes Sichern mehr.
+    Every write is saved immediately. That is less tidy than a collect
+    command like CM_SAVE, but right here: the event log records things like
+    "Secure Boot halted", and after that there is no orderly save any more.
     """
 
     GROESSE = 256
@@ -884,7 +886,7 @@ class NVRAM:
             with open(self.path, "wb") as f:
                 f.write(self.data)
         except OSError:
-            pass                      # ein volles Laufwerk darf den PC nicht anhalten
+            pass                      # a full disk must not halt the machine
 
     def port_out(self, port, value):
         if port == PORT_NVRAM_IDX:
@@ -902,37 +904,37 @@ class NVRAM:
 
 
 # ---------------------------------------------------------------------------
-# Temperatur und Kühlung
+# Temperature and cooling
 # ---------------------------------------------------------------------------
 
 class Thermal:
-    # Wärmemodell des Rechners.
+    # Thermal model of the machine.
     #
-    # Der Prozessor erzeugt Wärme proportional zu Takt und Auslastung, das
-    # Gehäuse gibt sie an die Umgebung ab -- umso schneller, je höher der
-    # Lüfter dreht. Wird es trotzdem zu heiß, drosselt der Chipsatz den Takt,
-    # bis die Temperatur wieder fällt. Genau dieses Verhalten (thermal
-    # throttling) haben alle heutigen Prozessoren; reicht auch das nicht,
-    # schaltet die Hardware zum Selbstschutz ab.
+    # The processor generates heat proportional to clock speed and load,
+    # and the case dissipates it into the environment -- faster the higher
+    # the fan spins. If it still gets too hot, the chipset throttles the
+    # clock until the temperature drops again. Every modern processor has
+    # exactly this behavior (thermal throttling); if that's still not
+    # enough, the hardware shuts down to protect itself.
 
-    UMGEBUNG = 22.0          # Raumtemperatur in Grad
-    KRITISCH = 105.0         # darüber schaltet der Rechner ab
+    UMGEBUNG = 22.0          # ambient/room temperature in degrees
+    KRITISCH = 105.0         # above this, the machine shuts down
 
     def __init__(self):
         self.temp = self.UMGEBUNG
         self.temp_max = self.UMGEBUNG
-        self.fan = 40                 # Prozent
-        self.fan_mode = 0             # 0 = automatisch, 1 = leise, 2 = voll
-        self.limit = 85               # Drosselgrenze in Grad
-        self.throttle = 0             # aktuelle Drosselung in Prozent
+        self.fan = 40                 # percent
+        self.fan_mode = 0             # 0 = automatic, 1 = quiet, 2 = full
+        self.limit = 85               # throttle threshold in degrees
+        self.throttle = 0             # current throttling in percent
         self.notaus = False
 
     def advance(self, dt, auslastung, takt_mhz):
-        # auslastung: 0..1 -- wie viel der Prozessor wirklich gerechnet hat
+        # auslastung: 0..1 -- how much the processor actually computed
         if dt <= 0:
             return
 
-        if self.fan_mode == 0:                       # automatisch regeln
+        if self.fan_mode == 0:                       # regulate automatically
             ziel = 25 + (self.temp - 40) * 2.5
             self.fan = int(max(20, min(100, ziel)))
         elif self.fan_mode == 1:
@@ -948,7 +950,7 @@ class Thermal:
         if self.temp > self.temp_max:
             self.temp_max = self.temp
 
-        if self.temp > self.limit:                   # zu heiß -> drosseln
+        if self.temp > self.limit:                   # too hot -> throttle
             ziel = min(80, int((self.temp - self.limit) * 12))
             if ziel > self.throttle:
                 self.throttle = ziel
@@ -973,17 +975,17 @@ class Thermal:
     def port_out(self, port, value):
         if port == PORT_FAN:
             self.fan = max(0, min(100, value))
-            self.fan_mode = 3                        # von Hand eingestellt
+            self.fan_mode = 3                        # manually set
         elif port == PORT_TEMP_LIMIT:
             self.limit = max(40, min(100, value))
         elif port == PORT_FANMODE:
             self.fan_mode = value & 3
         elif port == PORT_TEMP_MAX:
-            self.temp_max = self.temp                # Höchstwert zurücksetzen
+            self.temp_max = self.temp                # reset peak value
 
 
 # ---------------------------------------------------------------------------
-# Netzteil / Power-Management
+# Power supply / power management
 # ---------------------------------------------------------------------------
 
 class Power:
@@ -1002,16 +1004,16 @@ class Power:
 
 
 # ---------------------------------------------------------------------------
-# Blockkopierer (DMA)
+# Block copier (DMA)
 #
-# Ein Prozessor, der 256 KB Byte fuer Byte umschaufelt, braucht dafuer eine
-# Million Befehle -- bei 3 MHz eine Drittelsekunde. Kein Rueckgaengig, keine
-# Bildablage, kein Textumbruch waere damit fluessig. Echte Rechner haben
-# deshalb seit jeher einen eigenen Baustein, der den Speicher am Prozessor
-# vorbei umschaufelt. Genau das ist das hier.
+# A processor shoveling 256 KB byte by byte needs a million instructions
+# for that -- a third of a second at 3 MHz. Undo, image storage, text
+# wrapping -- none of that would be smooth this way. Real machines have
+# therefore always had a dedicated chip that moves memory around,
+# bypassing the processor. That's exactly what this is.
 #
-# Er sieht denselben Adressraum wie die CPU -- Quelle und Ziel duerfen also
-# auch der Bildspeicher sein.
+# It sees the same address space as the CPU -- so source and destination
+# may also be video memory.
 # ---------------------------------------------------------------------------
 
 class DMA:
@@ -1021,7 +1023,7 @@ class DMA:
         self.dst = 0
         self.laenge = 0
         self.wert = 0
-        self.bytes_gesamt = 0        # nur zum Nachschauen, wie viel schon lief
+        self.bytes_gesamt = 0        # just for inspection, how much has run so far
 
     def port_out(self, port, value):
         if port == PORT_DMA_SRC:   self.src = value
@@ -1038,7 +1040,7 @@ class DMA:
     def _los(self, cmd):
         if self.bus is None or self.laenge <= 0:
             return
-        n = min(self.laenge, 1 << 24)          # Notbremse gegen Tippfehler
+        n = min(self.laenge, 1 << 24)          # emergency brake against typos
         if cmd == 1:
             self.bus.write_block(self.dst, self.bus.read_block(self.src, n))
             self.bytes_gesamt += n
@@ -1047,29 +1049,29 @@ class DMA:
             self.bus.write_block(self.dst, bytes([self.wert]) * n)
             self.bytes_gesamt += n
             return
-        # --- Suchbefehle ---------------------------------------------------
-        # Wie die Zeichenkettenbefehle echter Prozessoren: der Baustein liest
-        # den Block am Stueck und meldet, wie weit eine Farbe reicht. Das
-        # Fuellwerkzeug in Paint braucht sonst je Bildpunkt einen eigenen
-        # Lesebefehl -- fuer eine Flaeche waren das eine halbe Minute.
-        # Das Ergebnis steht danach im Laengenregister.
+        # --- Search commands -------------------------------------------------
+        # Like the string instructions of real processors: the chip reads
+        # the block in one go and reports how far a color extends. Without
+        # this, Paint's fill tool would need a separate read for every
+        # single pixel -- for one area that used to take half a minute.
+        # The result then ends up in the length register.
         muster = bytes([self.wert])
-        if cmd == 3:                     # wie viele Bytes ab SRC sind == VAL?
+        if cmd == 3:                     # how many bytes starting at SRC equal VAL?
             blk = self.bus.read_block(self.src, n)
             self.laenge = len(blk) - len(blk.lstrip(muster))
-        elif cmd == 4:                   # wo steht ab SRC das erste == VAL?
+        elif cmd == 4:                   # where, starting at SRC, is the first byte == VAL?
             blk = self.bus.read_block(self.src, n)
             self.laenge = blk.find(muster)
             if self.laenge < 0:
                 self.laenge = 0xFFFFFFFF
-        elif cmd == 7:                                 # Bild skaliert aus dem RAM
-            # Nachster-Nachbar-Verfahren: fuer jede Zielzeile wird die
-            # passende Quellzeile ausgesucht, fuer jede Zielspalte die
-            # passende Quellspalte. Ohne Kommazahlen -- die Schrittweite
-            # steht als Bruch aus Quell- und Zielgroesse fest. Genau so
-            # skalieren Grafikkarten seit jeher.
-            #   SRC = Bildpunkte, CHR = Quellbreite | Quellhoehe<<16
-            #   X,Y = Ziel-Ecke, W,H = Zielgroesse
+        elif cmd == 7:                                 # image scaled from RAM
+            # Nearest-neighbor method: for each target row, the matching
+            # source row is picked, and for each target column, the
+            # matching source column. No floating point -- the step size
+            # is a fixed fraction of source and target size. This is
+            # exactly how graphics cards have always scaled.
+            #   SRC = pixels, CHR = source width | source height<<16
+            #   X,Y = target corner, W,H = target size
             if self.bus is None or w <= 0 or h <= 0:
                 return
             qb = b["chr"] & 0xFFFF
@@ -1077,7 +1079,7 @@ class DMA:
             if qb <= 0 or qh <= 0:
                 return
             quelle = self.bus.read_block(b["src"], qb * qh)
-            # Spaltenzuordnung einmal ausrechnen, nicht je Zeile
+            # Compute the column mapping once, not per row
             spalten = [(i * qb) // w for i in range(w)]
             for zy in range(h):
                 yy = y + zy
@@ -1104,7 +1106,7 @@ class DMA:
                 else:
                     fb[off:off + len(neu)] = neu
 
-        elif cmd == 5:                   # wie viele Bytes VOR SRC sind == VAL?
+        elif cmd == 5:                   # how many bytes before SRC equal VAL?
             anfang = self.src - n + 1
             blk = self.bus.read_block(anfang, n)
             self.laenge = len(blk) - len(blk.rstrip(muster))
@@ -1112,24 +1114,26 @@ class DMA:
 
 
 # ---------------------------------------------------------------------------
-# Der ROM-Baustein und der Schlitz daneben
+# The ROM chip and the slot next to it
 #
-# Auf einem echten Mainboard sitzt das BIOS auf einem gesockelten Flash-Chip.
-# Man kann ihn neu beschreiben -- und genau dabei kann man ein Board
-# unbrauchbar machen. Deshalb haben Boards seit Jahren "BIOS Flashback": eine
-# Datei auf einem USB-Stick, ein Knopf, fertig, ganz ohne laufendes System.
+# On a real mainboard, the BIOS sits on a socketed flash chip. You can
+# reflash it -- and that's exactly how you can brick a board. That's why
+# boards have had "BIOS Flashback" for years: a file on a USB stick, a
+# button, done, with no running system at all.
 #
-# Dieses Geraet ist beides zusammen: Befehl 1 laesst den WIRTSRECHNER eine
-# Datei aussuchen (das ist der USB-Stick), Befehl 3 brennt sie in den Chip.
+# This device is both combined: command 1 has the HOST MACHINE pick a
+# file (that's the USB stick), command 3 burns it into the chip.
 #
-# Absichtlich dumm: geprueft wird hier nichts. Ob das Abbild eine gueltige
-# Kennung und Pruefsumme hat, entscheidet die Firmware -- so wie auf einem
-# echten Board, wo das Flash-Werkzeug im BIOS sitzt und nicht im Chip.
+# Deliberately dumb: nothing is checked here. Whether the image has a
+# valid signature and checksum is up to the firmware to decide -- just
+# like on a real board, where the flashing tool lives in the BIOS, not
+# in the chip.
 #
-# Gebrannt wird die Datei, nicht der laufende Chip. Wer den Speicher
-# ueberschreibt, aus dem die CPU gerade ihre Befehle holt, stuerzt im selben
-# Augenblick ab; echte Flash-Programme kopieren sich dafuer erst ins RAM.
-# Hier gilt schlicht: das neue BIOS gilt ab dem naechsten Einschalten.
+# The file gets burned, not the running chip. Overwriting the memory the
+# CPU is currently fetching its instructions from would crash it on the
+# spot; real flash programs first copy themselves into RAM for that
+# reason. Here the rule is simply: the new BIOS takes effect from the
+# next power-on.
 # ---------------------------------------------------------------------------
 
 class Flash:
@@ -1145,28 +1149,27 @@ class Flash:
         self.rom_path = rom_path
         self.backup_path = os.path.splitext(rom_path)[0] + ".backup.bin"
         self.bus = None
-        self.waehler = None          # setzt pc.py: oeffnet den Dateidialog
+        self.waehler = None          # set by pc.py: opens the file dialog
         self.puffer = b""
         self.ziel = 0
         self.laenge = 0
         self.status = self.OK
-        self.gebrannt = 0            # nur zum Nachschauen in Tests
-        # Das Abbild fuer EINEN Start. Es liegt im Board, nicht auf der
-        # Platte: ein Testabbild soll nicht ewig herumliegen, und ein
-        # misslungener Versuch darf hoechstens einen Neustart kosten.
+        self.gebrannt = 0            # just for inspection in tests
+        # The image for ONE boot. It lives on the board, not on disk: a
+        # test image shouldn't linger forever, and a failed attempt
+        # should cost at most one reboot.
         self.einmal = None
-        # Ein angemeldeter dauerhafter Flashvorgang. Die Firmware fragt beim
-        # naechsten Start in Rot nach, bevor irgendetwas geschrieben wird.
+        # A pending permanent flash request. The firmware will prompt in
+        # red on the next boot, before anything gets written.
         self.wunsch = False
-        # Das Sperr-Latch (Befehl 10). Solange es steht, verweigern Brennen
-        # und Zuruecksetzen den Dienst -- und zwar HIER im Baustein, nicht im
-        # Setup. Das ist der Unterschied, auf den es ankommt: P_FLASH_CMD ist
-        # ein ganz normaler Port, und der TB-32 kennt keine Portrechte. Ein
-        # Schalter im Setup wuerde nur das Setup binden; jedes Programm im
-        # laufenden System koennte weiter brennen. Ein Latch im Bauteil bindet
-        # alle. Geloescht wird es ausschliesslich durch power_on(), also durch
-        # einen echten Neustart -- genauso macht es das Lock-Bit eines echten
-        # Chipsatzes.
+        # The lock latch (command 10). While it is set, burning and
+        # restoring refuse service -- and they do so HERE in the chip, not in
+        # Setup. That is the difference that matters: P_FLASH_CMD is an
+        # ordinary port, and the TB-32 has no port permissions. A switch in
+        # Setup would only bind Setup; any program in the running system
+        # could still burn. A latch in the chip binds everyone. It is cleared
+        # exclusively by power_on(), that is by a real restart -- exactly how
+        # the lock bit of a real chipset works.
         self.gesperrt = False
 
     def port_out(self, port, value):
@@ -1183,7 +1186,7 @@ class Flash:
         return self.status
 
     def _befehl(self, cmd):
-        if cmd == 1:                                   # Datei vom Wirt holen
+        if cmd == 1:                                   # fetch file from host
             self.puffer = b""
             if self.waehler is None:
                 return self.ABGEBROCHEN
@@ -1193,20 +1196,20 @@ class Flash:
             self.puffer = daten
             return self.OK
 
-        if cmd == 2:                                   # Puffer in den RAM
+        if cmd == 2:                                   # buffer into RAM
             if not self.puffer or self.bus is None:
                 return self.KEIN_PUFFER
             self.bus.write_block(self.ziel, self.puffer)
             return self.OK
 
-        if cmd == 10:                                  # Chip sperren, bis zum Neustart
+        if cmd == 10:                                  # lock the chip until reboot
             self.gesperrt = True
             return self.OK
 
-        if cmd == 11:                                  # ist er gesperrt?
+        if cmd == 11:                                  # is it locked?
             return 1 if self.gesperrt else 0
 
-        if cmd == 3:                                   # brennen
+        if cmd == 3:                                   # burn
             if self.gesperrt:
                 return self.GESPERRT
             if not self.puffer:
@@ -1227,16 +1230,16 @@ class Flash:
             self.wunsch = False
             return self.OK
 
-        if cmd == 5:                                   # Puffer aus dem RAM
+        if cmd == 5:                                   # buffer from RAM
             if self.bus is None or self.laenge <= 0 or self.laenge > ROM_SIZE:
                 return self.ZU_GROSS
             self.puffer = bytes(self.bus.read_block(self.ziel, self.laenge))
             return self.OK
 
-        if cmd == 6:                                   # nur fuer den naechsten Start
-            # Auch das faellt unter die Sperre. Sonst waere sie in einem Zug
-            # zu umgehen: Abbild fuer den naechsten Start anmelden, Reset --
-            # und beim Hochfahren ist das Latch ja wieder offen.
+        if cmd == 6:                                   # only for the next boot
+            # This falls under the lock too. Otherwise it could be bypassed
+            # in one move: register an image for the next boot, hit reset --
+            # and on the way up the latch is open again.
             if self.gesperrt:
                 return self.GESPERRT
             if not self.puffer:
@@ -1244,23 +1247,23 @@ class Flash:
             self.einmal = self.puffer
             return self.OK
 
-        if cmd == 7:                                   # alles wieder abmelden
+        if cmd == 7:                                   # cancel everything again
             self.einmal = None
             self.wunsch = False
             return self.OK
 
-        if cmd == 8:                                   # dauerhaft flashen wollen
-            if self.gesperrt:                          # derselbe Weg ueber den Neustart
+        if cmd == 8:                                   # request a permanent flash
+            if self.gesperrt:                          # same route via a restart
                 return self.GESPERRT
             if not self.puffer:
                 return self.KEIN_PUFFER
             self.wunsch = True
             return self.OK
 
-        if cmd == 9:                                   # liegt ein Wunsch an?
+        if cmd == 9:                                   # is a request pending?
             return 1 if self.wunsch else 0
 
-        if cmd == 4:                                   # Sicherung zurueck
+        if cmd == 4:                                   # restore backup
             if self.gesperrt:
                 return self.GESPERRT
             if not os.path.exists(self.backup_path):
@@ -1278,30 +1281,31 @@ class Flash:
 
 
 # ---------------------------------------------------------------------------
-# Netzwerkkarte
+# Network card
 # ---------------------------------------------------------------------------
 
 class Netzkarte:
-    """TB-NET: schickt und empfängt Rahmen. Mehr weiß sie nicht.
+    """TB-NET: sends and receives frames. That's all it knows how to do.
 
-    Eine echte Netzwerkkarte versteht nichts von IP, von Namen oder von
-    Webseiten. Sie kennt genau zwei Dinge: „schick diese Bytes raus" und
-    „hier sind Bytes angekommen". Alles andere — Adressen, Verbindungen,
-    Protokolle — macht das Betriebssystem. Deshalb steht hier auch nicht mehr.
+    A real network card understands nothing about IP, names, or web
+    pages. It knows exactly two things: "send these bytes out" and
+    "these bytes have arrived". Everything else -- addresses, connections,
+    protocols -- is handled by the operating system. That's why there's
+    nothing more here.
 
-    Der Draht ist auf dem Mac eine UDP-Multicast-Gruppe über den Rückkanal
-    (127.0.0.1). Zwei laufende TB-32 hören dieselbe Gruppe und sehen deshalb
-    gegenseitig ihre Rahmen — wie zwei Rechner an einem Hub. Die Pakete
-    verlassen den Mac nicht.
+    On the Mac, the wire is a UDP multicast group over the loopback
+    interface (127.0.0.1). Two running TB-32 instances listen on the same
+    group and therefore see each other's frames -- like two machines on a
+    hub. The packets never leave the Mac.
 
-    Auf dem Pi ersetzt später die echte Karte den Draht. Die Ports bleiben,
-    und damit bleibt auch der ganze TB-32-Code unverändert.
+    On the Pi, the real network card will later replace the wire. The
+    ports stay the same, and so the entire TB-32 code stays unchanged.
     """
 
     GRUPPE = "239.32.32.32"
     PORT = 32032
-    karten = 0                         # laufende Nummer für die Adresse
-    MAXRAHMEN = 1518                   # wie bei Ethernet: 1500 Nutzdaten + Kopf
+    karten = 0                         # running number for the address
+    MAXRAHMEN = 1518                   # as with Ethernet: 1500 payload + header
 
     def __init__(self, cpu_ref, mac=None):
         self.cpu = cpu_ref
@@ -1313,11 +1317,12 @@ class Netzkarte:
         self.gesendet = 0
         self.eingang = deque(maxlen=64)
         self.sock = None
-        # Eigene Adresse: 02:TB:.. -- das Bit 0x02 im ersten Byte heißt
-        # "selbst vergeben", genau dafür ist es da. Der Rest kommt aus der
-        # Prozessnummer, damit zwei Fenster auf demselben Mac sich nicht
-        # dieselbe Adresse geben, und aus einem Zähler, damit auch zwei
-        # Karten im selben Prozess (Tests) sich unterscheiden.
+        # Own address: 02:TB:.. -- bit 0x02 in the first byte means
+        # "locally administered", which is exactly what it's used for
+        # here. The rest comes from the process ID, so that two windows
+        # on the same Mac don't end up with the same address, plus a
+        # counter, so that even two cards within the same process (tests)
+        # are distinguishable.
         Netzkarte.karten += 1
         self.mac = mac or bytes([0x02, 0x54, 0x42,
                                  (os.getpid() >> 8) & 0xFF,
@@ -1326,7 +1331,7 @@ class Netzkarte:
         self._anschliessen()
 
     def _anschliessen(self):
-        """Steckt das Kabel ein. Geht es nicht, bleibt die Karte stumm."""
+        """Plugs in the cable. If that fails, the card stays silent."""
         import socket
         try:
             s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
@@ -1334,11 +1339,11 @@ class Netzkarte:
             if hasattr(socket, "SO_REUSEPORT"):
                 s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT, 1)
             s.bind(("", self.PORT))
-            # Ausdruecklich ueber 127.0.0.1 -- nicht ueber "irgendeine
-            # Schnittstelle". Mit INADDR_ANY sucht macOS sich die Karte des
-            # Standardwegs (WLAN) aus; die Rahmen gehen dann hinaus und
-            # kommen auf demselben Rechner nie an. Mit dem Rueckkanal sehen
-            # sich zwei TB-32 auf demselben Mac zuverlaessig.
+            # Deliberately via 127.0.0.1 -- not via "whichever interface".
+            # With INADDR_ANY, macOS picks the interface of the default
+            # route (Wi-Fi); the frames then go out and never arrive back
+            # on the same machine. Via loopback, two TB-32 instances on
+            # the same Mac reliably see each other.
             lo = socket.inet_aton("127.0.0.1")
             s.setsockopt(socket.IPPROTO_IP, socket.IP_ADD_MEMBERSHIP,
                          struct.pack("4s4s", socket.inet_aton(self.GRUPPE), lo))
@@ -1348,14 +1353,14 @@ class Netzkarte:
             s.setblocking(False)
             self.sock = s
         except OSError:
-            self.sock = None               # kein Netz: Bit 0 bleibt 0
+            self.sock = None               # no network: bit 0 stays 0
 
     def close(self):
         if self.sock is not None:
             self.sock.close()
             self.sock = None
 
-    # -- vom Draht abholen; ruft die Maschine jede Zeitscheibe auf ----------
+    # -- fetch from the wire; the machine calls this every time slice ------
     def poll(self):
         if self.sock is None:
             return
@@ -1366,11 +1371,11 @@ class Netzkarte:
                 return
             if len(daten) < 14:
                 continue
-            if daten[6:12] == self.mac:    # der eigene Rahmen kommt zurück
+            if daten[6:12] == self.mac:    # our own frame coming back
                 continue
             ziel = daten[:6]
             if ziel != self.mac and ziel != b"\xff\xff\xff\xff\xff\xff":
-                continue                   # nicht an uns gerichtet
+                continue                   # not addressed to us
             self.eingang.append(daten[:self.MAXRAHMEN])
             self.empfangen += 1
             if self.cpu[0] is not None:
@@ -1388,24 +1393,24 @@ class Netzkarte:
             self._befehl(value)
 
     def _befehl(self, cmd):
-        if cmd == 1:                       # senden
+        if cmd == 1:                       # send
             n = max(14, min(self.len, self.MAXRAHMEN))
             rahmen = bytearray(self.bus.read_block(self.addr, n))
-            rahmen[6:12] = self.mac        # der Absender kommt von der Karte
+            rahmen[6:12] = self.mac        # the sender comes from the card
             if self.sock is not None:
                 try:
                     self.sock.sendto(bytes(rahmen), (self.GRUPPE, self.PORT))
                     self.gesendet += 1
                 except OSError:
                     pass
-        elif cmd == 2:                     # den nächsten Rahmen abholen
+        elif cmd == 2:                     # fetch the next frame
             if self.eingang:
                 r = self.eingang.popleft()
                 self.bus.write_block(self.addr, r)
                 self.len = len(r)
             else:
                 self.len = 0
-        elif cmd == 3:                     # Warteschlange leeren
+        elif cmd == 3:                     # clear the queue
             self.eingang.clear()
 
     def port_in(self, port):

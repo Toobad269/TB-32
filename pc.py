@@ -1,15 +1,15 @@
 #!/usr/bin/env python3
 """
-TOOBAD TB-32  --  der virtuelle PC
+TOOBAD TB-32  --  the virtual PC
 
-Diese Datei ist das GEHÄUSE: Monitor, Tastatur, Maus, Lautsprecher.
-Sie enthält keinerlei Logik des Rechners selbst -- die läuft komplett als
-Maschinencode auf der emulierten CPU (siehe hardware/ und firmware/).
+This file is the CASE: monitor, keyboard, mouse, speaker.
+It contains none of the computer's own logic -- that runs entirely as
+machine code on the emulated CPU (see hardware/ and firmware/).
 
-    python3 pc.py               normal starten
-    python3 pc.py --scale 3     größer
-    python3 pc.py --turbo       so schnell wie der Mac kann
-    python3 pc.py --kein-netz   ohne Router und Vermittler
+    python3 pc.py               start normally
+    python3 pc.py --scale 3     bigger
+    python3 pc.py --turbo       as fast as the Mac can go
+    python3 pc.py --kein-netz   without router and proxy
 """
 
 import os
@@ -30,13 +30,13 @@ from hardware import devices as dev
 from hardware.isa import GFX_W, GFX_H
 
 CHAR_W, CHAR_H = 8, 16
-CLIP_BUF = 0x00130000            # Zwischenablage von TOOBAD-OS (siehe gui.c)
+CLIP_BUF = 0x00130000            # clipboard of TOOBAD-OS (see gui.c)
 SCR_COLS, SCR_ROWS = 80, 25
 SCREEN_W, SCREEN_H = SCR_COLS * CHAR_W, SCR_ROWS * CHAR_H     # 640 x 400
-SCR_LINE_CELLS = SCR_COLS * 2                                 # Bytes je Textzeile
+SCR_LINE_CELLS = SCR_COLS * 2                                 # bytes per line of text
 
 # ---------------------------------------------------------------------------
-# CP437 -> Unicode: der Zeichensatz, den PCs seit 1981 im Textmodus benutzen
+# CP437 -> Unicode: the character set PCs have used in text mode since 1981
 # ---------------------------------------------------------------------------
 
 CP437 = (
@@ -58,19 +58,19 @@ CP437 = (
     "≡±≥≤⌠⌡÷≈°∙·√ⁿ²■ "
 )
 
-# Zeichen, die wir lieber selbst malen als dem Font zu überlassen --
-# so sehen Rahmen und Blöcke garantiert lückenlos aus.
+# Characters we'd rather draw ourselves than leave to the font --
+# this way borders and blocks are guaranteed to look seamless.
 BLOCK_GLYPHS = {
-    0xDB: (0.0, 0.0, 1.0, 1.0),      # Vollblock
-    0xDC: (0.0, 0.5, 1.0, 0.5),      # untere Hälfte
-    0xDF: (0.0, 0.0, 1.0, 0.5),      # obere Hälfte
-    0xDD: (0.0, 0.0, 0.5, 1.0),      # linke Hälfte
-    0xDE: (0.5, 0.0, 0.5, 1.0),      # rechte Hälfte
+    0xDB: (0.0, 0.0, 1.0, 1.0),      # full block
+    0xDC: (0.0, 0.5, 1.0, 0.5),      # lower half
+    0xDF: (0.0, 0.0, 1.0, 0.5),      # upper half
+    0xDD: (0.0, 0.0, 0.5, 1.0),      # left half
+    0xDE: (0.5, 0.0, 0.5, 1.0),      # right half
 }
 
 
 class Monitor:
-    """Zeichnet den Bildspeicher der virtuellen Grafikkarte auf den echten."""
+    """Draws the virtual graphics card's framebuffer onto the real one."""
 
     def __init__(self, scale):
         self.scale = scale
@@ -105,7 +105,7 @@ class Monitor:
             x, y, w, h = BLOCK_GLYPHS[code]
             surf.fill(color, pygame.Rect(int(x * CHAR_W), int(y * CHAR_H),
                                          int(w * CHAR_W), int(h * CHAR_H)))
-        elif code == 0xB0:                       # Schattierung: Punktraster
+        elif code == 0xB0:                       # shading: dot pattern
             for yy in range(0, CHAR_H, 2):
                 for xx in range((yy // 2) % 2, CHAR_W, 2):
                     surf.set_at((xx, yy), color)
@@ -140,7 +140,7 @@ class Monitor:
             c = vga.palette[attr & 0x0F]
             pygame.draw.rect(self.surface, ((c >> 16) & 0xFF, (c >> 8) & 0xFF, c & 0xFF),
                              pygame.Rect(x, y + CHAR_H - 3, CHAR_W, 2))
-            self.prev_text = None                # Cursorzelle nächstes Mal neu malen
+            self.prev_text = None                # redraw cursor cell next time
 
     def draw_gfx(self, vga):
         img = pygame.image.frombuffer(bytes(vga.gfx_sicht), (GFX_W, GFX_H), "P")
@@ -151,8 +151,8 @@ class Monitor:
             self.draw_pointer(vga, vga.mcur_x, vga.mcur_y)
         self.prev_text = None
 
-    # Mauszeiger: die Grafikkarte legt ihn über das Bild, wie ein echter
-    # Hardware-Cursor. Das Betriebssystem muss ihn deshalb nicht wegradieren.
+    # Mouse pointer: the graphics card overlays it on the image, like a real
+    # hardware cursor. The operating system therefore doesn't need to erase it.
     POINTER = [
         "X           ", "XX          ", "XoX         ", "XooX        ",
         "XoooX       ", "XooooX      ", "XoooooX     ", "XooooooX    ",
@@ -188,7 +188,7 @@ class Monitor:
 
 
 class PCSpeaker:
-    """Der kleine Piepser auf dem Mainboard -- eine reine Rechteckwelle."""
+    """The little beeper on the mainboard -- a plain square wave."""
 
     RATE = 22050
 
@@ -229,13 +229,13 @@ class PCSpeaker:
             self.current = None
 
 
-# --- Tastatur: pygame-Tasten auf PC-Scancodes abbilden ---------------------
+# --- Keyboard: mapping pygame keys to PC scancodes ---------------------
 
-# Sondertasten kommen über KEYDOWN, alle druckbaren Zeichen über TEXTINPUT.
-# Grund: SDL liefert bei KEYDOWN das Zeichen noch nicht zuverlässig mit --
-# je nach Tastaturlayout steht event.unicode dort leer oder trägt das
-# Zeichen des vorigen Anschlags. Das Text-Ereignis ist die richtige Quelle
-# und kennt auch Umlaute und Sonderzeichen des eingestellten Layouts.
+# Special keys come through KEYDOWN, all printable characters through TEXTINPUT.
+# Reason: SDL doesn't reliably supply the character with KEYDOWN --
+# depending on the keyboard layout, event.unicode is empty there or carries
+# the character of the previous keystroke. The text event is the correct source
+# and also knows umlauts and special characters of the configured layout.
 SCANCODES = {
     pygame.K_ESCAPE: dev.KEY_ESC, pygame.K_RETURN: dev.KEY_ENTER,
     pygame.K_KP_ENTER: dev.KEY_ENTER,
@@ -255,36 +255,35 @@ ASCII_FALLBACK = {
     pygame.K_TAB: 9, pygame.K_ESCAPE: 27,
 }
 
-# Diese Tasten wiederholen sich, solange man sie haelt.
+# These keys repeat as long as they're held.
 WIEDERHOLBAR = (pygame.K_BACKSPACE, pygame.K_DELETE, pygame.K_UP,
                 pygame.K_DOWN, pygame.K_LEFT, pygame.K_RIGHT,
                 pygame.K_PAGEUP, pygame.K_PAGEDOWN)
-WDH_START = 0.40        # so lange muss man halten, bis es losgeht
-WDH_TAKT  = 0.03        # danach so oft je Sekunde
+WDH_START = 0.40        # how long you must hold before it starts repeating
+WDH_TAKT  = 0.03        # then this many times per second
 
-# Bedenkzeit beim Einschalten -- die Sekunden zwischen Knopfdruck und
-# erstem Bild, in denen ein echtes Board Netzteil, Lüfter und Chipsatz
-# hochfährt.
+# Power-on delay -- the seconds between pressing the button and the
+# first frame, during which a real board's power supply, fan, and chipset
+# spin up.
 #
-# Sie steht hier im GEHÄUSE und nicht in der Firmware. Das ist der ganze
-# Punkt: so gilt sie für **jedes** BIOS. Wer sein eigenes flasht, kann sie
-# nicht weglassen -- auch nicht aus Versehen. Ein BIOS, das sofort in den
-# Bootsektor springt, bekommt sie trotzdem.
+# It lives here in the CASE and not in the firmware. That's the whole
+# point: this way it applies to **every** BIOS. Anyone flashing their own
+# can't leave it out -- not even by accident. A BIOS that jumps straight
+# into the boot sector still gets it.
 #
-# Tasten, die in dieser Zeit gedrückt werden, gehen nicht verloren: sie
-# warten und werden dem Rechner gereicht, sobald er läuft. Wer also gleich
-# beim Einschalten DEL drückt, landet im Setup -- vorausgesetzt, sein BIOS
-# hat eins.
+# Keys pressed during this time aren't lost: they wait and get handed to
+# the machine as soon as it's running. So anyone who presses DEL right at
+# power-on lands in Setup -- provided their BIOS has one.
 EINSCHALT_HALT_S = 5.0
 
 # ---------------------------------------------------------------------------
-# Zurückblättern im Fenster
+# Scrolling back in the window
 #
-# Das BIOS hebt jede Zeile, die oben aus dem Bild läuft, in einem Ringpuffer
-# im Arbeitsspeicher auf (siehe firmware/video.asm, sb_push). Von dort holt
-# sich das Fenster die alten Zeilen -- genauso, wie ein Terminal-Programm auf
-# dem Mac seinen Scrollback verwaltet. Der virtuelle Rechner merkt davon
-# nichts und läuft ungestört weiter.
+# The BIOS keeps every line that scrolls off the top of the screen in a ring
+# buffer in RAM (see firmware/video.asm, sb_push). The window fetches the old
+# lines from there -- just like a terminal program on the Mac manages its
+# scrollback. The virtual machine notices none of this and keeps running
+# undisturbed.
 # ---------------------------------------------------------------------------
 
 SB_BASE = 0x00100000
@@ -303,7 +302,7 @@ def sb_count(m):
 
 
 def sb_line(m, i):
-    """Zeile i der Historie (0 = älteste) als 160 Bytes Zellen."""
+    """Line i of the history (0 = oldest) as 160 bytes of cells."""
     ram = m.bus.ram
     if _u32(ram, BDA_SBCOUNT) >= SB_LINES:
         pos = (_u32(ram, BDA_SBHEAD) + i) % SB_LINES
@@ -314,8 +313,8 @@ def sb_line(m, i):
 
 
 def build_history_view(m, offset):
-    """Baut ein volles 80x25-Bild: Historie plus aktueller Bildschirm,
-    um <offset> Zeilen zurückgeblättert."""
+    """Builds a full 80x25 frame: history plus the current screen,
+    scrolled back by <offset> lines."""
     count = sb_count(m)
     total = count + SCR_ROWS
     start = max(0, total - SCR_ROWS - offset)
@@ -343,7 +342,7 @@ def build_history_view(m, offset):
 
 
 def bildflaeche(fenster):
-    """Groesstmoegliches 640x400-Rechteck im Fenster, mittig."""
+    """Largest possible 640x400 rectangle in the window, centered."""
     bw, bh = fenster
     f = min(bw / SCREEN_W, bh / SCREEN_H)
     w, h = max(1, int(SCREEN_W * f)), max(1, int(SCREEN_H * f))
@@ -354,11 +353,11 @@ _symbole = {}
 
 
 def kernel_symbol(name):
-    """Adresse einer Kernelvariablen aus system/kernel.sym.
+    """Address of a kernel variable from system/kernel.sym.
 
-    Die Tabelle entsteht beim Bauen und wird hier einmal eingelesen. So kann
-    das Fenster in den Arbeitsspeicher des virtuellen Rechners hineinlangen --
-    genau das braucht die gemeinsame Zwischenablage."""
+    The table is generated at build time and read in here once. This lets
+    the window reach into the virtual machine's RAM --
+    exactly what the shared clipboard needs."""
     if not _symbole:
         try:
             with open(os.path.join(ROOT, "system", "kernel.sym")) as f:
@@ -370,23 +369,23 @@ def kernel_symbol(name):
     return _symbole.get(name)
 
 
-ED_BUF = 0x000D0000              # Textpuffer des Coders (siehe system/edit.c)
-APP_EDITOR = 8                   # Fensterart des Coders (siehe system/gui.c)
+ED_BUF = 0x000D0000              # text buffer of the Coder (see system/edit.c)
+APP_EDITOR = 8                   # window type of the Coder (see system/gui.c)
 
 
-WT_BUF = 0x00770000              # Fenstertext, den das System bereitlegt
+WT_BUF = 0x00770000              # window text that the system prepares
 
 
 def fenstertext_erbitten(m):
-    """Bittet TOOBAD-OS um den Text des obersten Fensters.
+    """Asks TOOBAD-OS for the text of the topmost window.
 
-    Im Grafikmodus stehen auf dem Schirm Bildpunkte, kein Text -- das
-    Gehaeuse kann dort nichts auslesen. Also fragt es: es setzt `wt_wunsch`,
-    und der Schreibtisch legt den Text eine Schleifenrunde spaeter hin.
+    In graphics mode the screen holds pixels, not text -- the
+    case can't read anything there. So it asks: it sets `wt_wunsch`,
+    and the desktop puts the text down one loop iteration later.
 
-    So beantwortet jedes Programm die Frage fuer sich. Ein neues Fenster
-    braucht eine Zeile im System -- und keine hier, wo pc.py sonst viel zu
-    viel ueber das System wissen muesste."""
+    This way every program answers the question for itself. A new window
+    needs one line in the system -- and none here, where pc.py would
+    otherwise have to know far too much about the system."""
     a = kernel_symbol("wt_wunsch")
     if a is None:
         return False
@@ -395,13 +394,13 @@ def fenstertext_erbitten(m):
 
 
 def fenstertext_holen(m):
-    """Liegt der erbetene Text bereit? Dann als Zeichenkette zurueck."""
+    """Is the requested text ready? Then return it as a string."""
     a = kernel_symbol("wt_wunsch")
     b = kernel_symbol("wt_len")
     if a is None or b is None:
         return None
     if struct.unpack_from("<i", m.bus.ram, a)[0] != 0:
-        return None                       # noch nicht beantwortet
+        return None                       # not answered yet
     n = struct.unpack_from("<i", m.bus.ram, b)[0]
     if n <= 0 or n > 60000:
         return ""
@@ -409,20 +408,20 @@ def fenstertext_holen(m):
 
 
 def alles_kopieren(m):
-    """Strg+K: alles Sichtbare in die Zwischenablage des Macs -- still.
+    """Ctrl+K: everything visible into the Mac's clipboard -- silently.
 
-    Das gehört ins GEHÄUSE und nicht ins System. Im BIOS und im Setup läuft
-    gar kein Betriebssystem, das eine Taste auswerten könnte; von hier aus
-    geht es überall, egal welche Software gerade auf der CPU liegt.
+    This belongs in the CASE and not in the system. In the BIOS and in Setup
+    no operating system is running at all that could handle a key; from here
+    it works everywhere, no matter what software is currently on the CPU.
 
-    Im Textmodus der ganze Bildschirm, Zeile für Zeile. Im Grafikmodus, wenn
-    oben der Coder liegt, sein VOLLSTÄNDIGER Text -- nicht nur der sichtbare
-    Ausschnitt, denn genau darum geht es beim Kopieren.
+    In text mode, the whole screen, line by line. In graphics mode, if the
+    Coder is on top, its FULL text -- not just the visible portion, since
+    that's exactly the point of copying.
 
-    Ohne Rückmeldung: keine Meldung im Gast, kein Blinken. Wer die Taste
-    drückt, weiß, was er wollte."""
+    No feedback: no message to the guest, no blinking. Whoever presses the
+    key knows what they wanted."""
     if m.vga.mode != VGA.MODE_TEXT:
-        return None                       # das System wird gefragt, siehe oben
+        return None                       # the system will be asked, see above
 
     t = m.vga.text
     zeilen = []
@@ -436,7 +435,7 @@ def alles_kopieren(m):
 
 
 def gast_clipboard(m):
-    """Liest die Zwischenablage von TOOBAD-OS aus dem Arbeitsspeicher."""
+    """Reads TOOBAD-OS's clipboard from RAM."""
     a = kernel_symbol("clip_len")
     if a is None:
         return ""
@@ -450,12 +449,12 @@ def gast_clipboard(m):
 
 
 def gast_clipboard_setzen(m, text):
-    """Schreibt Text direkt in die Zwischenablage von TOOBAD-OS.
+    """Writes text directly into TOOBAD-OS's clipboard.
 
-    Frueher wurden die Zeichen als Tastendruecke eingeschleust -- das war
-    langsam, ging nur im Editor und verschluckte alles ausser Buchstaben.
-    Direkt in den Puffer geschrieben, funktioniert Einfuegen ueberall dort,
-    wo das System selbst einfuegt, samt Zeilenumbruechen."""
+    Previously the characters were injected as keystrokes -- that was
+    slow, only worked in the editor, and swallowed everything except
+    letters. Written directly into the buffer, pasting works anywhere
+    the system itself pastes, including line breaks."""
     a = kernel_symbol("clip_len")
     if a is None:
         return False
@@ -473,7 +472,7 @@ def gast_clipboard_setzen(m, text):
 
 
 def mac_clipboard_get():
-    """Text aus der macOS-Zwischenablage holen (leer, wenn es nicht klappt)."""
+    """Get text from the macOS clipboard (empty if it doesn't work)."""
     try:
         return subprocess.run(["pbpaste"], capture_output=True, timeout=1,
                               text=True).stdout
@@ -490,29 +489,29 @@ def mac_clipboard_set(text):
 
 
 # ---------------------------------------------------------------------------
-# Das Startbild des Mainboards
+# The mainboard's splash screen
 #
-# Es gehört bewusst NICHT der Firmware. Ein Startbild, das im BIOS steckt,
-# ist genau dann weg, wenn jemand sein eigenes flasht -- und dann gibt es
-# auch keine Stelle mehr, an der man DEL drücken könnte. Deshalb malt es
-# hier das Board, direkt in den Textbildspeicher, bevor die CPU überhaupt
-# Strom bekommt. So sieht der Start bei JEDEM BIOS gleich aus.
+# It deliberately does NOT belong to the firmware. A splash screen baked
+# into the BIOS is gone the moment someone flashes their own -- and then
+# there's no longer any place where you could press DEL. So it's the board
+# that draws this here, directly into the text framebuffer, before the CPU
+# even gets power. This way the boot looks the same for EVERY BIOS.
 #
-# Das Einzige, was vom BIOS kommt, ist sein Name -- er steht in dessen Kopf
-# auf Position 0x10 (siehe hardware/machine.py, rom_name).
+# The only thing that comes from the BIOS is its name -- it sits in its
+# header at position 0x10 (see hardware/machine.py, rom_name).
 # ---------------------------------------------------------------------------
 
-WISCH_S  = 1.2          # so lange läuft das Blau von oben nach unten
-NAME_S   = 1.5          # ab hier steht der Name da
-PROMPT_S = 2.0          # ab hier die Zeile mit DEL
+WISCH_S  = 1.2          # how long the blue sweeps from top to bottom
+NAME_S   = 1.5          # from here on the name is shown
+PROMPT_S = 2.0          # from here on the line with DEL
 
-BILD_BLAU = 0x17        # grau auf blau
-BILD_NAME = 0x1F        # weiß auf blau
-BILD_HINT = 0x1B        # hellcyan auf blau
+BILD_BLAU = 0x17        # gray on blue
+BILD_NAME = 0x1F        # white on blue
+BILD_HINT = 0x1B        # light cyan on blue
 
 
 def rom_bytes(pfad):
-    """Den BIOS-Chip auslesen -- nur für den Namen im Startbild."""
+    """Read the BIOS chip -- only for the name in the splash screen."""
     try:
         with open(pfad, "rb") as f:
             return f.read()
@@ -521,7 +520,7 @@ def rom_bytes(pfad):
 
 
 def bild_schreiben(vga, y, text, attr):
-    """Eine Zeile mittig in den Textbildspeicher legen."""
+    """Place a line centered in the text framebuffer."""
     x = max(0, (SCR_COLS - len(text)) // 2)
     for i, ch in enumerate(text[:SCR_COLS - x]):
         zelle = (y * SCR_COLS + x + i) * 2
@@ -530,9 +529,9 @@ def bild_schreiben(vga, y, text, attr):
 
 
 def startbild(vga, name, t, test):
-    """Malt den Stand des Startbilds zum Zeitpunkt t (Sekunden seit dem
-    Knopfdruck). Wird jedes Bild neu aufgerufen -- billiger als es zu
-    merken, und der Monitor zeichnet ohnehin nur geänderte Zellen."""
+    """Draws the state of the splash screen at time t (seconds since the
+    button was pressed). Called anew every frame -- cheaper than
+    remembering it, and the monitor only redraws changed cells anyway."""
     zeilen = SCR_ROWS if t >= WISCH_S else int(SCR_ROWS * t / WISCH_S)
     for y in range(zeilen):
         for x in range(SCR_COLS):
@@ -549,20 +548,20 @@ def startbild(vga, name, t, test):
 
 
 def bios_datei_waehlen():
-    """Öffnet den Dateidialog des Macs und gibt den Inhalt zurück.
+    """Opens the Mac's file dialog and returns the contents.
 
-    Das ist der USB-Stick beim BIOS-Flashback: eine Datei vom Wirtsrechner
-    wird dem Board hingehalten. Deshalb sitzt es hier im Gehäuse und nicht
-    im TB-32 -- ein Programm, das den Chip beschreibt, aus dem es gerade
-    selbst seine Befehle holt, wäre keine gute Idee.
+    This is the USB stick for the BIOS flashback: a file from the host
+    machine is handed to the board. That's why it lives here in the case
+    and not in the TB-32 -- a program that writes to the very chip it's
+    currently fetching its own instructions from would not be a good idea.
 
-    Rückgabe: Bytes oder None (abgebrochen, oder nicht lesbar)."""
-    # Ohne Dateityp-Filter: der wäre nur eine Bequemlichkeit, und wenn macOS
-    # die Endung nicht kennt, kann man seine eigene Datei plötzlich nicht mehr
-    # auswählen. Ob das Abbild taugt, entscheidet ohnehin die Firmware -- und
-    # sie sagt es deutlich.
+    Returns: bytes or None (cancelled, or unreadable)."""
+    # No file-type filter: that would only be a convenience, and if macOS
+    # doesn't recognize the extension, you'd suddenly no longer be able to
+    # select your own file. Whether the image is any good is decided by the
+    # firmware anyway -- and it says so clearly.
     skript = ('POSIX path of (choose file with prompt '
-              '"BIOS-Abbild zum Flashen auswählen (.bin)")')
+              '"Select BIOS image to flash (.bin)")')
     try:
         r = subprocess.run(["osascript", "-e", skript],
                            capture_output=True, text=True, timeout=300)
@@ -570,7 +569,7 @@ def bios_datei_waehlen():
         return None
     pfad = r.stdout.strip()
     if r.returncode != 0 or not pfad:
-        return None                       # abgebrochen
+        return None                       # cancelled
     try:
         with open(pfad, "rb") as f:
             return f.read()
@@ -579,28 +578,28 @@ def bios_datei_waehlen():
 
 
 def netz_starten():
-    """Router und Vermittler mitstarten, damit ein einziger Aufruf reicht.
+    """Starts the router and proxy together, so a single call is enough.
 
-    Beide sind reines Python und laufen in eigenen Faeden im selben Prozess.
-    Der Vermittler-Port ist dabei die Tuersteher-Pruefung: laeuft schon ein
-    zweites TOOBAD-Fenster, ist er belegt -- dann startet dieses hier weder
-    Vermittler noch Router. Zwei Router am selben Draht wuerden sich beim
-    Beantworten von ARP gegenseitig ins Wort fallen.
+    Both are pure Python and run in their own threads in the same process.
+    The proxy port acts as the gatekeeper check: if a second TOOBAD window
+    is already running, it's taken -- then this one starts neither proxy
+    nor router. Two routers on the same wire would talk over each other
+    when answering ARP.
 
-    Mit --kein-netz bleibt alles aus; dann redet der TB-32 nur mit anderen
-    TB-32 auf demselben Rechner."""
+    With --kein-netz everything stays off; then the TB-32 only talks to
+    other TB-32s on the same machine."""
     if "--kein-netz" in sys.argv:
-        print("Netz: aus (--kein-netz)")
+        print("Network: off (--kein-netz)")
         return
     import proxy
     import router
     if proxy.im_hintergrund(8080) is None:
-        print("Netz: laeuft schon in einem anderen Fenster")
+        print("Network: already running in another window")
         return
     if router.im_hintergrund() is None:
-        print("Netz: der Draht liess sich nicht anschliessen")
+        print("Network: couldn't plug in the wire")
         return
-    print("Netz: Router 10.0.0.254, Vermittler auf 8080 -- beide laufen mit")
+    print("Network: router 10.0.0.254, proxy on 8080 -- both are running")
 
 
 def main():
@@ -615,50 +614,51 @@ def main():
     pygame.display.set_caption("TOOBAD TB-32")
     screen = pygame.display.set_mode((SCREEN_W * scale, SCREEN_H * scale),
                                      pygame.RESIZABLE)
-    # Das Bild behaelt sein Seitenverhaeltnis; daneben bleiben schwarze Raender.
+    # The image keeps its aspect ratio; black bars remain on the sides.
     view = bildflaeche(screen.get_size())
     clock = pygame.time.Clock()
 
-    pygame.key.start_text_input()        # Zeichen über das Text-Ereignis holen
+    pygame.key.start_text_input()        # get characters via the text event
     monitor = Monitor(scale)
     speaker = PCSpeaker()
-    # --bios <datei> startet den Rechner mit einem anderen ROM-Baustein, ohne
-    # den Chip anzufassen. Zum Ausprobieren eines eigenen BIOS ist das der
-    # richtige Weg: Machine kann das laengst, pc.py hat es nur nie
-    # durchgereicht. Geflasht wird erst, wenn es gefaellt.
+    # --bios <file> boots the machine from a different ROM chip without
+    # touching the real one. That is the right way to try out your own BIOS:
+    # Machine has always supported it, pc.py just never passed it through.
+    # Flashing comes later, once you like what you see.
     rom = None
     if "--bios" in sys.argv:
         rom = sys.argv[sys.argv.index("--bios") + 1]
         if not os.path.exists(rom):
-            raise SystemExit(f"--bios: {rom} gibt es nicht.")
-        print(f"Startet mit {rom} -- der Chip selbst bleibt unberührt.")
+            raise SystemExit(f"--bios: {rom} does not exist.")
+        print(f"Booting from {rom} -- the chip itself stays untouched.")
     m = Machine(ROOT, rom=rom)
-    m.gehaeuse = True                         # Neustarts gehen durchs Startbild
+    m.gehaeuse = True                         # restarts go through the splash screen
     m.flash.waehler = bios_datei_waehlen      # Setup > Firmware > Flash BIOS
 
     overlay = False
-    # Auch der allererste Start geht durch die Bedenkzeit -- sonst wäre der
-    # Rechner beim Programmstart schon an, und genau das soll er nicht sein.
+    # Even the very first startup goes through the power-on delay -- otherwise
+    # the machine would already be on when the program starts, and that's
+    # exactly what it shouldn't be.
     kaltstart = time.perf_counter() + EINSCHALT_HALT_S
-    vorrat = []                          # Tasten aus der Bedenkzeit
-    kopie_wartet = 0                     # bis wann auf den Fenstertext warten
+    vorrat = []                          # keys from the power-on delay
+    kopie_wartet = 0                     # how long to wait for the window text
     bios_name = Machine.rom_name(rom_bytes(m.rom_path)) or "UNNAMED BIOS"
     m.vga.mode = VGA.MODE_TEXT
     m.vga.clear_text(0x00)
-    m.vga.cursor = SCR_COLS * SCR_ROWS   # kein blinkender Strich im Startbild
-    scrollback = 0                       # 0 = live, sonst Zeilen zurück
+    m.vga.cursor = SCR_COLS * SCR_ROWS   # no blinking cursor in the splash screen
+    scrollback = 0                       # 0 = live, otherwise lines back
     overlay_font = pygame.font.SysFont("Menlo", 13)
     blink_timer = 0.0
     ips_measured = 0
-    # Tastenwiederholung: welche Sondertaste gerade gehalten wird und wann
-    # sie das naechste Mal ausloest. Zeichen kommen ueber das Text-Ereignis
-    # und wiederholen sich auf dem Mac ohnehin nicht -- hier geht es um
-    # Loeschen und die Pfeile, wo Halten wirklich gebraucht wird.
+    # Key repeat: which special key is currently held and when it next
+    # fires. Characters come through the text event and don't repeat on
+    # the Mac anyway -- this is about delete and the arrows, where holding
+    # down is actually needed.
     halten = None
     halten_zeit = 0.0
-    maus_bits = 0                # Bit 0 links, 1 Mitte, 2 rechts
+    maus_bits = 0                # bit 0 left, 1 middle, 2 right
     ips_measured = 0
-    rest_ms = 6.0                        # Startschaetzung fuers Zeichnen
+    rest_ms = 6.0                        # initial estimate for drawing
     cpu_ms = 0.0
     rahmen_start = time.perf_counter()
     last = time.perf_counter()
@@ -669,8 +669,8 @@ def main():
         dt = min(0.05, now - last)
         last = now
 
-        # Hat sich das System selbst neu gestartet? Dann faehrt es genauso
-        # hoch wie nach dem Einschalten -- mit Startbild und Bedenkzeit.
+        # Did the system restart itself? Then it boots up just like after
+        # power-on -- with the splash screen and the power-on delay.
         if m.neustart_wunsch and not m.running and kaltstart is None:
             m.neustart_wunsch = False
             kaltstart = now + EINSCHALT_HALT_S
@@ -681,18 +681,18 @@ def main():
             m.vga.clear_text(0x00)
             m.vga.cursor = SCR_COLS * SCR_ROWS
 
-        # Die Bedenkzeit ist um: jetzt kommt Strom auf das Board.
+        # The power-on delay is over: now the board gets power.
         if kaltstart is not None and now >= kaltstart:
             kaltstart = None
             m.power_on()
             monitor.prev_text = None
             if m.rom_gerettet:
-                print("Das BIOS-Abbild war unbrauchbar -- die Sicherung "
-                      "wurde zurückgespielt (Dual BIOS).")
-            # Was in der Bedenkzeit getippt wurde, bekommt der Rechner
-            # jetzt. Erst jetzt, weil ein Tastatur-Interrupt bei stehender
-            # CPU verpuffen würde -- die Taste läge dann im Baustein und
-            # niemand holte sie ab.
+                print("The BIOS image was unusable -- the backup "
+                      "was restored (Dual BIOS).")
+            # Whatever was typed during the power-on delay, the machine gets
+            # now. Only now, because a keyboard interrupt would fizzle with
+            # the CPU stopped -- the key would then sit in the chip and
+            # nobody would pick it up.
             for a, sc in vorrat:
                 m.keyboard.push(a, sc)
             vorrat = []
@@ -709,7 +709,7 @@ def main():
                     scrollback = max(0, min(sb_count(m), scrollback + e.y * 3))
                     monitor.prev_text = None
                 else:
-                    m.mouse.wheel += e.y          # Rad an die Oberfläche
+                    m.mouse.wheel += e.y          # wheel event to the UI
             elif e.type == pygame.KEYDOWN:
                 mods = pygame.key.get_mods()
                 if mods & pygame.KMOD_SHIFT and e.key in (pygame.K_PAGEUP,
@@ -718,7 +718,7 @@ def main():
                     scrollback = max(0, min(sb_count(m), scrollback + schritt))
                     monitor.prev_text = None
                     continue
-                if scrollback:                       # jede Taste holt uns zurück
+                if scrollback:                       # any key brings us back
                     scrollback = 0
                     monitor.prev_text = None
                 if e.key == pygame.K_q and (mods & pygame.KMOD_META or mods & pygame.KMOD_CTRL):
@@ -730,48 +730,48 @@ def main():
                 if e.key == pygame.K_F11:
                     pygame.display.toggle_fullscreen()
                     continue
-                # Einfuegen: Cmd+V und Strg+V tun dasselbe.
+                # Paste: Cmd+V and Ctrl+V do the same thing.
                 #
-                # Liegt auf dem Mac etwas in der Zwischenablage, wandert es
-                # zuerst in die Zwischenablage von TOOBAD-OS -- danach faengt
-                # das System selbst an zu arbeiten und fuegt es ein. Frueher
-                # gab es hier zwei verschiedene Tasten fuer zwei verschiedene
-                # Ablagen, und wer auf dem Mac kopiert und dann Strg+V
-                # gedrueckt hat, bekam schlicht nichts.
+                # If something is on the Mac's clipboard, it first moves
+                # into TOOBAD-OS's clipboard -- after that the system itself
+                # starts working and pastes it. There used to be two
+                # different keys here for two different clipboards, and
+                # anyone who copied on the Mac and then pressed Ctrl+V
+                # simply got nothing.
                 if e.key == pygame.K_v and (mods & pygame.KMOD_META
                                             or mods & pygame.KMOD_CTRL):
                     text = mac_clipboard_get()
                     if text:
                         gast_clipboard_setzen(m, text)
-                    m.keyboard.push(22, 0)       # Strg+V an das System
+                    m.keyboard.push(22, 0)       # Ctrl+V to the system
                     continue
-                # Cmd+C nimmt die Auswahl aus TOOBAD-OS mit zum Mac.
-                # Cmd+C nimmt die Auswahl aus TOOBAD-OS mit zum Mac. Strg+C
-                # kopiert im Gast -- damit danach auch etwas dasteht, holen
-                # wir es gleich mit herueber, sobald der Gast fertig ist.
+                # Cmd+C takes the selection from TOOBAD-OS along to the Mac.
+                # Cmd+C takes the selection from TOOBAD-OS along to the Mac. Ctrl+C
+                # copies in the guest -- so that there's something there
+                # afterward, we bring it over right away as soon as the guest is done.
                 if e.key == pygame.K_c and (mods & pygame.KMOD_META):
                     text = gast_clipboard(m)
                     if text:
                         mac_clipboard_set(text)
                     continue
-                # Strg+K -- alles kopieren, ohne ein Wort darüber zu
-                # verlieren. Steht VOR der allgemeinen Strg+Buchstabe-Regel,
-                # sonst ginge es als Steuerzeichen an den Gast.
+                # Ctrl+K -- copy everything, without saying a word about
+                # it. Comes BEFORE the general Ctrl+letter rule,
+                # otherwise it would go to the guest as a control character.
                 if e.key == pygame.K_k and (mods & pygame.KMOD_CTRL
                                             or mods & pygame.KMOD_META):
                     text = alles_kopieren(m)
-                    if text is None:              # Grafikmodus: System fragen
+                    if text is None:              # graphics mode: ask the system
                         if fenstertext_erbitten(m):
                             kopie_wartet = now + 1.0
                     elif text:
                         mac_clipboard_set(text)
                     continue
                 if e.key == pygame.K_r and (mods & pygame.KMOD_CTRL):
-                    m.power_on()                     # Reset-Knopf am Gehäuse
+                    m.power_on()                     # reset button on the case
                     monitor.prev_text = None
                     continue
-                # Nur Sondertasten -- Buchstaben und Ziffern kommen als
-                # Text-Ereignis, siehe unten.
+                # Only special keys -- letters and digits come through the
+                # text event, see below.
                 if (mods & pygame.KMOD_CTRL) and pygame.K_a <= e.key <= pygame.K_z:
                     m.keyboard.push(e.key - pygame.K_a + 1, 0)
                     continue
@@ -779,9 +779,9 @@ def main():
                 ch = ASCII_FALLBACK.get(e.key, 0)
                 if sc or ch:
                     if not m.running:
-                        # DEL in der Bedenkzeit ist der klassische Griff ins
-                        # Setup. Aufheben statt wegwerfen -- weiterreichen
-                        # kann man ihn erst, wenn die CPU laeuft.
+                        # DEL during the power-on delay is the classic way into
+                        # Setup. Hold onto it instead of discarding it -- it
+                        # can only be passed along once the CPU is running.
                         if kaltstart is not None:
                             vorrat.append((ch, sc))
                         continue
@@ -793,21 +793,22 @@ def main():
                 if halten and e.key == halten[0]:
                     halten = None
             elif e.type == pygame.TEXTINPUT:
-                # Der Einschaltknopf am Gehäuse. Er muss hier stehen und
-                # nicht bei KEYDOWN: dort ist `unicode` je nach Layout leer
-                # oder trägt noch das Zeichen des vorigen Anschlags -- ein
-                # Umlaut kommt nur über das Text-Ereignis zuverlässig an.
+                # The power button on the case. It has to live here and
+                # not in KEYDOWN: there, `unicode` is empty depending on the
+                # layout, or still carries the character of the previous
+                # keystroke -- an umlaut only arrives reliably through the
+                # text event.
                 #
-                # Und er wirkt nicht sofort: erst kommt die Bedenkzeit,
-                # wie bei einem echten Gerät zwischen Knopfdruck und erstem
-                # Bild.
+                # And it doesn't take effect immediately: first comes the
+                # power-on delay, just like on a real device between
+                # pressing the button and the first frame.
                 if not m.running:
                     if kaltstart is None:
                         if e.text in ("ü", "Ü"):
                             kaltstart = now + EINSCHALT_HALT_S
-                            # Der Name kommt aus dem Chip, der JETZT drin
-                            # steckt -- er kann seit dem letzten Start ein
-                            # anderer sein.
+                            # The name comes from the chip that's currently
+                            # plugged in -- it may be a different one since
+                            # the last boot.
                             bios_name = (Machine.rom_name(m.flash.einmal
                                          if m.flash.einmal is not None
                                          else rom_bytes(m.rom_path))
@@ -816,8 +817,8 @@ def main():
                             m.vga.clear_text(0x00)
                             m.vga.cursor = SCR_COLS * SCR_ROWS
                     else:
-                        for zeichen in e.text:          # in der Bedenkzeit
-                            code = ord(zeichen)         # getippt: aufheben
+                        for zeichen in e.text:          # during the power-on delay
+                            code = ord(zeichen)         # typed: hold onto it
                             if 32 <= code < 127:
                                 vorrat.append((code, 0))
                     continue
@@ -833,16 +834,16 @@ def main():
                 my = min(GFX_H - 1, max(0, (e.pos[1] - view.y) * GFX_H // view.h))
                 m.mouse.move(mx, my, maus_bits)
             elif e.type in (pygame.MOUSEBUTTONDOWN, pygame.MOUSEBUTTONUP):
-                # Den Zustand aus den EREIGNISSEN führen, nicht aus
-                # get_pressed(). Letzteres liefert je nach Plattform beim
-                # Loslassen noch den alten Stand -- und der Rechtsklick kam
-                # deshalb gar nicht erst beim TB-32 an.
-                # pygame zählt 1 = links, 2 = Mitte, 3 = rechts;
-                # der TB-32 erwartet Bit 0, 1, 2.
+                # Track state from the EVENTS, not from
+                # get_pressed(). Depending on the platform, the latter still
+                # returns the old state on release -- which meant the right
+                # click never even reached the TB-32.
+                # pygame counts 1 = left, 2 = middle, 3 = right;
+                # the TB-32 expects bit 0, 1, 2.
                 if e.button in (1, 2, 3):
                     bit = 1 << (e.button - 1)
-                    # Auf dem Mac ist Ctrl+Klick der übliche Rechtsklick --
-                    # und bei manchen Trackpads der einzige, der ankommt.
+                    # On the Mac, Ctrl+click is the usual right click --
+                    # and on some trackpads the only one that comes through.
                     if e.button == 1 and (pygame.key.get_mods() & pygame.KMOD_CTRL):
                         bit = 4
                     if e.type == pygame.MOUSEBUTTONDOWN:
@@ -851,29 +852,29 @@ def main():
                         maus_bits &= ~bit
                     m.mouse.move(m.mouse.x, m.mouse.y, maus_bits)
 
-        # Gehaltene Taste nachliefern
+        # Deliver the held key again
         if halten and now >= halten_zeit:
             m.keyboard.push(halten[2], halten[1])
             halten_zeit = now + WDH_TAKT
 
-        # Zeitbudget der CPU: alles, was vom Bild uebrig bleibt.
+        # CPU time budget: whatever is left over from the frame.
         #
-        # Frueher standen hier feste 8 von 16,7 Millisekunden -- also weniger
-        # als die Haelfte, egal wie schnell das Zeichnen tatsaechlich war. Wir
-        # messen jetzt, wie lange der Rest eines Bildes wirklich dauert
-        # (Zeichnen, Ereignisse, Ton), und geben der CPU den Rest bis knapp
-        # unter die Bilddauer. Damit bleibt das Fenster genauso fluessig,
-        # der virtuelle Rechner wird aber deutlich schneller.
+        # This used to be a fixed 8 out of 16.7 milliseconds -- so less
+        # than half, no matter how fast drawing actually was. We now
+        # measure how long the rest of a frame really takes
+        # (drawing, events, sound), and give the CPU the remainder up to
+        # just under the frame duration. This keeps the window just as
+        # smooth, but the virtual machine becomes noticeably faster.
         budget_ms = 16.7 - rest_ms - 1.0
-        if budget_ms < 5.0:  budget_ms = 5.0      # der CPU immer etwas goennen
-        if budget_ms > 14.0: budget_ms = 14.0     # dem Fenster immer etwas lassen
+        if budget_ms < 5.0:  budget_ms = 5.0      # always give the CPU something
+        if budget_ms > 14.0: budget_ms = 14.0     # always leave the window something
         rahmen_start = time.perf_counter()
         n = m.run_slice(dt * (8 if turbo else 1),
                         max_ms=budget_ms + 2.0 if turbo else budget_ms)
         cpu_ms = (time.perf_counter() - rahmen_start) * 1000.0
         ips_measured = int(n / dt) if dt > 0 else 0
 
-        # Liegt der erbetene Fenstertext inzwischen bereit?
+        # Is the requested window text ready by now?
         if kopie_wartet:
             t = fenstertext_holen(m)
             if t is not None:
@@ -881,7 +882,7 @@ def main():
                     mac_clipboard_set(t)
                 kopie_wartet = 0
             elif now > kopie_wartet:
-                kopie_wartet = 0          # das System antwortet nicht, gut
+                kopie_wartet = 0          # the system isn't answering, fine
         if kaltstart is not None:
             startbild(m.vga, bios_name, EINSCHALT_HALT_S - (kaltstart - now),
                       m.flash.einmal is not None)
@@ -897,22 +898,22 @@ def main():
                            view=view)
         else:
             if scrollback:
-                scrollback = 0                       # Grafikmodus: kein Blättern
+                scrollback = 0                       # graphics mode: no scrolling
             monitor.render(m.vga, screen, view=view)
 
         if overlay:
             soll = m.ips // 1000
             lines = [
                 f"CPU {CPU_SPEED_NAMES[m.cmos.data[0x13]]}   "
-                f"real {ips_measured//1000} von {soll} kIPS"
-                f"{'   (Wirt zu langsam)' if ips_measured < soll * 800 else ''}",
+                f"real {ips_measured//1000} of {soll} kIPS"
+                f"{'   (host too slow)' if ips_measured < soll * 800 else ''}",
                 f"PC 0x{m.cpu.pc:08X}  SP 0x{m.cpu.r[15]:08X}  "
                 f"{'HALT' if m.cpu.halted else 'RUN '}",
-                f"Befehle gesamt: {m.total_instructions:,}",
-                f"FPS {clock.get_fps():.0f}   Platte: "
-                f"{'LESEN/SCHREIBEN' if m.disk.led else 'bereit'}",
-                f"CPU {m.thermal.temp:.1f} \u00b0C   Lüfter {m.thermal.fan}%"
-                + (f"   DROSSELT {m.thermal.throttle}%" if m.thermal.throttle else ""),
+                f"Total instructions: {m.total_instructions:,}",
+                f"FPS {clock.get_fps():.0f}   Disk: "
+                f"{'READ/WRITE' if m.disk.led else 'ready'}",
+                f"CPU {m.thermal.temp:.1f} \u00b0C   Fan {m.thermal.fan}%"
+                + (f"   THROTTLING {m.thermal.throttle}%" if m.thermal.throttle else ""),
             ]
             if m.cpu.last_fault:
                 lines.append(m.cpu.last_fault)
@@ -922,24 +923,24 @@ def main():
                 screen.blit(img, (6, y))
                 y += 16
 
-        # --- Ausgeschaltet: der Bildschirm ist schwarz -----------------
+        # --- Powered off: the screen is black -----------------
         #
-        # Frueher blieb das letzte Bild stehen und darueber lag ein roter
-        # Balken. Das war praktisch, aber falsch: ein Monitor an einem
-        # ausgeschalteten Rechner zeigt nichts. Jetzt ist er wirklich
-        # schwarz -- und waehrend des Kaltstarts bleibt er es auch, so wie
-        # in den Sekunden, in denen ein echter PC schon laeuft, aber noch
-        # kein Bild schickt.
-        # Ausgeschaltet heißt schwarz. Läuft dagegen gerade die Bedenkzeit,
-        # steht das Startbild im Bildspeicher und der Monitor hat es eben
-        # schon gezeichnet -- dann bleibt hier nichts zu tun.
+        # It used to be that the last frame stayed on screen with a red
+        # bar on top of it. That was practical, but wrong: a monitor on a
+        # powered-off machine shows nothing. Now it's really
+        # black -- and it stays that way during the power-on delay too, just
+        # like during the seconds where a real PC is already running but
+        # not yet sending a picture.
+        # Powered off means black. If the power-on delay is running instead,
+        # the splash screen is already in the framebuffer and the monitor
+        # has just drawn it -- then there's nothing left to do here.
         if not m.running and kaltstart is None:
             screen.fill((0, 0, 0))
 
         pygame.display.flip()
-        # Wie viel Zeit hat alles ausser der CPU gebraucht? Das ist die
-        # Grundlage fuer das Budget des naechsten Bildes -- geglaettet, damit
-        # ein einzelner Ausreisser nicht sofort durchschlaegt.
+        # How much time did everything except the CPU take? That's the
+        # basis for the next frame's budget -- smoothed, so that a single
+        # outlier doesn't immediately throw things off.
         gesamt_ms = (time.perf_counter() - rahmen_start) * 1000.0
         rest_ms = rest_ms * 0.8 + (gesamt_ms - cpu_ms) * 0.2
         clock.tick(60)

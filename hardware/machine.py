@@ -1,8 +1,8 @@
 """
-Der Rechner als Ganzes: Mainboard mit CPU, Bus und allen Steckkarten.
+The machine as a whole: mainboard with CPU, bus, and all expansion cards.
 
-Diese Klasse kennt kein pygame -- sie läuft auch komplett ohne Bildschirm.
-Das ist Absicht: so kann ich den PC in Tests automatisch booten lassen.
+This class knows nothing about pygame -- it also runs completely without a
+screen. That's intentional: it lets the PC boot automatically in tests.
 """
 
 import os
@@ -34,15 +34,15 @@ from hardware.cpu import CPU
 from hardware.devices import (DMA, VGA, Keyboard, Disk, Timer, Speaker, Mouse, CMOS,
                               NVRAM, Power, Thermal, Flash, Netzkarte, CMOS_CPUSPEED)
 
-# Auswählbare Taktraten im BIOS-Setup (Befehle pro Sekunde)
+# Selectable clock speeds in BIOS setup (instructions per second)
 CPU_SPEEDS = [400_000, 1_000_000, 2_000_000, 4_000_000, 8_000_000]
 CPU_SPEED_NAMES = ["0.4 MHz (Eco)", "1 MHz", "2 MHz (Standard)",
-                   "4 MHz (Turbo)", "8 MHz (Übertaktet!)"]
+                   "4 MHz (Turbo)", "8 MHz (Overclocked!)"]
 
 
 class DebugPort:
-    """Alles, was das BIOS/OS hier hinausschreibt, landet im Entwickler-Log.
-    Extrem nützlich, um Firmware zu debuggen, bevor der Bildschirm läuft."""
+    """Everything the BIOS/OS writes out here ends up in the developer log.
+    Extremely useful for debugging firmware before the screen is running."""
 
     def __init__(self):
         self.line = ""
@@ -71,7 +71,7 @@ class Machine:
         # eigenem CMOS baut, bekommt automatisch auch ein eigenes NVRAM.
         self.nvram_path = os.path.splitext(self.cmos_path)[0] + "_nvram.bin"
 
-        self.cpu_ref = [None]                      # Geräte brauchen die CPU für IRQs
+        self.cpu_ref = [None]                      # devices need the CPU for IRQs
         self.vga = VGA()
         self.bus = Bus(self.vga)
         self.cpu = CPU(self.bus)
@@ -130,31 +130,31 @@ class Machine:
         b.register(self, [PORT_PIC_ACK, PORT_PIC_MASK])
 
         self.running = False
-        self.gehaeuse = False        # setzt pc.py: es gibt ein Startbild
+        self.gehaeuse = False        # set by pc.py: there's a startup screen
         self.neustart_wunsch = False
         self.bios_test = False
         self.total_instructions = 0
-        self.zeitmangel = 0          # wie oft das Bildbudget nicht reichte
+        self.zeitmangel = 0          # how often the frame budget wasn't enough
         self.letzte_ips = 0
 
-    # PIC (Interrupt-Controller) ist bei uns fest verdrahtet und quittiert nur
+    # our PIC (interrupt controller) is hardwired and only acknowledges
     def port_out(self, port, value):
         pass
 
     def port_in(self, port):
         return 0
 
-    # -- Ein-/Ausschalten --------------------------------------------------
+    # -- Power on/off --------------------------------------------------
 
-    # -- Der BIOS-Chip -----------------------------------------------------
+    # -- The BIOS chip -----------------------------------------------------
 
     @staticmethod
     def rom_pruefen(daten):
-        """Ist das ein gültiges BIOS-Abbild?
+        """Is this a valid BIOS image?
 
-        Aufbau (siehe Doku 16): Sprung, dann "TBBI", Länge, Prüfsumme.
-        Diese Prüfung sitzt bewusst im MAINBOARD und nicht in der Firmware --
-        eine kaputte Firmware kann sich nicht selbst prüfen."""
+        Layout (see Doc 16): jump, then "TBBI", length, checksum.
+        This check deliberately lives in the MAINBOARD and not in the
+        firmware -- broken firmware can't validate itself."""
         if len(daten) < 16 or len(daten) > ROM_SIZE:
             return False
         if daten[4:8] != b"TBBI":
@@ -171,16 +171,17 @@ class Machine:
 
     @staticmethod
     def rom_name(daten):
-        """Der Name, den das BIOS in seinem Kopf über sich selbst angibt.
+        """The name the BIOS states about itself in its header.
 
-        Er steht auf Position 0x10, 32 Byte, mit Nullbyte abgeschlossen. Das
-        Mainboard zeigt ihn beim Einschalten in der Bildmitte -- so hat jedes
-        BIOS seinen eigenen Namen, und das Startbild sieht trotzdem überall
-        gleich aus.
+        It sits at offset 0x10, 32 bytes, terminated by a null byte. The
+        mainboard shows it in the center of the screen at power-on -- so
+        every BIOS gets its own name, and the startup screen still looks
+        the same everywhere.
 
-        Ältere Abbilder haben das Feld nicht, dort steht an der Stelle schon
-        Code. Deshalb wird geprüft: druckbar, mit Nullbyte beendet, danach
-        nur noch Nullbytes. Passt das nicht, gibt es eben keinen Namen."""
+        Older images don't have this field; at that position there's
+        already code instead. So it's validated: printable, terminated by
+        a null byte, followed by nothing but null bytes. If that doesn't
+        match, there's simply no name."""
         feld = daten[0x10:0x30]
         if len(feld) < 32 or b"\x00" not in feld:
             return None
@@ -192,10 +193,10 @@ class Machine:
         return name.decode("latin-1")
 
     def _rom_laden(self):
-        """Holt das BIOS -- und greift auf die Sicherung zurück, wenn der
-        Chip Unsinn enthält. Das ist Dual BIOS: auf echten Boards springt
-        genauso ein zweiter Baustein ein, wenn der erste nicht durch den
-        Selbsttest kommt. Ohne das wäre ein misslungenes Flashen endgültig."""
+        """Loads the BIOS -- and falls back to the backup if the chip
+        contains garbage. This is Dual BIOS: on real boards a second chip
+        likewise takes over if the first one fails its self-test. Without
+        this, a failed flash would be permanent."""
         haupt = None
         if os.path.exists(self.rom_path):
             with open(self.rom_path, "rb") as f:
@@ -208,33 +209,33 @@ class Machine:
             with open(sicherung, "rb") as f:
                 alt = f.read()
             if self.rom_pruefen(alt):
-                with open(self.rom_path, "wb") as f:      # Chip zurückschreiben
+                with open(self.rom_path, "wb") as f:      # write the chip back
                     f.write(alt)
                 self.rom_gerettet = True
                 return alt
 
         if haupt is None:
             raise FileNotFoundError(
-                f"Kein BIOS gefunden ({self.rom_path}).\n"
-                f"Bitte zuerst 'python3 build.py' ausführen.")
+                f"No BIOS found ({self.rom_path}).\n"
+                f"Please run 'python3 build.py' first.")
         raise ValueError(
-            f"Das BIOS-Abbild ({self.rom_path}) hat keine gültige "
-            f"TBBI-Kennung oder eine falsche Prüfsumme, und es gibt keine "
-            f"brauchbare Sicherung daneben.\n"
-            f"Zurück zum Auslieferungszustand: python3 build.py")
+            f"The BIOS image ({self.rom_path}) has no valid "
+            f"TBBI signature or an invalid checksum, and there is no "
+            f"usable backup next to it.\n"
+            f"Back to factory state: python3 build.py")
 
     def power_on(self):
         self.rom_gerettet = False
         self.bios_test = False
-        # Das Sperr-Latch des Flash-Bausteins loest NUR hier -- beim echten
-        # Einschalten oder Reset. Genau das macht es zur Sperre: die Firmware
-        # setzt es kurz vor dem Booten, und danach kommt bis zum naechsten
-        # Neustart kein Programm mehr an den Chip.
+        # The flash chip's lock latch is released ONLY here -- on a real
+        # power-on or reset. That is what makes it a lock: the firmware sets
+        # it just before booting, and after that no program gets at the chip
+        # until the next restart.
         self.flash.gesperrt = False
-        # Ein angemeldetes Testabbild gilt fuer genau diesen einen Start.
-        # Es wird hier verbraucht -- der naechste Start holt wieder den
-        # echten Chip. Ein Versuch, der haengenbleibt, kostet damit nichts
-        # weiter als einen Druck auf den Reset-Knopf.
+        # A registered test image applies to exactly this one boot.
+        # It is consumed here -- the next boot fetches the real chip again.
+        # An attempt that hangs therefore costs nothing more than a press
+        # of the reset button.
         rom = None
         if self.flash.einmal is not None:
             probe = self.flash.einmal
@@ -260,32 +261,32 @@ class Machine:
 
     @property
     def ips_soll(self):
-        """Der im BIOS eingestellte Takt."""
+        """The clock speed set in the BIOS."""
         idx = self.cmos.data[CMOS_CPUSPEED]
         return CPU_SPEEDS[idx if idx < len(CPU_SPEEDS) else 2]
 
     @property
     def ips(self):
-        """Takt nach Abzug der Drosselung: wird der Rechner zu warm, rechnet
-        er von selbst langsamer -- so wie jeder heutige Prozessor."""
+        """Clock speed after throttling: if the machine gets too warm, it
+        computes more slowly on its own -- just like any modern processor."""
         return max(50_000, int(self.ips_soll * (100 - self.thermal.throttle) / 100))
 
-    # -- Zeitscheibe ausführen --------------------------------------------
+    # -- Run a time slice --------------------------------------------
 
     def run_slice(self, dt, max_ms=None):
-        """Lässt den Rechner für dt Sekunden virtueller Zeit arbeiten.
+        """Lets the machine work for dt seconds of virtual time.
 
-        max_ms begrenzt, wie viel ECHTE Rechenzeit dafür verbraucht werden
-        darf. Das Fenster bekommt so immer genug Zeit zum Zeichnen und für
-        Tastendrücke -- bei einem echten PC liest die Grafikkarte den
-        Bildspeicher schließlich auch dann 60-mal je Sekunde aus, wenn der
-        Prozessor gerade voll ausgelastet ist. Reicht die Rechenleistung des
-        Wirtsrechners nicht, läuft die virtuelle Maschine eben langsamer,
-        statt dass die Oberfläche stehenbleibt."""
+        max_ms limits how much REAL compute time may be spent on this. That
+        way the window always gets enough time to draw and to handle
+        keypresses -- on a real PC, after all, the graphics card reads out
+        video memory 60 times per second even while the processor is fully
+        loaded. If the host machine's compute power isn't enough, the
+        virtual machine simply runs slower, instead of the interface
+        freezing."""
         if not self.running:
             return 0
         self.timer.advance(dt)
-        self.netz.poll()                 # Post vom Draht abholen
+        self.netz.poll()                 # pick up mail from the wire
         budget = max(1, int(self.ips * min(dt, 0.1)))
 
         if max_ms is None:
@@ -294,8 +295,8 @@ class Machine:
             frist = time.perf_counter() + max_ms / 1000.0
             n = 0
             while n < budget:
-                n += self.cpu.run(min(4000, budget - n))   # feine Haeppchen, damit
-                                                          # die Frist genau greift
+                n += self.cpu.run(min(4000, budget - n))   # small chunks, so
+                                                          # the deadline is honored precisely
                 if self.cpu.halted or not self.running:
                     break
                 if time.perf_counter() > frist:
@@ -304,9 +305,10 @@ class Machine:
         self.total_instructions += n
         self.letzte_ips = n / dt if dt > 0 else 0
 
-        # Wärmemodell: wie ausgelastet war der Prozessor in dieser Zeitscheibe?
+        # Thermal model: how loaded was the processor during this time slice?
         auslastung = min(1.0, n / budget) if budget > 0 else 0.0
-        # Der EFFEKTIVE Takt heizt -- sonst würde Drosseln nichts bringen.
+        # The EFFECTIVE clock speed generates heat -- otherwise throttling
+        # wouldn't help at all.
         self.thermal.advance(dt, auslastung, self.ips / 1000000.0)
         if self.thermal.notaus:
             self.thermal.notaus = False
@@ -318,13 +320,13 @@ class Machine:
         if self.power.request == "off":
             self.power_off()
         elif self.power.request == "reboot":
-            # Nicht sofort wieder anschalten: ein Neustart geht durch das
-            # Startbild des Gehaeuses, sonst saehe man weder den Namen des
-            # BIOS noch die Bedenkzeit -- und ein angemeldetes Testabbild
-            # wuerde ohne jeden Hinweis losstarten.
+            # Don't power back on immediately: a reboot goes through the
+            # case's startup screen, otherwise you'd see neither the BIOS
+            # name nor the think-time delay -- and a registered test image
+            # would start up without any indication.
             #
-            # Wer die Maschine ohne Gehaeuse benutzt (Tests, kopfloser
-            # Betrieb), bekommt den Neustart weiterhin von allein.
+            # Anyone using the machine without a case (tests, headless
+            # operation) still gets the reboot on its own.
             self.power.request = None
             self.neustart_wunsch = True
             if self.gehaeuse:

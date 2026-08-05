@@ -1,12 +1,9 @@
 /* ==========================================================================
    TOOBAD-OS  --  Kernel and command interpreter
 
-   Wird vom Bootsektor geladen und uebernimmt den Rechner. Geschrieben in der
-   eigenen Sprache TC und uebersetzt vom eigenen Compiler (tools/tcc.py) in
-   Maschinencode fuer die eigene CPU.
-
-   (Kommentare bleiben auf Deutsch -- die Oberflaeche ist Englisch, wie bei
-   einem echten Betriebssystem.)
+   Loaded by the boot sector and takes over the machine. Written in the
+   custom language TC and translated by the custom compiler (tools/tcc.py)
+   into machine code for the custom CPU.
    ========================================================================== */
 
 #include "lib.c"
@@ -29,9 +26,9 @@ char cmd[32];
 char arg1[64];
 char arg2[64];
 char progname[24];
-char argzeile[80];      /* Befehlszeile fuer den Python-Interpreter */
+char argzeile[80];      /* command line for the Python interpreter */
 
-/* --- Eingabezeile in Woerter zerlegen ------------------------------------ */
+/* --- Splitting the input line into words ---------------------------------- */
 
 int copy_word(char* src, int pos, char* out, int max) {
     int n;
@@ -122,12 +119,13 @@ void cmd_help(char* topic) {
    ========================================================================== */
 
 
-/* --- NET: die Netzwerkkarte anschauen und ausprobieren -------------------
-   Drei Formen. "NET" allein zeigt den Zustand, "NET SEND <text>" schickt
-   einen Rundruf an alle im Netz, "NET WATCH" wartet auf Rahmen und zeigt
-   sie an, bis eine Taste kommt. Mehr braucht die erste Stufe nicht -- damit
-   sieht man, ob die Kette Karte, Treiber, Draht ueberhaupt steht. */
-#define NET_ART_TEXT 0x7742          /* unsere eigene Art: schlichter Text */
+/* --- NET: look at the network card and try it out -------------------------
+   Three forms. "NET" alone shows the status, "NET SEND <text>" sends a
+   broadcast to everyone on the network, "NET WATCH" waits for frames and
+   shows them until a key is pressed. The first stage doesn't need more
+   than that -- it lets you see whether the chain of card, driver and wire
+   even works. */
+#define NET_ART_TEXT 0x7742          /* our own type: plain text */
 
 void net_rahmen_zeigen(int len) {
     int i; int art; int c;
@@ -135,14 +133,14 @@ void net_rahmen_zeigen(int len) {
     char text[24];
     for (i = 0; i < 6; i++) von[i] = net_getb(NET_PUFFER + 6 + i);
     net_mac_text(von, text);
-    print("  von ");
+    print("  from ");
     print(text);
     art = (net_getb(NET_PUFFER + 12) << 8) | net_getb(NET_PUFFER + 13);
-    print("  Art ");
+    print("  type ");
     printn(art);
     print("  ");
     printn(len);
-    print(" Byte  ");
+    print(" bytes  ");
     if (art == NET_ART_TEXT) {
         for (i = NET_KOPF; i < len && i < NET_KOPF + 60; i++) {
             c = net_getb(NET_PUFFER + i);
@@ -170,7 +168,7 @@ void cmd_net(char* option, char* rest) {
         for (i = 0; rest[i] != 0 && i < 200; i++) net_putb(n + i, rest[i]);
         net_putb(n + i, 0);
         len = NET_KOPF + i + 1;
-        if (len < 60) len = 60;              /* kuerzer darf ein Rahmen nicht */
+        if (len < 60) len = 60;              /* a frame must not be shorter than this */
         if (net_senden(NET_PUFFER, len) < 0) printc("Send failed.\n", RED);
         else { print("Sent "); printn(len); print(" bytes to everyone.\n"); }
         return;
@@ -216,9 +214,9 @@ void cmd_net(char* option, char* rest) {
     }
 
     if (stricmp(option, "proxy") == 0) {
-        /* "0.0.0.0" waere naheliegend zum Abschalten, taugt aber nicht:
-           ip_lesen gibt dafuer 0 zurueck -- dasselbe wie fuer "kaputt".
-           Deshalb ein Wort, das eindeutig ist. */
+        /* "0.0.0.0" would seem like the obvious way to turn it off, but it
+           doesn't work: ip_lesen returns 0 for that -- the same as for
+           "broken". So instead we use a word that is unambiguous. */
         if (stricmp(rest, "off") == 0) {
             br_proxy = 0;
             print("  Proxy                      ");
@@ -226,7 +224,7 @@ void cmd_net(char* option, char* rest) {
             return;
         }
         if (rest[0] != 0) {
-            /* "127.0.0.1:8080" -- der Doppelpunkt trennt den Port ab. */
+            /* "127.0.0.1:8080" -- the colon separates off the port. */
             i = 0;
             while (rest[i] != 0 && rest[i] != ':') i++;
             n = ip_lesen(rest);
@@ -322,10 +320,10 @@ void cmd_net(char* option, char* rest) {
 }
 
 
-/* --- PING: ist da jemand? ------------------------------------------------
-   Viermal fragen, jedes Mal die Zeit messen. Genau das macht PING auf jedem
-   anderen Rechner auch -- es schickt ein ICMP-Echo und wartet auf das
-   Echo zurueck. */
+/* --- PING: is anybody there? -----------------------------------------------
+   Ask four times, timing each one. That's exactly what PING does on every
+   other machine too -- it sends an ICMP echo and waits for the echo to
+   come back. */
 void cmd_ping(char* ziel) {
     int ip; int i; int t; int gut;
     char text[24];
@@ -359,10 +357,10 @@ void cmd_ping(char* ziel) {
 }
 
 
-/* --- HOST: aus einem Namen eine Adresse machen ---------------------------
-   Das ist DNS. Eine Frage an den Namensdienst, eine Antwort zurueck -- und
-   in der Antwort steht die Adresse. Ohne diesen Dienst muesste man sich
-   Zahlen merken statt Namen. */
+/* --- HOST: turn a name into an address --------------------------------------
+   This is DNS. One question to the name service, one answer back -- and
+   the answer contains the address. Without this service you'd have to
+   remember numbers instead of names. */
 void cmd_host(char* name) {
     int ip;
     char text[24];
@@ -391,13 +389,13 @@ void cmd_host(char* name) {
 }
 
 
-/* --- FETCH: eine Seite wirklich holen -------------------------------------
-   Der Beweis, dass TCP steht. Name nachschlagen, Verbindung aufbauen, eine
-   HTTP-Anfrage schicken, die Antwort lesen. Genau das macht ein Browser
-   auch -- nur dass er sie danach noch schoen malt.
+/* --- FETCH: actually fetch a page -------------------------------------------
+   The proof that TCP works. Look up the name, open a connection, send an
+   HTTP request, read the response. That's exactly what a browser does too
+   -- except it then renders it nicely afterwards.
 
-   HTTP ist ein TEXTprotokoll: was hier hinausgeht, kann man lesen. Deshalb
-   ist es der richtige Anfang fuer einen eigenen Browser. */
+   HTTP is a TEXT protocol: what goes out here can be read. That makes it
+   the right starting point for a browser of our own. */
 #define HTTP_BAU  0x00170000
 #define HTTP_ANT  0x00171000
 #define HTTP_MAX  40960
@@ -421,8 +419,8 @@ void cmd_fetch(char* wirt, char* pfad) {
     if (wirt[0] == 0) { printc("Syntax: FETCH example.com [/path]\n", RED); return; }
     if (ip_meine == 0) { printc("No address of our own. Use NET IP.\n", RED); return; }
 
-    /* "example.com:8080" -- der Doppelpunkt trennt den Port ab. Ohne ihn
-       ist es der uebliche Web-Port 80. */
+    /* "example.com:8080" -- the colon separates off the port. Without it,
+       it's the usual web port 80. */
     port = 80;
     n = 0;
     while (wirt[n] != 0 && wirt[n] != ':' && n < 60) { name[n] = wirt[n]; n++; }
@@ -431,14 +429,14 @@ void cmd_fetch(char* wirt, char* pfad) {
     if (port <= 0 || port > 65535) port = 80;
     wirt = name;
 
-    /* Steht ein Vermittler bereit, geht die Verbindung zu IHM -- und in der
-       Anfrage steht dann die volle Adresse. Dasselbe tut der Browser. */
+    /* If a proxy is set up, the connection goes to IT -- and the request
+       then contains the full address. That's exactly what a browser does. */
     if (br_proxy != 0) {
         print("Through the proxy ... ");
         if (tcp_verbinden(br_proxy, br_proxy_port) == 0) {
-            /* Keiner da: dann eben selbst. Voreingestellt ist der Vermittler,
-               den pc.py mitstartet -- wer den Kernel anders benutzt, soll
-               deshalb nicht im Regen stehen. */
+            /* Nobody there: then go direct instead. The default proxy is
+               the one that pc.py starts alongside it -- anyone using the
+               kernel differently shouldn't be left out in the cold. */
             printc("none there, going direct\n", YELLOW);
             br_proxy = 0;
         } else printc("connected\n", GREEN);
@@ -494,8 +492,8 @@ void cmd_fetch(char* wirt, char* pfad) {
     printn(gesamt);
     print(" bytes received\n\n");
 
-    /* Die ersten Zeilen zeigen -- das ist der Kopf der Antwort und der
-       Anfang der Seite. Mehr faengt der Browser spaeter ab. */
+    /* Show the first lines -- that's the response header and the start of
+       the page. The browser will handle more of it later. */
     zeilen = 0;
     for (i = 0; i < gesamt && zeilen < 16; i++) {
         c = net_getb(HTTP_ANT + i);
@@ -507,12 +505,12 @@ void cmd_fetch(char* wirt, char* pfad) {
 }
 
 
-/* Zeigt auf das, was nach den ersten <n> Woertern der Zeile steht.
-   Vorher wurde dafuer gerechnet: cmdline + 4 + strlen(arg1) + 1. Bei
-   "net ip" (6 Zeichen) landete das auf Stelle 7 -- EINEN hinter dem
-   abschliessenden Nullbyte, also im Nirgendwo. Mal stand da zufaellig
-   eine Null und alles ging gut, mal Datenmuell, und NET IP beschwerte
-   sich ueber eine Adresse, die niemand eingetippt hatte. */
+/* Points to whatever comes after the first <n> words of the line.
+   This used to be computed as: cmdline + 4 + strlen(arg1) + 1. For
+   "net ip" (6 characters) that landed on position 7 -- ONE past the
+   terminating null byte, i.e. into nowhere. Sometimes there happened to
+   be a zero there and everything worked, sometimes there was garbage, and
+   NET IP would complain about an address nobody had typed. */
 char* nach_woertern(char* zeile, int n) {
     int i; int w;
     i = 0;
@@ -639,7 +637,7 @@ void cmd_date() {
    File commands
    ========================================================================== */
 
-/* Zahl rechtsbuendig in einem Feld der angegebenen Breite ausgeben */
+/* Print a number right-aligned within a field of the given width */
 void print_right(int wert, int breite, int farbe) {
     int stellen; int t;
     stellen = 1;
@@ -663,7 +661,7 @@ void cmd_dir(char* option) {
     spalte = 0;
     for (i = 0; i < FS_MAXFILES; i++) {
         if (ent_type(i) == 0) continue;
-        if (ent_versteckt(i)) continue;      /* Systemdateien nicht zeigen */
+        if (ent_versteckt(i)) continue;      /* don't show system files */
         if (ent_parent(i) != cwd) continue;
         if (ent_type(i) == FT_DIR) {
             if (breit) {
@@ -759,8 +757,8 @@ void cmd_more(char* name) {
     nl();
 }
 
-/* SUDO: einmal das Passwort, danach fuenf Minuten Ruhe -- wie beim echten
-   sudo. Damit lassen sich Dateien in \SYSTEM loeschen. */
+/* SUDO: enter the password once, then five minutes of peace -- just like
+   real sudo. This lets you delete files in \SYSTEM. */
 void cmd_sudo() {
     char pw[32];
     if (konto_offen()) {
@@ -773,7 +771,7 @@ void cmd_sudo() {
         printc("Wrong password.\n", RED);
         return;
     }
-    sudo_bis = sys_ticks() + 30000;               /* fuenf Minuten */
+    sudo_bis = sys_ticks() + 30000;               /* five minutes */
     printc("Granted for five minutes.\n", GREEN);
 }
 
@@ -904,7 +902,7 @@ void cmd_format() {
     }
 }
 
-/* --- Temperatur und Kühlung --------------------------------------------- */
+/* --- Temperature and cooling ---------------------------------------------- */
 
 #define P_TEMP        0xA0
 #define P_FAN         0xA1
@@ -979,7 +977,7 @@ void cmd_temp(char* arg) {
     print(" C\n\n  Fan control: TEMP AUTO | TEMP QUIET | TEMP FULL\n");
 }
 
-/* --- Ordner ------------------------------------------------------------- */
+/* --- Directories ------------------------------------------------------------ */
 
 void cmd_md(char* name) {
     int r;
@@ -1014,7 +1012,7 @@ void cmd_rd(char* name) {
     else printc("Directory not found\n", RED);
 }
 
-/* --- FC: zwei Dateien Byte fuer Byte vergleichen ------------------------ */
+/* --- FC: compare two files byte by byte ------------------------------------ */
 
 #define FC_BUF1  0x00400000
 #define FC_BUF2  0x00500000
@@ -1174,28 +1172,28 @@ void cmd_taskkill(char* a) {
 void cmd_start(char* name, char* option) {
     int r; int hg; int i; int j; int n;
     char args[80];
-    if (name[0] == 0) { printc("Syntax: START <file.TBX> [/B] [Argumente]\n", RED); return; }
+    if (name[0] == 0) { printc("Syntax: START <file.TBX> [/B] [arguments]\n", RED); return; }
     hg = 0;
 
-    /* Alles hinter dem Programmnamen bekommt das Programm als Argumente.
-       /B darf dabei an JEDER Stelle stehen -- frueher zaehlte nur das erste
-       Wort danach, und "START X.TBX COLORS /B" lief deshalb im Vordergrund
-       und blockierte die Kommandozeile. */
+    /* Everything after the program name is passed to the program as
+       arguments. /B may appear at ANY position -- it used to be that only
+       the first word after the name counted, so "START X.TBX COLORS /B"
+       ran in the foreground and blocked the command line. */
     i = 0;
     while (cmdline[i] == ' ') i++;
-    while (cmdline[i] && cmdline[i] != ' ') i++;      /* START ueberspringen */
+    while (cmdline[i] && cmdline[i] != ' ') i++;      /* skip START */
     while (cmdline[i] == ' ') i++;
-    while (cmdline[i] && cmdline[i] != ' ') i++;      /* Programmname */
+    while (cmdline[i] && cmdline[i] != ' ') i++;      /* program name */
 
     n = 0;
     while (cmdline[i] && n < 78) {
         while (cmdline[i] == ' ') i++;
         if (cmdline[i] == 0) break;
         j = i;
-        while (cmdline[j] && cmdline[j] != ' ') j++;  /* ein Wort */
+        while (cmdline[j] && cmdline[j] != ' ') j++;  /* one word */
         if ((cmdline[i] == '/' || cmdline[i] == '-')
             && toupper(cmdline[i + 1]) == 'B' && j == i + 2) {
-            hg = 1;                                   /* das Wort war /B */
+            hg = 1;                                   /* the word was /B */
         } else if (cmdline[i] == '&' && j == i + 1) {
             hg = 1;
         } else {
@@ -1294,9 +1292,9 @@ void shell() {
         else if (stricmp(cmd, "taskkill") == 0)   cmd_taskkill(arg1);
 
         else if (stricmp(cmd, "win") == 0 || stricmp(cmd, "desktop") == 0) {
-            /* Der Desktop laeuft in Prozess 0. Ein zweiter Aufruf aus dem
-               Terminalfenster heraus wuerde zwei Oberflaechen auf denselben
-               Bildschirm malen -- deshalb hier abfangen. */
+            /* The desktop runs in process 0. A second call from within the
+               terminal window would paint two UIs onto the same screen --
+               so it is caught here. */
             if (gui_running) {
                 printc("The desktop is already running.\n", YELLOW);
                 print("This window is part of it. Use EXIT to close the window.\n");
@@ -1317,12 +1315,12 @@ void shell() {
             }
         }
         else if (stricmp(cmd, "exit") == 0) {
-            if (term_aktiv) return;              /* Terminalfenster schliessen */
+            if (term_aktiv) return;              /* close the terminal window */
             print("Not running in a window.\n");
         }
         else if (stricmp(cmd, "tbcmd") == 0) {
-            /* Aus dem Fenster in die grosse Vollbildkonsole. Gegenstueck
-               zu WIN, das zurueck in den Schreibtisch fuehrt. */
+            /* From the window into the big full-screen console. Counterpart
+               to WIN, which leads back to the desktop. */
             if (term_aktiv) {
                 term_aktiv = 0;
                 gui_running = 0;
@@ -1336,19 +1334,19 @@ void shell() {
             sys_out(P_POWER, 2);
         }
         else {
-            /* Kein eingebauter Befehl: dann suchen wir ein gleichnamiges
-               Programm auf der Platte -- genau wie DOS und Unix es tun.
-               So wird aus  ASM QUELLE.ASM ZIEL.TBX  ein Programmaufruf. */
+            /* Not a built-in command: so we look for a program of the same
+               name on the disk -- exactly like DOS and Unix do. That's how
+               ASM SOURCE.ASM TARGET.TBX becomes a program call. */
             n = strlen(cmd);
             i = 0;
             while (cmdline[i] == ' ') i++;
-            while (cmdline[i] && cmdline[i] != ' ') i++;   /* hinter den Namen */
+            while (cmdline[i] && cmdline[i] != ' ') i++;   /* past the name */
 
             if (endet_auf(cmd, ".PY")) {
-                /* Ein Python-Skript ist kein Maschinenprogramm -- es braucht
-                   den Interpreter davor. Der Benutzer soll GUESS.PY tippen
-                   duerfen und nicht wissen muessen, dass PY.TBX existiert.
-                   Genau so macht es ein grosses System mit der Zeile #!. */
+                /* A Python script is not a machine program -- it needs the
+                   interpreter in front of it. The user should be able to
+                   type GUESS.PY without needing to know that PY.TBX exists.
+                   That's exactly what a big system does with the #! line. */
                 strcpy(progname, "PY.TBX");
                 strncpy(argzeile, cmd, 20);
                 strcat(argzeile, cmdline + i);
@@ -1372,26 +1370,26 @@ void shell() {
 }
 
 /* ==========================================================================
-   Einrichtung beim ersten Start, danach die Anmeldung
+   Setup on first boot, login on every boot after that
 
-   Beim allerersten Hochfahren gibt es noch keinen Benutzer. Dann fragt das
-   System nach Name und Passwort und legt beides in \SYSTEM\USER.DAT ab.
-   Jeder weitere Start verlangt das Passwort, bevor die Kommandozeile kommt.
+   On the very first startup there is no user yet. The system then asks
+   for a name and password and stores both in \SYSTEM\USER.DAT. Every
+   later boot requires the password before the command line appears.
 
-   WAS DAS IST UND WAS NICHT: Es haelt neugierige Leute auf. Es ist KEINE
-   Sicherheit. Die Platte ist unverschluesselt -- wer hd0.img in die Hand
-   bekommt, liest alles mit einem Hex-Editor. Das Passwort liegt nur als
-   Pruefsumme da, nicht mit einem richtigen Verfahren; der TB-32 hat keins.
-   Wer die Datei loescht, ist wieder drin -- so wie ein BIOS-Passwort weg
-   ist, wenn man die Knopfzelle zieht. Das passt zu der Zeit, die wir
-   nachbauen, und es soll niemand fuer mehr halten.
+   WHAT THIS IS AND WHAT IT ISN'T: it keeps curious people out. It is NOT
+   security. The disk is unencrypted -- anyone who gets hold of hd0.img can
+   read everything with a hex editor. The password is stored only as a
+   checksum, not with a proper algorithm; the TB-32 doesn't have one.
+   Deleting the file gets you back in -- just like a BIOS password is gone
+   once you pull the button cell. That fits the era we're recreating, and
+   nobody should mistake it for more than that.
    ========================================================================== */
 
-#define CM_BOOTMODE 0x1D             /* 0 = Schreibtisch, 1 = Textkonsole */
+#define CM_BOOTMODE 0x1D             /* 0 = desktop, 1 = text console */
 
 #define USER_BUF   0x000C0000
-#define USER_NAME  0                     /* 20 Byte Name */
-#define USER_HASH  20                    /* 4 Byte Pruefsumme des Passworts */
+#define USER_NAME  0                     /* 20-byte name */
+#define USER_HASH  20                    /* 4-byte password checksum */
 #define USER_LEN   24
 
 int pw_summe(char* s) {
@@ -1401,7 +1399,7 @@ int pw_summe(char* s) {
     return h;
 }
 
-/* Liest eine Zeile, zeigt aber Sterne statt der Zeichen. */
+/* Reads a line, but shows stars instead of the characters. */
 int passwort_lesen(char* buf, int max) {
     int n; int k; int c; int code;
     n = 0;
@@ -1422,14 +1420,14 @@ int passwort_lesen(char* buf, int max) {
     }
 }
 
-/* Das Konto liegt IMMER im Hauptverzeichnis -- unabhaengig davon, in welchem
-   Ordner der Benutzer gerade steht. fs_write und fs_read arbeiten sonst im
-   aktuellen Ordner, und dann landet USER.DAT dort, wo zufaellig gerade das
-   Dateifenster stand. Genau das ist passiert: auf einer Platte lag eine
-   USER.DAT in \SYSTEM -- unsichtbar fuer die Anmeldung (die sucht im
-   Hauptverzeichnis) und geschuetzt vor dem Zuruecksetzen (das laesst
-   \SYSTEM stehen). Der Rechner fragte nach jedem Start wieder nach der
-   Ersteinrichtung, und das Konto liess sich nicht mehr loswerden. */
+/* The account ALWAYS lives in the root directory -- no matter which folder
+   the user happens to be in. fs_write and fs_read otherwise work in the
+   current folder, and then USER.DAT would end up wherever the file window
+   happened to be. That's exactly what happened: on one disk a USER.DAT
+   ended up in \SYSTEM -- invisible to the login (which looks in the root
+   directory) and protected from being reset (which leaves \SYSTEM alone).
+   The machine kept asking for first-time setup after every boot, and the
+   account could no longer be gotten rid of. */
 void benutzer_anlegen(char* name, char* pw) {
     int n; int alt;
     memset((char*)USER_BUF, 0, USER_LEN);
@@ -1442,9 +1440,9 @@ void benutzer_anlegen(char* name, char* pw) {
     cwd = alt;
 }
 
-/* Ein Rechner ohne Passwort ist offen -- dann fragt auch der Schutz von
-   \SYSTEM nicht nach. Wird aus fs.c gerufen, das frueher eingebunden wird
-   und USER_BUF deshalb noch nicht kennt. */
+/* A machine without a password is open -- so the \SYSTEM protection doesn't
+   ask either in that case. Called from fs.c, which is included earlier and
+   so doesn't know USER_BUF yet. */
 int konto_offen() {
     return pw_summe("") == mem_get(USER_BUF + USER_HASH);
 }
@@ -1488,7 +1486,7 @@ void ersteinrichtung() {
         printc("The two entries differ. Try again.\n\n", RED);
     }
 
-    benutzer_anlegen(name, pw1);        /* legt es im Hauptverzeichnis ab */
+    benutzer_anlegen(name, pw1);        /* stores it in the root directory */
     if (benutzer_vorhanden() == 0)
         printc("\nCould not save the account.\n", RED);
     else {
@@ -1516,21 +1514,21 @@ void anmelden() {
         }
         falsch++;
         printc("Wrong password.\n", RED);
-        /* Nach jedem Fehlversuch etwas laenger warten -- so wird stures
-           Durchprobieren muehsam, ohne jemanden auszusperren. */
+        /* Wait a little longer after each failed attempt -- that makes
+           brute-force guessing tedious without locking anyone out. */
         sleep(falsch * 50);
     }
 }
 
 void benutzer_pruefen() {
     if (benutzer_vorhanden() == 0) {
-        ersteinrichtung();               /* frische Platte: einrichten */
+        ersteinrichtung();               /* fresh disk: run first-time setup */
         return;
     }
-    /* Ein leeres Passwort heisst: dieser Rechner ist nicht gesperrt. So
-       kommt eine frisch gebaute Maschine ohne Nachfrage hoch -- und die
-       Testwerkzeuge auch, die niemanden zum Tippen haben. Wer eins setzt,
-       wird gefragt. */
+    /* An empty password means: this machine is not locked. That way a
+       freshly built machine boots without being asked -- and so do the
+       test tools, which have nobody to type for them. Anyone who sets a
+       password will be asked. */
     if (mem_get(USER_BUF + USER_HASH) == pw_summe("")) return;
     anmelden();
 }
@@ -1543,34 +1541,35 @@ int main() {
     print("Copyright (C) Toobad. All rights reserved.\n\n");
 
     syscall_init();
-    mt_enable();                       /* Multitasking an, Shell wird Prozess 0 */
+    mt_enable();                       /* multitasking on, shell becomes process 0 */
     print("Mounting file system on A: ... ");
     formatiert = fs_mount();
     if (formatiert) printc("OK\n", GREEN);
     else printc("new disk, initialised\n", YELLOW);
 
-    net_start();                     /* Netzwerkkarte und eigene Adresse */
+    net_start();                     /* network card and our own address */
 
-    /* Startziel: Schreibtisch oder Textkonsole. Steht im CMOS neben Quick
-       Boot, aenderbar im Setup und im Control Panel. Standard ist der
-       Schreibtisch -- die Testwerkzeuge bekommen ein eigenes CMOS mit
-       Konsole, weil sie den TEXTbildschirm auslesen. */
+    /* Boot target: desktop or text console. Stored in the CMOS next to
+       Quick Boot, changeable in Setup and in the Control Panel. Default is
+       the desktop -- the test tools get their own CMOS with the console
+       selected, because they read out the TEXT screen. */
     if (cmos_get(CM_BOOTMODE) == 0) {
-        /* Der Blitter braucht die Adresse des Zeichensatzes, sonst malt er
-           aus dem Nichts -- der Anmeldeschirm war fast leer. gui_main()
-           setzt sie sonst selbst, laeuft hier aber erst danach. */
+        /* The blitter needs the address of the character set, otherwise
+           it paints from nothing -- the login screen was nearly blank.
+           gui_main() would otherwise set it itself, but here it only runs
+           afterwards. */
         sys_setmode(1 + 256);
         sys_out(P_BLT_SRC, (int)font8);
         sys_out(P_MCUR_ON, 0);
         sys_flushkeys();
-        /* Abmelden fuehrt zurueck zum Anmeldeschirm, ohne den Rechner
-           auszuschalten -- deshalb die Schleife. Danach wird IMMER gefragt,
-           auch bei einem offenen Konto: wer sich abmeldet, will das. */
+        /* Logging out leads back to the login screen without powering the
+           machine off -- hence the loop. After that it ALWAYS asks, even
+           for an open account: whoever logs out wants exactly that. */
         formatiert = 0;
         while (1) {
-            /* gui_main() schaltet beim Verlassen in den Textmodus zurueck.
-               Vor jedem Durchgang also wieder Grafik an, sonst malt die
-               Anmeldung ins Leere. */
+            /* gui_main() switches back to text mode on exit. So graphics
+               mode has to be turned back on before every pass, otherwise
+               the login screen paints into nothing. */
             sys_setmode(1 + 256);
             sys_out(P_BLT_SRC, (int)font8);
             if (benutzer_vorhanden() == 0) gui_anmelden(1);

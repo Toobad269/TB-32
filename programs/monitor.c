@@ -1,11 +1,11 @@
 /* ==========================================================================
-   SYSTEM MONITOR  --  was der Rechner gerade tut, als eigenes Programm
+   SYSTEM MONITOR  --  what the computer is currently doing, as its own program
 
-   Prozesse, Plattenbelegung, Temperatur und Luefter. Er liest nur; aendern
-   kann er nichts. Frueher stand er im Kernel und griff direkt auf p_state
-   und Freunde zu -- jetzt fragt er ueber Systemaufrufe.
+   Processes, disk usage, temperature and fan. It only reads; it can't
+   change anything. It used to live in the kernel and access p_state and
+   friends directly -- now it asks via system calls.
 
-   Uebersetzen auf dem Geraet selbst:  CC MONITOR.C
+   Compile on the device itself:  CC MONITOR.C
    ========================================================================== */
 
 #include "proglib.c"
@@ -82,7 +82,7 @@ void app_monitor(int w) {
     gx_num(x + 144, y + 54, ticks() / 100, C_ACCENT, 256);
     gx_text(x + 190, y + 54, "s", C_TEXT, 256);
 
-    /* Temperatur, Lüfter und Drosselung */
+    /* Temperature, fan and throttling */
     y = y + 70;
     temp = portin(P_TEMP);
     gx_text(x, y, "Temperature", C_ACCENT, 256);
@@ -114,7 +114,7 @@ int main() {
     int art; int laufen;
 
     if (fenster_neu("System Monitor", 340, 250) < 0) {
-        print("Der Monitor braucht den Schreibtisch -- erst WIN eingeben.\n");
+        print("The monitor needs the desktop -- type WIN first.\n");
         return 1;
     }
     laufen = 1;
@@ -122,8 +122,8 @@ int main() {
         art = fenster_ereignis(e);
         if (art == FE_SCHLIESS) laufen = 0;
         else if (art == FE_TASTE && e[2] == K_ESC) laufen = 0;
-        /* Einmal je Sekunde auffrischen -- die Werte aendern sich staendig,
-           und oefter waere nur Rechenzeit fuer nichts. */
+        /* Refresh once a second -- the values keep changing constantly,
+           and more often would just be wasted CPU time. */
         fenster_malziel();
         app_monitor(0);
         fenster_fertig();
