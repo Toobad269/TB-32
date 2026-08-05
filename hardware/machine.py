@@ -23,7 +23,8 @@ from hardware.isa import (
     PORT_DMA_SRC, PORT_DMA_DST, PORT_DMA_LEN, PORT_DMA_VAL, PORT_DMA_CMD,
     PORT_SPK_FREQ, PORT_SPK_ON,
     PORT_MOUSE_X, PORT_MOUSE_Y, PORT_MOUSE_BTN, PORT_MOUSE_WHEEL,
-    PORT_CMOS_IDX, PORT_CMOS_DATA, PORT_DEBUG, PORT_POWER,
+    PORT_CMOS_IDX, PORT_CMOS_DATA, PORT_NVRAM_IDX, PORT_NVRAM_DATA,
+    PORT_DEBUG, PORT_POWER,
     PORT_TEMP, PORT_FAN, PORT_THROTTLE, PORT_TEMP_LIMIT, PORT_FANMODE,
     PORT_TEMP_MAX,
     PORT_FLASH_CMD, PORT_FLASH_SIZE, PORT_FLASH_ADDR, ROM_SIZE,
@@ -31,7 +32,7 @@ from hardware.isa import (
 from hardware.bus import Bus
 from hardware.cpu import CPU
 from hardware.devices import (DMA, VGA, Keyboard, Disk, Timer, Speaker, Mouse, CMOS,
-                              Power, Thermal, Flash, Netzkarte, CMOS_CPUSPEED)
+                              NVRAM, Power, Thermal, Flash, Netzkarte, CMOS_CPUSPEED)
 
 # Selectable clock speeds in BIOS setup (instructions per second)
 CPU_SPEEDS = [400_000, 1_000_000, 2_000_000, 4_000_000, 8_000_000]
@@ -66,6 +67,9 @@ class Machine:
         self.rom_path = rom or os.path.join(root, "firmware", "bios.bin")
         self.disk_path = disk or os.path.join(root, "disk", "hd0.img")
         self.cmos_path = cmos or os.path.join(root, "disk", "cmos.bin")
+        # Das NVRAM liegt neben der Knopfzelle -- wer eine Testmaschine mit
+        # eigenem CMOS baut, bekommt automatisch auch ein eigenes NVRAM.
+        self.nvram_path = os.path.splitext(self.cmos_path)[0] + "_nvram.bin"
 
         self.cpu_ref = [None]                      # devices need the CPU for IRQs
         self.vga = VGA()
@@ -78,6 +82,7 @@ class Machine:
         self.speaker = Speaker()
         self.mouse = Mouse(self.cpu_ref)
         self.cmos = CMOS(self.cmos_path)
+        self.nvram = NVRAM(self.nvram_path)
         self.power = Power()
         self.thermal = Thermal()
         self.debug = DebugPort()
@@ -108,6 +113,7 @@ class Machine:
         b.register(self.mouse, [PORT_MOUSE_X, PORT_MOUSE_Y, PORT_MOUSE_BTN,
                                 PORT_MOUSE_WHEEL])
         b.register(self.cmos, [PORT_CMOS_IDX, PORT_CMOS_DATA])
+        b.register(self.nvram, [PORT_NVRAM_IDX, PORT_NVRAM_DATA])
         b.register(self.power, [PORT_POWER])
         b.register(self.thermal, [PORT_TEMP, PORT_FAN, PORT_THROTTLE,
                                   PORT_TEMP_LIMIT, PORT_FANMODE, PORT_TEMP_MAX])
@@ -221,6 +227,11 @@ class Machine:
     def power_on(self):
         self.rom_gerettet = False
         self.bios_test = False
+        # The flash chip's lock latch is released ONLY here -- on a real
+        # power-on or reset. That is what makes it a lock: the firmware sets
+        # it just before booting, and after that no program gets at the chip
+        # until the next restart.
+        self.flash.gesperrt = False
         # A registered test image applies to exactly this one boot.
         # It is consumed here -- the next boot fetches the real chip again.
         # An attempt that hangs therefore costs nothing more than a press

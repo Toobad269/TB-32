@@ -60,15 +60,49 @@ The Setup button *Flash BIOS from File* does it correctly (command 3).
 | What | Where |
 |---|---|
 | Setup locked with a supervisor password, its own *Password* tab | `passwort.asm`, `tab_password` |
-| Three failed attempts, then locked out | `pw_tor` |
 | F5 "Load Defaults" leaves the password alone | `setup_load_defaults` |
-| Secure Boot (checksum over boot sector, kernel, and ROM) | `secure_summe` |
 | Flashing a BIOS from a file, restoring the backup | `flash_bios`, `flash_restore` |
-| Owner entry in memory (`BDA_FIRMA`) | `bios.asm`, `s_firma:` |
-| Display top right and on the login screen | `system/gui.c`, `firma_da()` |
+| **A1** Power-on password, required before booting | `pwu_tor` |
+| **A2** Failed attempts in the coin cell, surviving a reset | `pw_fehler_plus`, `CM_PWTRIES` |
+| **A3** Owner entry, configurable in Setup | `firma_text_setzen`, NVRAM |
+| **A4** Blocking programs, 16 to tick off | `firma_sperrliste`, `blk_*` |
+| **A5** Blocking compiler and network | `POL_NOCC`, `POL_NONET`, `gesperrt()` |
+| **A6** Boot from the internal disk only | `boot_quelle_sichern`, `POL_INTDISK` |
+| **A7** Flash lock in the chip itself | `hardware/devices.py`, `FLASH_LOCK` |
+| **A8** Chassis intrusion | `intrusion_pruefen` |
+| NVRAM, 256 bytes, a chip of its own | `hardware/devices.py`, `nv_*` |
+| **B1** Event log with its own tab | `ev_log`, `ev_zeile_zeigen` |
+| **B2** Secure Boot in three stages: Off / Audit / Enforce | `secure_pruefen` |
+| **B3** Inventory in Setup and in memory | `REG_INVSER`, `BDA_INVENT` |
+| **B4** Boot menu on F8, password-guarded when A6 is set | `boot_menue` |
+| **B6** Owner text right at power-on | `firma_startbild` |
+| **C** Boot delay, *Exit* tab | `boot_verzoegern`, `tab_exit` |
+| `build.py` leaves a foreign BIOS alone | `fremdes_bios()` |
+| `pc.py --bios <file>` | `pc.py` |
+| System side: enforcing the blocks, greyed out in the start menu | `system/gui.c`, `gesperrt()` |
 
-The *Password* tab is already exactly what you wanted: its own tab, with
-nothing else in it.
+**66 checks** run on the real machine: `python3 "Custom BIOS/COMPANY-OS/pruefen.py"`
+
+**A, B and C are built except for B5.** The only thing still open is **B5**
+network boot -- the project of its own that the list below calls it.
+
+Two C items were deliberately left out because the hardware for them does
+not exist: **Numlock at startup** (the TB-32 has no numeric keypad and no
+status byte for it) and **AC Power Recovery** (the power supply knows no
+outage, only off and on).
+
+On B4: the menu sits on **F8**, not F12. F11 and F12 belong to the window
+(fullscreen and the overlay) and never reach the virtual machine -- F8 is
+the other classic for boot menus and was therefore the only honest choice.
+
+B3 shows the inventory in Setup and puts it at `BDA_INVENT`; displaying it
+in the System Monitor would be the next small step on the system side.
+
+On A6, for context: `boot` always reads sector 0 today, and floppy and
+network both say *not installed* -- there is no second boot source to
+refuse yet. So the bit nails the setting down, in two places: Setup refuses
+the change, and a CMOS altered from outside is reset at startup and logged.
+Once network boot (B5) arrives, the same bit already guards it.
 
 ---
 

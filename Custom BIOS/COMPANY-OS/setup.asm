@@ -9,16 +9,27 @@
 .equ SET_X,        4
 .equ SET_Y,        6
 .equ SET_ENTSIZE,  16
-.equ SET_TABS,     6                 ; Main, Hardware, Cooling, Security, Password, Firmware
+.equ SET_TABS,     9                 ; + Company, + Event Log, + Exit
 .equ A_BG,         0x17              ; grau auf blau
 .equ A_TITLE,      0x1E              ; gelb auf blau
 .equ A_SEL,        0x70              ; schwarz auf grau
 .equ A_HELP,       0x1B              ; hellcyan auf blau
 
-; Sonderregister: alles ab 0xE0 ist kein normaler CMOS-Platz, sondern eine
+; Sonderregister: alles ab 0xC0 ist kein normaler CMOS-Platz, sondern eine
 ; Zeile mit eigenem Verhalten -- Uhr, Anzeige eines Messwerts oder ein Knopf.
 ; (Die Grenze lag frueher bei 0xF0; dort war nach vierzehn Sonderzeilen kein
-; Platz mehr. CMOS-Plaetze gehen nur bis 0x3F, also ist 0xE0 reichlich weit.)
+; Platz mehr. Dann war auch ab 0xE0 kein Platz mehr -- Ereignisspeicher und
+; Inventar brauchen zusammen zwoelf Zeilen. CMOS-Plaetze gehen nur bis 0x3F,
+; also ist selbst 0xC0 noch reichlich weit weg.)
+.equ REG_EV0,      0xC0            ; acht Zeilen Ereignisspeicher, 0xC0..0xC7
+.equ REG_EV7,      0xC7
+.equ REG_EVCLR,    0xC8            ; Knopf: Ereignisspeicher leeren
+.equ REG_INVSER,   0xC9            ; nur Anzeige: Seriennummer
+.equ REG_INVBOOT,  0xCA            ; nur Anzeige: Anzahl Starts
+.equ REG_INVMIN,   0xCB            ; nur Anzeige: Betriebsminuten
+.equ REG_DELAY,    0xCC            ; Startverzoegerung in Sekunden
+.equ REG_EXITSAVE, 0xCD            ; Knopf: sichern und verlassen
+.equ REG_EXITDROP, 0xCE            ; Knopf: verwerfen und verlassen
 .equ REG_BIOSLEN,  0xE0            ; nur Anzeige: Groesse des BIOS-Chips
 .equ REG_BIOSSUM,  0xE1            ; nur Anzeige: Pruefsumme des Chips
 .equ REG_FLASH,    0xE2            ; Knopf: BIOS aus einer Datei neu brennen
@@ -26,6 +37,20 @@
 .equ REG_PWSTATE,  0xE4            ; nur Anzeige: Installed / Not Installed
 .equ REG_PWSET,    0xE5            ; Knopf: Passwort setzen oder aendern
 .equ REG_PWCLR,    0xE6            ; Knopf: Passwort loeschen
+; COMPANY-OS: die fuenf Schalter des Schalterworts. Sie liegen absichtlich
+; luekenlos hintereinander -- setup_change rechnet die Bitnummer aus der
+; Registernummer aus, statt fuenfmal dasselbe zu schreiben.
+.equ REG_POL0,     0xE7            ; Owner Tag                 (Bit 0)
+.equ REG_POL1,     0xE8            ; Block Compiler            (Bit 1)
+.equ REG_POL2,     0xE9            ; Block Network             (Bit 2)
+.equ REG_POL3,     0xEA            ; Require Login Password    (Bit 3)
+.equ REG_POL4,     0xEB            ; Boot From Internal Disk   (Bit 4)
+.equ REG_COTEXT,   0xEC            ; Knopf: Firmentext tippen
+.equ REG_COBLK,    0xED            ; Knopf: Programme abhaken
+.equ REG_COCLR,    0xEE            ; nur Anzeige: war das CMOS geleert?
+.equ REG_PWUSTATE, 0xEF            ; nur Anzeige: Power-On-Passwort da?
+.equ REG_PWUSET,   0xFE            ; Knopf: Power-On-Passwort setzen/aendern
+.equ REG_PWUCLR,   0xFF            ; Knopf: Power-On-Passwort loeschen
 .equ REG_TIME,     0xF0            ; Uhrzeit, mit ENTER editierbar
 .equ REG_DATE,     0xF1            ; Datum, mit ENTER editierbar
 .equ REG_DEFAULTS, 0xF2            ; Knopf: Standardwerte laden
@@ -49,6 +74,8 @@ setup_main:
     push r9
 
     call setup_backup
+    movi r6, 0
+    stwa SETUP_ENDE, r6               ; Merkzeichen des Reiters Exit
     movi r6, 0                        ; r6 = markierte Zeile
     movi r9, 0                        ; r9 = aktiver Reiter
     stwa SETUP_TAB, r9
@@ -121,6 +148,13 @@ setup_main:
     mov r1, r6
     movi r2, 1
     call setup_change
+    ; Der Reiter Exit setzt beim Druck auf seine Knoepfe ein Merkzeichen.
+    ; setup_change kann nicht selbst aus setup_main herausspringen -- also
+    ; wird hier nachgesehen, direkt nach dem Knopfdruck. In der Tastenkette
+    ; weiter unten kaeme man nie an: .inc springt gleich zurueck in .loop.
+    ldwa r8, SETUP_ENDE
+    cmpi r8, 0
+    jnz .exit
     jmp .loop
 .dec:
     mov r1, r6
@@ -273,6 +307,16 @@ setup_change:
     pop r1
     add r6, r6, r0                    ; r6 = Zeiger auf den Eintrag
     ldw r7, [r6+4]                    ; r7 = CMOS-Register
+    ; A6: die Startquelle ist festgenagelt, solange das Bit steht.
+    cmpi r7, CM_BOOTDEV
+    jnz .kein_bootdev
+    push r2
+    movi r1, POL_INTDISK
+    call pol_frage
+    pop r2
+    cmpi r0, 0
+    jnz .bootgesperrt
+.kein_bootdev:
     cmpi r7, REG_DEFAULTS
     jz .defaults
     cmpi r7, REG_TRUST
@@ -291,7 +335,28 @@ setup_change:
     jz .pwset
     cmpi r7, REG_PWCLR
     jz .pwclr
-    cmpi r7, 0xE0
+    cmpi r7, REG_COTEXT
+    jz .cotext
+    cmpi r7, REG_COBLK
+    jz .coblk
+    cmpi r7, REG_PWUSET
+    jz .pwuset
+    cmpi r7, REG_PWUCLR
+    jz .pwuclr
+    cmpi r7, REG_EVCLR
+    jz .evclr
+    cmpi r7, REG_DELAY
+    jz .delay
+    cmpi r7, REG_EXITSAVE
+    jz .xsave
+    cmpi r7, REG_EXITDROP
+    jz .xdrop
+    cmpi r7, REG_POL0
+    jl .kein_pol
+    cmpi r7, REG_POL4
+    jle .polbit
+.kein_pol:
+    cmpi r7, 0xC0
     jae .done                         ; reine Anzeigezeilen
     ldw r8, [r6+8]                    ; r8 = Anzahl moeglicher Werte
     mov r10, r7
@@ -324,6 +389,70 @@ setup_change:
     jmp .done
 .pwclr:
     call pw_loeschen
+    jmp .done
+.cotext:
+    call firma_text_setzen
+    jmp .done
+.coblk:
+    call firma_sperrliste
+    jmp .done
+.pwuset:
+    call pwu_setzen
+    jmp .done
+.pwuclr:
+    call pwu_loeschen
+    jmp .done
+.bootgesperrt:
+    li r1, s_a6_fest
+    call setup_message
+    jmp .done
+.delay:
+    movi r10, CM_BOOTDELAY
+    push r2
+    call cmos_read
+    pop r2
+    add r0, r0, r2
+    cmpi r0, 0
+    jge .delay_max
+    movi r0, 9
+    jmp .delay_setzen
+.delay_max:
+    cmpi r0, 9
+    jle .delay_setzen
+    movi r0, 0
+.delay_setzen:
+    movi r10, CM_BOOTDELAY
+    mov r11, r0
+    call cmos_write
+    jmp .done
+.xsave:
+    movi r10, CM_SAVE
+    movi r11, 1
+    call cmos_write
+    li r1, s_set_saved
+    call setup_message
+    movi r0, 1
+    stwa SETUP_ENDE, r0
+    jmp .done
+.xdrop:
+    call setup_restore
+    li r1, s_set_cancel
+    call setup_message
+    movi r0, 1
+    stwa SETUP_ENDE, r0
+    jmp .done
+.evclr:
+    call ev_leeren
+    li r1, s_ev_geleert
+    call setup_message
+    jmp .done
+.polbit:
+    subi r7, r7, REG_POL0             ; Registernummer -> Bitnummer
+    movi r1, 1
+    shl r1, r1, r7
+    call pol_umschalten
+    call pw_sichern                   ; Richtlinien gelten sofort
+    call firma_veroeffentlichen
     jmp .done
 .trust:
     call secure_summe                 ; aktuelles Abbild durchrechnen
@@ -959,6 +1088,42 @@ setup_value:
     jz .action
     cmpi r6, REG_PWSTATE
     jz .pwstate
+    cmpi r6, REG_COTEXT
+    jz .action
+    cmpi r6, REG_COBLK
+    jz .action
+    cmpi r6, REG_COCLR
+    jz .coclr
+    cmpi r6, REG_PWUSET
+    jz .action
+    cmpi r6, REG_PWUCLR
+    jz .action
+    cmpi r6, REG_PWUSTATE
+    jz .pwustate
+    cmpi r6, REG_EVCLR
+    jz .action
+    cmpi r6, REG_EXITSAVE
+    jz .action
+    cmpi r6, REG_EXITDROP
+    jz .action
+    cmpi r6, REG_DELAY
+    jz .delayv
+    cmpi r6, REG_INVSER
+    jz .invser
+    cmpi r6, REG_INVBOOT
+    jz .invboot
+    cmpi r6, REG_INVMIN
+    jz .invmin
+    cmpi r6, REG_EV0
+    jl .kein_ev
+    cmpi r6, REG_EV7
+    jle .evzeile
+.kein_ev:
+    cmpi r6, REG_POL0
+    jl .kein_polv
+    cmpi r6, REG_POL4
+    jle .polv
+.kein_polv:
     cmpi r6, REG_BIOSLEN
     jz .bioslen
     cmpi r6, REG_BIOSSUM
@@ -1017,6 +1182,117 @@ setup_value:
     jmp .done
 .pw_nein:
     li r1, s_pw_notinst
+    mov r2, r4
+    call vid_puts
+    jmp .done
+
+.pwustate:
+    push r4
+    call pwu_gesetzt
+    pop r4
+    cmpi r0, 0
+    jz .pwu_nein
+    li r1, s_pw_inst
+    mov r2, r4
+    call vid_puts
+    jmp .done
+.pwu_nein:
+    li r1, s_pw_notinst
+    mov r2, r4
+    call vid_puts
+    jmp .done
+
+; --- B1: eine Zeile des Ereignisspeichers -------------------------------
+.evzeile:
+    subi r6, r6, REG_EV0
+    mov r1, r6
+    mov r2, r4
+    call ev_zeile_zeigen
+    jmp .done
+
+; --- B3: Inventar -------------------------------------------------------
+.invser:
+    li r1, TXT_BUF
+    push r4
+    li r2, NV_SERIAL
+    push r1
+    mov r1, r2
+    li r2, TXT_BUF
+    movi r3, 15
+    call nv_str_lesen
+    pop r1
+    pop r4
+    li r1, TXT_BUF
+    mov r2, r4
+    call vid_puts
+    jmp .done
+.invboot:
+    push r4
+    movi r1, NV_BOOTS
+    call nv_read32
+    pop r4
+    mov r1, r0
+    mov r2, r4
+    call vid_putn
+    jmp .done
+.delayv:
+    movi r10, CM_BOOTDELAY
+    push r4
+    call cmos_read
+    pop r4
+    mov r1, r0
+    mov r2, r4
+    call vid_putn
+    li r1, s_sekunden
+    mov r2, r4
+    call vid_puts
+    jmp .done
+.invmin:
+    push r4
+    movi r1, NV_MINUTES
+    call nv_read32
+    pop r4
+    mov r1, r0
+    mov r2, r4
+    call vid_putn
+    li r1, s_minuten
+    mov r2, r4
+    call vid_puts
+    jmp .done
+
+; --- Ein Bit des Schalterworts als Enabled/Disabled ----------------------
+.polv:
+    subi r6, r6, REG_POL0
+    movi r1, 1
+    shl r1, r1, r6
+    push r4
+    call pol_frage
+    pop r4
+    cmpi r0, 0
+    jz .polv_aus
+    li r1, s_on
+    mov r2, r4
+    call vid_puts
+    jmp .done
+.polv_aus:
+    li r1, s_off
+    mov r2, r4
+    call vid_puts
+    jmp .done
+
+; --- Wurde die Knopfzelle gezogen? --------------------------------------
+.coclr:
+    push r4
+    call intrusion_frage
+    pop r4
+    cmpi r0, 0
+    jz .coclr_nein
+    li r1, s_co_yes
+    mov r2, r4
+    call vid_puts
+    jmp .done
+.coclr_nein:
+    li r1, s_co_no
     mov r2, r4
     call vid_puts
     jmp .done
@@ -1378,15 +1654,18 @@ setup_message:
 ; --- Die vier Reiter -----------------------------------------------------
 ;  je Reiter: Zeiger auf die Eintragstabelle, Anzahl der Zeilen
 setup_tabs:
-    .dw tab_main,     7
+    .dw tab_main,     8
     .dw tab_hardware, 5
     .dw tab_cooling,  6
     .dw tab_security, 4
-    .dw tab_password, 4
+    .dw tab_password, 8
+    .dw tab_company,  12
+    .dw tab_events,   10
     .dw tab_firmware, 5
+    .dw tab_exit,     4
 
 setup_tabnamen:
-    .dw s_tab_main, s_tab_hw, s_tab_cool, s_tab_sec, s_tab_pw, s_tab_fw
+    .dw s_tab_main, s_tab_hw, s_tab_cool, s_tab_sec, s_tab_pw, s_tab_comp, s_tab_ev, s_tab_fw, s_tab_exit
 
 ;  je Eintrag: Beschriftung, CMOS-Register, Anzahl Werte, Klartexttabelle
 tab_main:
@@ -1396,6 +1675,7 @@ tab_main:
     .dw s_e_beep,  CM_BEEP,      2, opts_onoff
     .dw s_e_verb,  CM_VERBOSE,   2, opts_verb
     .dw s_e_boot2, CM_BOOTMODE,  2, opts_boot2
+    .dw s_e_delay, REG_DELAY,    0, 0
     .dw s_e_def,   REG_DEFAULTS, 0, 0
 
 tab_hardware:
@@ -1414,7 +1694,7 @@ tab_cooling:
     .dw s_e_tmax,  REG_TMAX,     0, 0
 
 tab_security:
-    .dw s_e_sec,   CM_SECURE,    2, opts_onoff
+    .dw s_e_sec,   CM_SECURE,    3, opts_secure
     .dw s_e_sum,   REG_SUM,      0, 0
     .dw s_e_trust, REG_TRUST,    0, 0
     .dw s_e_secinfo, REG_INFO,   0, 0
@@ -1423,7 +1703,37 @@ tab_password:
     .dw s_e_pwstate, REG_PWSTATE, 0, 0
     .dw s_e_pwset,   REG_PWSET,   0, 0
     .dw s_e_pwclr,   REG_PWCLR,   0, 0
+    .dw s_e_pwustate, REG_PWUSTATE, 0, 0
+    .dw s_e_pwuset,  REG_PWUSET,  0, 0
+    .dw s_e_pwuclr,  REG_PWUCLR,  0, 0
     .dw s_e_pwinfo,  REG_INFO,    0, 0
+    .dw s_e_pwuinfo, REG_INFO,    0, 0
+
+tab_company:
+    .dw s_e_cotag,  REG_POL0,   0, 0
+    .dw s_e_cotext, REG_COTEXT, 0, 0
+    .dw s_e_cocc,   REG_POL1,   0, 0
+    .dw s_e_conet,  REG_POL2,   0, 0
+    .dw s_e_copw,   REG_POL3,   0, 0
+    .dw s_e_codisk, REG_POL4,   0, 0
+    .dw s_e_coblk,  REG_COBLK,  0, 0
+    .dw s_e_coclr,  REG_COCLR,  0, 0
+    .dw s_e_invser, REG_INVSER, 0, 0
+    .dw s_e_invbt,  REG_INVBOOT,0, 0
+    .dw s_e_invmin, REG_INVMIN, 0, 0
+    .dw s_e_coinfo, REG_INFO,   0, 0
+
+tab_events:
+    .dw s_e_ev1, REG_EV0,   0, 0
+    .dw s_e_ev2, REG_EV0+1, 0, 0
+    .dw s_e_ev3, REG_EV0+2, 0, 0
+    .dw s_e_ev4, REG_EV0+3, 0, 0
+    .dw s_e_ev5, REG_EV0+4, 0, 0
+    .dw s_e_ev6, REG_EV0+5, 0, 0
+    .dw s_e_ev7, REG_EV0+6, 0, 0
+    .dw s_e_ev8, REG_EV0+7, 0, 0
+    .dw s_e_evclr, REG_EVCLR, 0, 0
+    .dw s_e_evinfo, REG_INFO, 0, 0
 
 tab_firmware:
     .dw s_e_blen,  REG_BIOSLEN,  0, 0
@@ -1431,6 +1741,12 @@ tab_firmware:
     .dw s_e_flash, REG_FLASH,    0, 0
     .dw s_e_frest, REG_RESTORE,  0, 0
     .dw s_e_finfo, REG_INFO,     0, 0
+
+tab_exit:
+    .dw s_e_xsave, REG_EXITSAVE, 0, 0
+    .dw s_e_xdrop, REG_EXITDROP, 0, 0
+    .dw s_e_def,   REG_DEFAULTS, 0, 0
+    .dw s_e_xinfo, REG_INFO,     0, 0
 
 ; Feldtabellen: CMOS-Register, kleinster Wert, groesster Wert, Name
 felder_zeit:
@@ -1443,6 +1759,7 @@ felder_datum:
     .dw CM_YEAR,  0, 99, s_f_jahr
 
 opts_onoff:  .dw s_off, s_on
+opts_secure: .dw s_off, s_audit, s_enforce
 opts_fan:    .dw s_fan0, s_fan1, s_fan2
 opts_boot:   .dw s_boot0, s_boot1, s_boot2
 opts_speed:  .dw s_spd0, s_spd1, s_spd2, s_spd3, s_spd4
@@ -1471,6 +1788,10 @@ s_e_boot2:   .db "Boot To", 0
 s_bm0:       .db "Desktop", 0
 s_bm1:       .db "Console", 0
 s_e_def:     .db "Load Setup Defaults", 0
+s_e_delay:   .db "Boot Delay", 0
+s_e_xsave:   .db "Save Changes and Exit", 0
+s_e_xdrop:   .db "Discard Changes and Exit", 0
+s_e_xinfo:   .db "The same as F10 and ESC -- here so you can see them", 0
 s_e_mem:     .db "Installed Memory", 0
 s_e_disk:    .db "Primary Master", 0
 s_e_vga:     .db "Display Adapter", 0
@@ -1484,10 +1805,42 @@ s_e_sec:     .db "Secure Boot", 0
 s_e_sum:     .db "Boot Image Checksum", 0
 s_e_trust:   .db "Trust Current Boot Image", 0
 s_e_secinfo: .db "Halts at boot if BIOS or kernel were changed", 0
+s_e_cotag:   .db "Owner Tag", 0
+s_e_cotext:  .db "Owner Text", 0
+s_e_cocc:    .db "Block Compiler", 0
+s_e_conet:   .db "Block Network", 0
+s_e_copw:    .db "Require Login Password", 0
+s_e_codisk:  .db "Boot From Internal Disk Only", 0
+s_e_coblk:   .db "Blocked Programs", 0
+s_e_coclr:   .db "Configuration Cleared", 0
+s_e_invser:  .db "Serial Number", 0
+s_e_invbt:   .db "Power-On Count", 0
+s_e_invmin:  .db "Operating Time", 0
+s_e_coinfo:  .db "The system reads these at every start", 0
+s_co_yes:    .db "Yes -- settings were reset", 0
+s_co_no:     .db "No", 0
+s_a6_fest:   .db "Boot source is locked by system policy (Company > Boot From Internal Disk Only).", 0
+s_ev_geleert:.db "Event log cleared.", 0
+s_minuten:   .db " min", 0
+s_sekunden:  .db " s", 0
+s_e_ev1:     .db "1", 0
+s_e_ev2:     .db "2", 0
+s_e_ev3:     .db "3", 0
+s_e_ev4:     .db "4", 0
+s_e_ev5:     .db "5", 0
+s_e_ev6:     .db "6", 0
+s_e_ev7:     .db "7", 0
+s_e_ev8:     .db "8", 0
+s_e_evclr:   .db "Clear Event Log", 0
+s_e_evinfo:  .db "Newest first. Survives a restart, not a dead battery", 0
 s_e_pwstate: .db "Supervisor Password", 0
 s_e_pwset:   .db "Set / Change Password", 0
 s_e_pwclr:   .db "Clear Password", 0
 s_e_pwinfo:  .db "Guards this setup. Removing the CMOS battery clears it", 0
+s_e_pwustate:.db "Power-On Password", 0
+s_e_pwuset:  .db "Set / Change Power-On Password", 0
+s_e_pwuclr:  .db "Clear Power-On Password", 0
+s_e_pwuinfo: .db "Power-On is asked before booting. Three tries, counted in CMOS", 0
 s_e_blen:    .db "BIOS Image Size", 0
 s_e_bsum:    .db "BIOS Image Checksum", 0
 s_e_flash:   .db "Flash BIOS from File", 0
@@ -1515,6 +1868,9 @@ s_tab_hw:    .db " Hardware ", 0
 s_tab_cool:  .db " Cooling ", 0
 s_tab_sec:   .db " Security ", 0
 s_tab_pw:    .db " Password ", 0
+s_tab_comp:  .db " Company ", 0
+s_tab_ev:    .db " Event Log ", 0
+s_tab_exit:  .db " Exit ", 0
 s_tab_fw:    .db " Firmware ", 0
 
 s_fan0:      .db "Automatic", 0
@@ -1530,6 +1886,8 @@ s_vgatyp:    .db "TB-VGA 640x400, 256 colours", 0
 
 s_on:        .db "Enabled", 0
 s_off:       .db "Disabled", 0
+s_audit:     .db "Audit (warn only)", 0
+s_enforce:   .db "Enforce (halt)", 0
 s_boot0:     .db "Hard Disk 0", 0
 s_boot1:     .db "Floppy (not installed)", 0
 s_boot2:     .db "Network (not installed)", 0

@@ -15,7 +15,8 @@ from collections import deque
 from hardware.isa import (
     GFX_H, GFX_W, IRQ_KBD, IRQ_MOUSE, IRQ_TIMER, PORT_BLT_BG, PORT_BLT_CHR,
     PORT_BLT_CMD, PORT_BLT_COL, PORT_BLT_H, PORT_BLT_SRC, PORT_BLT_W,
-    PORT_BLT_X, PORT_BLT_Y, PORT_CMOS_DATA, PORT_CMOS_IDX, PORT_DISK_ADDR,
+    PORT_BLT_X, PORT_BLT_Y, PORT_CMOS_DATA, PORT_CMOS_IDX,
+    PORT_NVRAM_IDX, PORT_NVRAM_DATA, PORT_DISK_ADDR,
     PORT_DISK_CMD, PORT_DISK_COUNT, PORT_DISK_LBA, PORT_DISK_SIZE,
     PORT_DISK_STATUS, PORT_FAN, PORT_FANMODE, PORT_GFX_DOPPEL,
     PORT_GFX_TAUSCH, PORT_BLT_ZOOM, PORT_DMA_SRC, PORT_DMA_DST,
@@ -541,6 +542,10 @@ KEY_UP, KEY_DOWN, KEY_LEFT, KEY_RIGHT = 0x48, 0x50, 0x4B, 0x4D
 KEY_F1, KEY_F2, KEY_F10, KEY_DEL = 0x3B, 0x3C, 0x44, 0x53
 KEY_HOME, KEY_END, KEY_PGUP, KEY_PGDN = 0x47, 0x4F, 0x49, 0x51
 KEY_INS, KEY_F5 = 0x52, 0x3F
+# F8 is the classic way into a BIOS boot menu. F12 would be the other one --
+# but that key belongs to the window here (the overlay with clock speed and
+# frame rate) and never reaches the virtual machine.
+KEY_F8 = 0x42
 
 
 # ---------------------------------------------------------------------------
@@ -847,6 +852,58 @@ class CMOS:
 
 
 # ---------------------------------------------------------------------------
+# NVRAM -- the second battery-backed memory
+# ---------------------------------------------------------------------------
+
+class NVRAM:
+    """256 bytes that survive a restart. Its own file, its own ports.
+
+    Why a second chip rather than simply a larger CMOS: the 64 bytes at the
+    clock are a piece of real PC history -- address width, checksum and
+    register layout all hang off them, and a company BIOS needs room for
+    things that never fit there (32 bytes of owner text, eight events,
+    inventory data). Real mainboards took exactly the same step.
+
+    Every write is saved immediately. That is less tidy than a collect
+    command like CM_SAVE, but right here: the event log records things like
+    "Secure Boot halted", and after that there is no orderly save any more.
+    """
+
+    GROESSE = 256
+
+    def __init__(self, path):
+        self.path = path
+        self.data = bytearray(self.GROESSE)
+        self.index = 0
+        if os.path.exists(path):
+            with open(path, "rb") as f:
+                d = f.read(self.GROESSE)
+                self.data[:len(d)] = d
+
+    def save(self):
+        try:
+            os.makedirs(os.path.dirname(self.path), exist_ok=True)
+            with open(self.path, "wb") as f:
+                f.write(self.data)
+        except OSError:
+            pass                      # a full disk must not halt the machine
+
+    def port_out(self, port, value):
+        if port == PORT_NVRAM_IDX:
+            self.index = value & 0xFF
+        elif port == PORT_NVRAM_DATA:
+            self.data[self.index] = value & 0xFF
+            self.save()
+
+    def port_in(self, port):
+        if port == PORT_NVRAM_IDX:
+            return self.index
+        if port == PORT_NVRAM_DATA:
+            return self.data[self.index]
+        return 0
+
+
+# ---------------------------------------------------------------------------
 # Temperature and cooling
 # ---------------------------------------------------------------------------
 
@@ -1086,6 +1143,7 @@ class Flash:
     ZU_GROSS    = 3
     KEINE_SICHERUNG = 4
     SCHREIBFEHLER   = 5
+    GESPERRT        = 6
 
     def __init__(self, rom_path):
         self.rom_path = rom_path
@@ -1104,6 +1162,15 @@ class Flash:
         # A pending permanent flash request. The firmware will prompt in
         # red on the next boot, before anything gets written.
         self.wunsch = False
+        # The lock latch (command 10). While it is set, burning and
+        # restoring refuse service -- and they do so HERE in the chip, not in
+        # Setup. That is the difference that matters: P_FLASH_CMD is an
+        # ordinary port, and the TB-32 has no port permissions. A switch in
+        # Setup would only bind Setup; any program in the running system
+        # could still burn. A latch in the chip binds everyone. It is cleared
+        # exclusively by power_on(), that is by a real restart -- exactly how
+        # the lock bit of a real chipset works.
+        self.gesperrt = False
 
     def port_out(self, port, value):
         if port == PORT_FLASH_ADDR:
@@ -1135,7 +1202,16 @@ class Flash:
             self.bus.write_block(self.ziel, self.puffer)
             return self.OK
 
+        if cmd == 10:                                  # lock the chip until reboot
+            self.gesperrt = True
+            return self.OK
+
+        if cmd == 11:                                  # is it locked?
+            return 1 if self.gesperrt else 0
+
         if cmd == 3:                                   # burn
+            if self.gesperrt:
+                return self.GESPERRT
             if not self.puffer:
                 return self.KEIN_PUFFER
             if len(self.puffer) > ROM_SIZE:
@@ -1161,6 +1237,11 @@ class Flash:
             return self.OK
 
         if cmd == 6:                                   # only for the next boot
+            # This falls under the lock too. Otherwise it could be bypassed
+            # in one move: register an image for the next boot, hit reset --
+            # and on the way up the latch is open again.
+            if self.gesperrt:
+                return self.GESPERRT
             if not self.puffer:
                 return self.KEIN_PUFFER
             self.einmal = self.puffer
@@ -1172,6 +1253,8 @@ class Flash:
             return self.OK
 
         if cmd == 8:                                   # request a permanent flash
+            if self.gesperrt:                          # same route via a restart
+                return self.GESPERRT
             if not self.puffer:
                 return self.KEIN_PUFFER
             self.wunsch = True
@@ -1181,6 +1264,8 @@ class Flash:
             return 1 if self.wunsch else 0
 
         if cmd == 4:                                   # restore backup
+            if self.gesperrt:
+                return self.GESPERRT
             if not os.path.exists(self.backup_path):
                 return self.KEINE_SICHERUNG
             try:

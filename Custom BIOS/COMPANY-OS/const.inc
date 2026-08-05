@@ -27,20 +27,74 @@
 ; Bei echten PCs heisst das SMBIOS: die Firmware legt eine Tabelle in den
 ; Speicher, das System liest sie aus.
 .equ BDA_FIRMA,     0x00000500      ; 32 Byte Eigentuemer-Eintrag
-.equ BDA_POLICY,    0x00000524      ; Schalter: Bit 0 = Eintrag anzeigen
+.equ BDA_POLICY,    0x00000524      ; Schalterwort, Belegung wie CM_POLICY
+.equ BDA_BLOCK,     0x00000528      ; gesperrte Programme im Klartext,
+                                    ; 16 Plaetze a 16 Byte, leerer Name = Ende
+.equ BDA_INVENT,    0x00000628      ; Inventar: Seriennummer (16), Starts (4),
+                                    ; Betriebsminuten (4)
+.equ BDA_BLOCKN,    16              ; so viele Plaetze
+.equ BDA_BLOCKLEN,  256             ; 16 * 16
+.equ BDA_INVLEN,    24
+; Das Pflichtenheft hatte acht Plaetze bis 0x5A8 vorgesehen, weil das Setup
+; ab 0x600 anfaengt. Sechzehn Programme brauchen aber sechzehn Plaetze, sonst
+; koennte man mehr sperren, als beim System ankommt -- eine Sperre, die
+; stillschweigend danebengeht, ist schlimmer als keine. Also den Rat aus dem
+; Pflichtenheft befolgt und den Arbeitsplatz der Firmware nach 0x700
+; verschoben. Von 0x500 bis 0x6FF gehoert jetzt alles dem, was das BIOS dem
+; Betriebssystem erzaehlt; darueber faengt sein eigenes Kratzpapier an.
+
+; --- Der zweite batteriegepufferte Speicher (NVRAM, 256 Byte) -------------
+; Die Knopfzelle an der Uhr ist voll. Was mehr Platz braucht -- Firmentext,
+; Ereignisspeicher, Inventar -- liegt hier.
+.equ P_NVRAM_IDX,   0x0072
+.equ P_NVRAM_DATA,  0x0073
+
+.equ NV_MAGIC,      0x00            ; 0x4E = eingerichtet
+.equ NV_FIRMA,      0x01            ; 32 Byte Firmentext
+.equ NV_SERIAL,     0x21            ; 16 Byte Seriennummer
+.equ NV_BOOTS,      0x31            ; 4 Byte: Anzahl Starts
+.equ NV_MINUTES,    0x35            ; 4 Byte: Betriebsminuten
+.equ NV_LOGHEAD,    0x39            ; naechster Platz im Ringpuffer (0..7)
+.equ NV_LOG,        0x40            ; 8 Eintraege a 8 Byte = 64 Byte
+.equ NV_LOGLEN,     8
+.equ NV_LOGCNT,     8
+.equ NV_NAME_MAGIC, 0x4E
+
+; Ereignisarten fuer den Ereignisspeicher
+.equ EV_BADPW,      1               ; falsches Passwort
+.equ EV_CLEARED,    2               ; CMOS war geleert
+.equ EV_FLASH,      3               ; BIOS geflasht
+.equ EV_SECURE,     4               ; Secure Boot hat angehalten
+.equ EV_DEFAULTS,   5               ; Standardwerte geladen
+.equ EV_LOCKOUT,    6               ; nach zu vielen Fehlversuchen gesperrt
+.equ EV_BOOT,       7               ; normal gestartet
+.equ EV_BOOTSRC,    8               ; Startquelle war verstellt, zurueckgesetzt
+
+; --- Flash-Baustein: die Sperre -------------------------------------------
+.equ FLASH_LOCK,    10              ; Chip sperren, loest nur der Neustart
+.equ FLASH_ISLOCK,  11              ; nachfragen: 1 = gesperrt
 
 .equ BDA_SCRATCH,   0x000004B0      ; 64 Byte Kratzpapier fur Zahlenausgabe
 ; Eigener Platz fuer das Setup. NICHT in BDA_SCRATCH legen -- dort formatiert
 ; vid_putn seine Ziffern hin, und dann waere der gemerkte Reiter nach der
 ; ersten ausgegebenen Zahl weg.
-.equ SETUP_TAB,     0x00000600      ; aktiver Reiter
-.equ SETUP_ROW,     0x00000604      ; markierte Zeile
-.equ SETUP_SAVE,    0x00000610      ; 16 Byte CMOS-Sicherung fuer ESC
+.equ SETUP_TAB,     0x00000700      ; aktiver Reiter
+.equ SETUP_ROW,     0x00000704      ; markierte Zeile
+.equ SETUP_SAVE,    0x00000710      ; 16 Byte CMOS-Sicherung fuer ESC
 ; TB-LOCK: die beiden Eingabepuffer fuer das Passwort. Sie liegen hinter
 ; SETUP_SAVE (0x610..0x61F) und damit weiterhin auf dem Kratzpapier, das
 ; allein der Firmware gehoert -- der Kernel faengt erst bei 0x10000 an.
-.equ PW_BUF1,       0x00000620      ; 32 Byte: das eingetippte Passwort
-.equ PW_BUF2,       0x00000640      ; 32 Byte: die Wiederholung
+.equ PW_BUF1,       0x00000720      ; 32 Byte: das eingetippte Passwort
+.equ PW_BUF2,       0x00000740      ; 32 Byte: die Wiederholung
+; Zustand der gemeinsamen Eingaberoutine. Drei Speicherworte statt dreier
+; Register: die Tippschleife braucht schon vier, und der TB-32 hat sechzehn.
+.equ TE_MAX,        0x00000760      ; hoechstens so viele Zeichen
+.equ TE_SICHTBAR,   0x00000764      ; 0 = Sterne, 1 = Text zeigen
+.equ TE_BUF,        0x00000768      ; wohin getippt wird
+.equ TXT_BUF,       0x00000770      ; 32 Byte Arbeitsplatz fuer den Firmentext
+.equ NV_WAR_DA,     0x00000790      ; war das NVRAM schon eingerichtet?
+.equ SETUP_ENDE,    0x00000798      ; Reiter Exit: Setup verlassen
+.equ INTRUSION_FLAG,0x00000794      ; wurde die Knopfzelle gezogen? (nur dieser Start)
 .equ BDA_SBHEAD,    0x000004A8      ; Ringpuffer der Bildschirmhistorie
 .equ BDA_SBCOUNT,   0x000004AC
 
@@ -190,7 +244,36 @@
 .equ CM_PWSUM1,     0x22            ; niedrigstes zuerst
 .equ CM_PWSUM2,     0x23
 .equ CM_PWSUM3,     0x24
+
+; --- COMPANY-OS: Richtlinien, Sperrliste, zweites Passwort ----------------
+; Elf Plaetze sind unter der Pruefsumme frei (0x1E-0x1F und 0x25-0x2D).
+; Neun davon gehen hier drauf, zwei bleiben Reserve. Was oberhalb von 0x2D
+; laege, fiele aus der Pruefsumme heraus -- es ueberlebte zwar den Neustart,
+; aber ein leergeraeumtes CMOS fiele niemandem mehr auf.
+.equ CM_INTRUSION,  0x1E            ; 0xC7 = von COMPANY-OS eingerichtet
+.equ CM_BOOTDELAY,  0x1F            ; zusaetzliche Sekunden Bedenkzeit (0..9)
+.equ CM_POLICY,     0x25            ; Schalterwort, Bits siehe unten
+.equ CM_BLOCK0,     0x26            ; gesperrte Programme, Bits 0-7
+.equ CM_BLOCK1,     0x27            ; ... Bits 8-15
+.equ CM_PWUFLAG,    0x28            ; Power-On-Passwort: 0 keins, 1 gesetzt
+.equ CM_PWUSUM0,    0x29            ; dessen Pruefsumme, vier Byte
+.equ CM_PWUSUM1,    0x2A
+.equ CM_PWUSUM2,    0x2B
+.equ CM_PWUSUM3,    0x2C
+.equ CM_PWTRIES,    0x2D            ; Fehlversuche, ueberlebt den Reset
+
 .equ CM_SAVE,       0x3F            ; Schreiben loest "in Datei sichern" aus
+
+; Bits im Schalterwort CM_POLICY. Dieselbe Belegung liegt spaeter unter
+; BDA_POLICY im Speicher, damit das Betriebssystem sie ohne Umrechnen liest.
+.equ POL_OWNER,     0x01            ; Bit 0: Eigentuemer-Eintrag anzeigen
+.equ POL_NOCC,      0x02            ; Bit 1: kein Compiler
+.equ POL_NONET,     0x04            ; Bit 2: kein Netz
+.equ POL_NEEDPW,    0x08            ; Bit 3: Anmeldung verlangt ein Passwort
+.equ POL_INTDISK,   0x10            ; Bit 4: nur von der eigenen Platte starten
+
+.equ PW_INTRUSION_MAGIC, 0xC7
+.equ PW_MAXTRIES,   3               ; Fehlversuche, dann bleibt der Rechner stehen
 
 ; --- Tastatur-Scancodes ----------------------------------------------------
 .equ K_ESC,         0x01
@@ -200,6 +283,7 @@
 .equ K_F1,          0x3B
 .equ K_F2,          0x3C
 .equ K_F5,          0x3F
+.equ K_F8,          0x42
 .equ K_F10,         0x44
 .equ K_HOME,        0x47
 .equ K_UP,          0x48

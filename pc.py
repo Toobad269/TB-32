@@ -243,7 +243,8 @@ SCANCODES = {
     pygame.K_UP: dev.KEY_UP, pygame.K_DOWN: dev.KEY_DOWN,
     pygame.K_LEFT: dev.KEY_LEFT, pygame.K_RIGHT: dev.KEY_RIGHT,
     pygame.K_F1: dev.KEY_F1, pygame.K_F2: dev.KEY_F2,
-    pygame.K_F5: dev.KEY_F5, pygame.K_F10: dev.KEY_F10,
+    pygame.K_F5: dev.KEY_F5, pygame.K_F8: dev.KEY_F8,
+    pygame.K_F10: dev.KEY_F10,
     pygame.K_DELETE: dev.KEY_DEL, pygame.K_HOME: dev.KEY_HOME,
     pygame.K_END: dev.KEY_END, pygame.K_PAGEUP: dev.KEY_PGUP,
     pygame.K_PAGEDOWN: dev.KEY_PGDN, pygame.K_INSERT: dev.KEY_INS,
@@ -620,7 +621,17 @@ def main():
     pygame.key.start_text_input()        # get characters via the text event
     monitor = Monitor(scale)
     speaker = PCSpeaker()
-    m = Machine(ROOT)
+    # --bios <file> boots the machine from a different ROM chip without
+    # touching the real one. That is the right way to try out your own BIOS:
+    # Machine has always supported it, pc.py just never passed it through.
+    # Flashing comes later, once you like what you see.
+    rom = None
+    if "--bios" in sys.argv:
+        rom = sys.argv[sys.argv.index("--bios") + 1]
+        if not os.path.exists(rom):
+            raise SystemExit(f"--bios: {rom} does not exist.")
+        print(f"Booting from {rom} -- the chip itself stays untouched.")
+    m = Machine(ROOT, rom=rom)
     m.gehaeuse = True                         # restarts go through the splash screen
     m.flash.waehler = bios_datei_waehlen      # Setup > Firmware > Flash BIOS
 

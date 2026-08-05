@@ -63,21 +63,59 @@ def bios_kopf_stempeln(pfad):
     return bytes(roh), h
 
 
-def build():
+SERIEN_BIOS = "TOOBAD BIOS"        # name prefix of the stock BIOS
+
+
+def fremdes_bios(pfad):
+    """Does the chip carry a BIOS that did not come from firmware/bios.asm?
+
+    The ROM chip IS the file firmware/bios.bin, and build.py rewrites it on
+    every run. Anyone who had flashed their own BIOS found the stock one
+    back afterwards -- and it looked as if the flashed one was "sometimes
+    there, sometimes gone". On a real mainboard this cannot happen, because
+    the compiler has no access to the flash chip.
+
+    So we look first at the name the chip gives for itself (header, offset
+    0x10). If that is not the stock BIOS, it stays untouched."""
+    if not os.path.exists(pfad):
+        return None
+    with open(pfad, "rb") as f:
+        feld = f.read(0x30)[0x10:0x30]
+    if len(feld) < 32 or b"\x00" not in feld:
+        return None                          # old image without a name field
+    name = feld.split(b"\x00", 1)[0]
+    try:
+        name = name.decode("ascii")
+    except UnicodeDecodeError:
+        return None
+    if not name or not name.isprintable():
+        return None
+    return None if name.startswith(SERIEN_BIOS) else name
+
+
+def build(bios_neu=False):
     fw = os.path.join(ROOT, "firmware")
     sysdir = os.path.join(ROOT, "system")
     diskdir = os.path.join(ROOT, "disk")
     os.makedirs(diskdir, exist_ok=True)
 
     # --- 1. BIOS -----------------------------------------------------------
-    bios, syms = asm_file(os.path.join(fw, "bios.asm"),
-                          os.path.join(fw, "bios.bin"),
-                          os.path.join(fw, "bios.sym"))
-    if len(bios) > ROM_SIZE:
-        raise SystemExit("BIOS does not fit into ROM!")
-    bios, summe = bios_kopf_stempeln(os.path.join(fw, "bios.bin"))
-    print(f"  BIOS    {len(bios):6d} bytes  ({len(bios)*100//ROM_SIZE}% of ROM, "
-          f"checksum {summe:08X})")
+    biospfad = os.path.join(fw, "bios.bin")
+    fremd = None if bios_neu else fremdes_bios(biospfad)
+    if fremd:
+        with open(biospfad, "rb") as f:
+            bios = f.read()
+        print(f"  BIOS    {len(bios):6d} bytes  (chip carries »{fremd}« -- "
+              f"left untouched)")
+        print(f"          To reset it: python3 build.py --bios-neu")
+    else:
+        bios, syms = asm_file(os.path.join(fw, "bios.asm"), biospfad,
+                              os.path.join(fw, "bios.sym"))
+        if len(bios) > ROM_SIZE:
+            raise SystemExit("BIOS does not fit into ROM!")
+        bios, summe = bios_kopf_stempeln(biospfad)
+        print(f"  BIOS    {len(bios):6d} bytes  ({len(bios)*100//ROM_SIZE}% of ROM, "
+              f"checksum {summe:08X})")
 
     # The smallest BIOS that boots the machine -- a template for building
     # your own. It gets compiled with every build so it doesn't rot.
@@ -314,7 +352,9 @@ def build():
 if __name__ == "__main__":
     print("Building TOOBAD TB-32 ...")
     try:
-        build()
+        # --bios-neu resets the chip to the stock BIOS. Without the flag a
+        # self-flashed BIOS is left in place.
+        build(bios_neu="--bios-neu" in sys.argv)
     except AsmError as e:
         print(f"\nASSEMBLER ERROR: {e}")
         sys.exit(1)

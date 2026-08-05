@@ -262,6 +262,15 @@ PORT_MOUSE_WHEEL = 0x0063   # mouse wheel: reads the delta and resets it
 PORT_CMOS_IDX    = 0x0070   # CMOS/real-time clock: select address
 PORT_CMOS_DATA   = 0x0071   # ... and read/write
 
+# The second, larger battery-backed memory.
+#
+# The clock CMOS holds 64 bytes and is full -- passwords, policy switches and
+# the block list just about fit, the owner text, event log and inventory do
+# not. Real mainboards took the same route: the 64 bytes at the clock stayed,
+# everything else moved into a chip of its own.
+PORT_NVRAM_IDX   = 0x0072   # NVRAM: select address (0..255)
+PORT_NVRAM_DATA  = 0x0073   # ... and read/write
+
 # Temperature sensor and fan control -- like the chipset of a real
 # mainboard. If it gets too hot, the hardware throttles the clock on its own.
 PORT_TEMP        = 0x00A0   # current temperature, in tenths of a degree

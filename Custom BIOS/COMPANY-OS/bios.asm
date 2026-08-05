@@ -49,6 +49,24 @@ bios_start:                           ; 0x30  ab hier der Code
     sti
     call flash_pruefen                ; liegt ein Flashwunsch an?
     call post
+    call intrusion_melden             ; wurde die Knopfzelle gezogen?
+    ; --- A7: den Chip zusperren, als LETZTES vor dem Booten ---------------
+    ; Bis hierher durfte die Firmware selbst noch flashen (Setup > Firmware).
+    ; Ab jetzt kommt niemand mehr an den Baustein -- auch kein Programm im
+    ; laufenden System, das einfach auf P_FLASH_CMD schreibt. Das Latch sitzt
+    ; im Bauteil und nicht im Setup, und es loest ausschliesslich der
+    ; naechste Neustart. Genau so macht es das Lock-Bit eines echten
+    ; Chipsatzes.
+    ; --- A1: das Power-On-Passwort, VOR dem Bootversuch -------------------
+    ; Erst hier, nicht frueher: bis zum Ende des POST soll der Administrator
+    ; noch mit DEL ins Setup kommen, ohne das Benutzerpasswort zu kennen.
+    call pwu_tor
+    call boot_quelle_sichern          ; A6
+
+    movi r10, FLASH_LOCK
+    out P_FLASH_CMD, r10
+    movi r1, EV_BOOT
+    call ev_log
     call boot
     ; Kommen wir hier an, gab es kein bootfaehiges Medium.
     li r1, s_nosys
@@ -587,28 +605,16 @@ print:
 ; ===========================================================================
 
 post:
-    ; --- Der Eigentuemer-Eintrag ------------------------------------------
-    ; Er wandert aus dem Abbild in den Speicher, damit das Betriebssystem
-    ; ihn findet. Bei echten PCs macht das SMBIOS genauso: die Firmware legt
-    ; eine Tabelle hin, das System liest sie.
-    li r10, s_firma
-    li r11, BDA_FIRMA
-    movi r12, 0
-.firma_kopieren:
-    ldb r13, [r10]
-    stb [r11], r13
-    cmpi r13, 0
-    jz .firma_fertig
-    addi r10, r10, 1
-    addi r11, r11, 1
-    addi r12, r12, 1
-    cmpi r12, 31
-    jl .firma_kopieren
-    movi r13, 0
-    stb [r11], r13
-.firma_fertig:
-    movi r2, 1                        ; Bit 0: Eintrag anzeigen
-    stwa BDA_POLICY, r2
+    ; --- Die Firmenangaben ------------------------------------------------
+    ; Der Eigentuemer-Eintrag, das Schalterwort, die Sperrliste und das
+    ; Inventar wandern in den Speicher, damit das Betriebssystem sie findet.
+    ; Bei echten PCs macht das SMBIOS genauso: die Firmware legt eine Tabelle
+    ; hin, das System liest sie. Der Text steht dabei nicht mehr fest im
+    ; Abbild, sondern im NVRAM -- einstellbar unter Setup > Company.
+    call nv_init
+    call intrusion_pruefen
+    call inv_start_zaehlen
+    call firma_veroeffentlichen
 
     push r6
     push r7
@@ -616,6 +622,11 @@ post:
 
     movi r1, ATTR_NORMAL
     call vid_clear
+    ; B6: der Firmentext, und zwar NACH dem vid_clear. Beim ersten Anlauf
+    ; stand der Aufruf oben bei nv_init -- der Selbsttest raeumte den Text
+    ; eine Zeile spaeter wieder weg, und auf dem Schirm war nie etwas zu
+    ; sehen.
+    call firma_startbild
 
     ; --- Kopfzeile -----------------------------------------------------
     movi r1, 0
@@ -739,6 +750,7 @@ post:
     call cmos_read
     cmpi r0, 0
     jnz .quick
+    call boot_verzoegern              ; C: zusaetzliche Sekunden aus dem Setup
     movi r6, 200                      ; 2 Sekunden Bedenkzeit
     jmp .wait
 .quick:
@@ -756,6 +768,8 @@ post:
     jz .setup
     cmpi r10, K_F2
     jz .setup
+    cmpi r10, K_F8                    ; B4: das Startmenue
+    jz .bootmenue
     call kbd_getkey                   ; andere Taste: wegwerfen
 .nokey:
     ldwa r7, BDA_TICKS
@@ -763,6 +777,10 @@ post:
     jae .fertig
     hlt
     jmp .loop
+.bootmenue:
+    call kbd_getkey
+    call boot_menue
+    jmp .fertig
 .setup:
     call kbd_getkey
     call setup_tor                    ; TB-LOCK: erst das Passwort
@@ -798,6 +816,15 @@ kuehlung_anwenden:
 ;     Ist die Pruefung eingeschaltet und die Summe eine andere als die
 ;     gemerkte, bootet der Rechner NICHT. Genau das ist der Sinn: lieber
 ;     stehenbleiben als etwas Fremdes starten.
+; B2: Secure Boot kennt jetzt drei Stufen statt An/Aus.
+;
+;   0  Disabled          gar nicht pruefen
+;   1  Audit (warn only) pruefen, melden, protokollieren -- und trotzdem starten
+;   2  Enforce (halt)    pruefen und bei Abweichung stehenbleiben
+;
+; Die mittlere Stufe ist die, die man beim Entwickeln am meisten braucht:
+; nach jedem `build.py` stimmt die gemerkte Summe nicht mehr, und man will
+; gewarnt werden statt ausgesperrt. Echte Firmware kennt dieselben drei.
 secure_pruefen:
     push r6
     push r10
@@ -805,14 +832,29 @@ secure_pruefen:
     call cmos_read
     cmpi r0, 0
     jz .raus                          ; ausgeschaltet
+    mov r10, r0                       ; Stufe merken: 1 = Audit, 2 = Enforce
     call secure_gemerkt
     mov r6, r0
     cmpi r6, 0
     jz .raus                          ; noch nie etwas gemerkt
+    push r10
     call secure_summe
+    pop r10
     cmp r0, r6
     jz .gut
 
+    movi r1, EV_SECURE                ; in beiden Stufen protokollieren
+    push r10
+    call ev_log
+    pop r10
+    cmpi r10, 2
+    jz .anhalten
+    ; --- Audit: melden, aber weiterlaufen lassen -------------------------
+    li r1, s_sec_audit
+    call pw_melden
+    jmp .raus
+
+.anhalten:
     ; Abbild veraendert. Nicht einfach anhalten: wer den Kernel absichtlich
     ; neu gebaut hat, muss ins Setup kommen und die neue Summe merken lassen.
     ; Genau so machen es echte Rechner auch -- wer am Geraet steht, darf.
@@ -1026,6 +1068,7 @@ panic:
 .include "video.asm"
 .include "setup.asm"
 .include "passwort.asm"
+.include "firma.asm"
 
 ; ===========================================================================
 ;  Texte
@@ -1051,6 +1094,7 @@ s_sec_bad:    .db "The boot image is not the one this machine trusts.", 0
 s_sec_hint1:  .db "If you rebuilt the system yourself, this is expected.", 0
 s_sec_hint2:  .db "DEL = Setup (Security > Trust Current Boot Image)", 0
 s_sec_halt:   .db "Secure Boot: halted", 0
+s_sec_audit:  .db "Secure Boot (Audit): the boot image changed -- started anyway.", 0
 s_booting:    .db "Starting system ...", 0
 ; Der Eigentuemer. Wer sein eigenes Firmen-BIOS baut, aendert genau diese
 ; Zeile und laesst bauen.py laufen. Hoechstens 31 Zeichen.
