@@ -853,3 +853,50 @@ s_in_head:    .db "CONFIGURATION CLEARED", 0
 s_in_text:    .db "Configuration was cleared -- contact your administrator.", 0
 s_in_taste:   .db "Press any key to continue.", 0
 .align 4
+
+; ===========================================================================
+;  A6 -- nur von der eigenen Platte starten
+;
+;  Der klassische erste Angriff auf einen fremden Rechner ist, ein eigenes
+;  System von woanders zu starten und die Platte in Ruhe auszulesen. Sperrt
+;  man das nicht, waren alle anderen Sperren umsonst: sie stehen ja im
+;  System, das dann gar nicht erst hochkommt.
+;
+;  Beim TB-32 ist die Lage heute besonders: `boot` liest immer Sektor 0 der
+;  Platte, und Floppy wie Netz stehen im Setup als "not installed". Es GIBT
+;  also noch keine zweite Startquelle. Was dieses Bit deshalb tut, ist die
+;  Einstellung festzunageln -- zweifach:
+;
+;    1. Das Setup laesst "Boot Device Priority" nicht mehr aendern.
+;    2. Steht beim Start trotzdem etwas anderes als die Platte drin, wird es
+;       zurueckgesetzt und protokolliert. Das faengt den Weg ab, der am Setup
+;       vorbeifuehrt: jemand schreibt von aussen in cmos.bin.
+;
+;  Kommt spaeter der Netzwerkstart dazu (B5), bewacht dasselbe Bit ihn schon.
+; ===========================================================================
+boot_quelle_sichern:
+    push r6
+    movi r1, POL_INTDISK
+    call pol_frage
+    cmpi r0, 0
+    jz .egal
+
+    movi r10, CM_BOOTDEV
+    call cmos_read
+    cmpi r0, 0
+    jz .egal                          ; steht ohnehin auf der Platte
+
+    movi r10, CM_BOOTDEV              ; zurueck auf die eigene Platte
+    movi r11, 0
+    call cmos_write
+    call pw_sichern
+    movi r1, EV_BOOTSRC
+    call ev_log
+    li r1, s_a6_zurueck
+    call pw_melden
+.egal:
+    pop r6
+    ret
+
+s_a6_zurueck: .db "Boot source was changed -- reset to the internal disk.", 0
+.align 4

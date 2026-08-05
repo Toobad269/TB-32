@@ -304,6 +304,49 @@ def main():
     pruefe("Das Supervisor-Passwort kommt durch das Power-On-Tor",
            "Mounting" in Z3.gesehen or "A:\\>" in Z3.gesehen, Z3.bild())
 
+    # === A6: nur von der eigenen Platte starten =========================
+    # Zwei Wege muessen zu sein: der ueber das Setup und der daran vorbei.
+    print("\n--- A6: die Startquelle ist festgenagelt ------------------------")
+    a6cmos = os.path.join(tmp, "cmos_a6.bin")
+    A = Lauf(chip, a6cmos, platte)
+    A.ins_setup()
+    A.reiter(1)                              # Hardware
+    A.eingabe("DOWN", 0.0)                   # Boot Device Priority
+    A.warte(0.3)
+    A.eingabe("ENTER", 0.4)
+    pruefe("Ohne die Sperre laesst sich die Startquelle aendern",
+           "Hard Disk 0" not in A.bild(), A.bild())
+    A.eingabe("ENTER", 0.4)
+    A.eingabe("ENTER", 0.4)                  # zurueck auf Hard Disk 0
+    A.reiter(4)                              # Company (von Hardware aus)
+    for _ in range(5):
+        A.eingabe("DOWN", 0.0)
+    A.warte(0.3)
+    A.eingabe("ENTER", 0.4)                  # Boot From Internal Disk Only
+    pruefe("Der Schalter laesst sich einschalten", "Enabled" in A.bild(), A.bild())
+    A.eingabe("F10", 1.0)
+
+    B = Lauf(chip, a6cmos, platte)
+    B.ins_setup()
+    B.reiter(1)
+    B.eingabe("DOWN", 0.0)
+    B.warte(0.3)
+    B.eingabe("ENTER", 0.6)
+    pruefe("Jetzt verweigert das Setup die Aenderung",
+           "locked by system policy" in B.gesehen, B.bild())
+    pruefe("... und die Quelle steht weiter auf der Platte",
+           "Hard Disk 0" in B.bild(), B.bild())
+
+    # Der Weg am Setup vorbei: von aussen in cmos.bin schreiben.
+    B.m.cmos.data[0x10] = 2                  # "Network"
+    B.m.cmos.save()
+    C = Lauf(chip, a6cmos, platte)
+    C.warte(6.0)
+    pruefe("Ein von aussen verstelltes CMOS wird beim Start zurueckgesetzt",
+           C.m.cmos.data[0x10] == 0, C.m.cmos.data[0x10])
+    pruefe("... und es steht auf dem Schirm",
+           "Boot source was changed" in C.gesehen, C.bild())
+
     # === 5. A7: die Flash-Sperre ========================================
     print("\n--- A7: der Chip laesst sich aus dem System nicht brennen -------")
     T = Lauf(chip, cmos, platte)

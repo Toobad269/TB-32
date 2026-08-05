@@ -61,6 +61,7 @@ bios_start:                           ; 0x30  ab hier der Code
     ; Erst hier, nicht frueher: bis zum Ende des POST soll der Administrator
     ; noch mit DEL ins Setup kommen, ohne das Benutzerpasswort zu kennen.
     call pwu_tor
+    call boot_quelle_sichern          ; A6
 
     movi r10, FLASH_LOCK
     out P_FLASH_CMD, r10

@@ -68,6 +68,7 @@
 .equ EV_DEFAULTS,   5               ; Standardwerte geladen
 .equ EV_LOCKOUT,    6               ; nach zu vielen Fehlversuchen gesperrt
 .equ EV_BOOT,       7               ; normal gestartet
+.equ EV_BOOTSRC,    8               ; Startquelle war verstellt, zurueckgesetzt
 
 ; --- Flash-Baustein: die Sperre -------------------------------------------
 .equ FLASH_LOCK,    10              ; Chip sperren, loest nur der Neustart

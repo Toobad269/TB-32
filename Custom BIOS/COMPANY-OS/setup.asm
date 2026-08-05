@@ -287,6 +287,16 @@ setup_change:
     pop r1
     add r6, r6, r0                    ; r6 = Zeiger auf den Eintrag
     ldw r7, [r6+4]                    ; r7 = CMOS-Register
+    ; A6: die Startquelle ist festgenagelt, solange das Bit steht.
+    cmpi r7, CM_BOOTDEV
+    jnz .kein_bootdev
+    push r2
+    movi r1, POL_INTDISK
+    call pol_frage
+    pop r2
+    cmpi r0, 0
+    jnz .bootgesperrt
+.kein_bootdev:
     cmpi r7, REG_DEFAULTS
     jz .defaults
     cmpi r7, REG_TRUST
@@ -363,6 +373,10 @@ setup_change:
     jmp .done
 .pwuclr:
     call pwu_loeschen
+    jmp .done
+.bootgesperrt:
+    li r1, s_a6_fest
+    call setup_message
     jmp .done
 .polbit:
     subi r7, r7, REG_POL0             ; Registernummer -> Bitnummer
@@ -1628,6 +1642,7 @@ s_e_coclr:   .db "Configuration Cleared", 0
 s_e_coinfo:  .db "The system reads these at every start", 0
 s_co_yes:    .db "Yes -- settings were reset", 0
 s_co_no:     .db "No", 0
+s_a6_fest:   .db "Boot source is locked by system policy (Company > Boot From Internal Disk Only).", 0
 s_e_pwstate: .db "Supervisor Password", 0
 s_e_pwset:   .db "Set / Change Password", 0
 s_e_pwclr:   .db "Clear Password", 0
