@@ -9,6 +9,33 @@ Die tiefer liegenden Fallen haben zusätzlich einen ausführlichen Eintrag in
 
 ---
 
+## Der Dateidialog ist zurück -- als Dienst des Kernels
+
+Colin: *„früher musste man beim Erstellen einer Datei den Pfad auswählen --
+bitte wieder hinzufügen, und bei jedem Programm die Kernel-Brücke."*
+
+`system/dialog.c` ist wieder da, aber an der richtigen Stelle: **im Kernel,
+für jedes Programm**. So sieht er überall gleich aus, kennt den aktuellen
+Ordner und lässt einen den Platz aussuchen, bevor eine Datei entsteht --
+genau dafür haben die großen Systeme ihren gemeinsamen Öffnen-Dialog.
+
+**Der Rückweg musste umgebaut werden.** Früher rief der Dialog beim
+Auftraggeber eine Funktion auf -- das ging, solange Editor, Paint und Word im
+Kernel standen. Ein eigenständiges Programm kann man nicht anspringen. Jetzt
+legt der Dialog sein Ergebnis hin, und wer gefragt hat, holt es sich ab:
+
+| Aufruf | Bedeutung |
+|---|---|
+| `datei_dialog(modus, endung, vorschlag)` | aufmachen (öffnen / speichern / Bild) |
+| `datei_gewaehlt(puffer)` | 0 = noch offen, 1 = ausgewählt, 2 = abgebrochen |
+
+**Noch nicht fertig:** Der Dialog erscheint, listet die Ordner, nimmt einen
+Namen an und schließt sich -- aber die Übergabe **zurück ins Programm**
+greift noch nicht: der Coder bleibt danach im Auswahlschirm stehen, statt in
+den Editor zu wechseln. Das ist die eine Stelle, die noch fehlt.
+
+---
+
 ## Nachlese zum Speicherfehler -- und drei Kleinigkeiten
 
 Vieles, was Colin an Word meldete („die Größe lässt sich nicht mehr

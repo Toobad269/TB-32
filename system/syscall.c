@@ -281,6 +281,23 @@ int syscall(int fn, int a1, int a2, int a3, int a4) {
     if (fn == 85) { term_push_key(a1); return 0; }
     if (fn == 86) { int d; d = term_dirty; term_dirty = 0; return d; }
     /* Wo steht die Schreibmarke der Schale, und welche Zeile ist wo? */
+    /* --- Der gemeinsame Dateidialog -------------------------------------
+       Er gehoert dem Kernel, nicht den Programmen: nur so sieht er ueberall
+       gleich aus, kennt den aktuellen Ordner und laesst einen den Platz
+       aussuchen, bevor eine Datei entsteht. Genau dafuer haben die grossen
+       Systeme ihren gemeinsamen Oeffnen-Dialog.
+
+       90: aufmachen (Modus 0 = oeffnen, 1 = speichern, 2 = Bild).
+       91: nachfragen -- 0 = noch offen, 1 = ausgewaehlt, 2 = abgebrochen.
+           Bei 1 steht der Name in <a1>, der Ordner ist schon gewechselt. */
+    if (fn == 90) { dlg_oeffne(a1, (char*)a2, (char*)a3); return 0; }
+    if (fn == 91) {
+        int st;
+        st = dlg_status;
+        if (st == 1 && a1) strncpy((char*)a1, dlg_name, 20);
+        if (st) dlg_status = 0;
+        return st;
+    }
     if (fn == 88) return a1 == 0 ? term_x : term_y;
     if (fn == 89) return term_sicht(a1, a2);
     if (fn == 87) {

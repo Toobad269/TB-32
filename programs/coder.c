@@ -740,6 +740,9 @@ char gui_pfad[40];
 char edg_name[20];               /* Dateiname im Editorfenster */
 int  edg_top = 0;                /* erste sichtbare Zeile */
 int  edg_namemode = 0;           /* 1 = der Dateiname wird gerade getippt */
+/* Worauf wir warten, waehrend der Dateidialog offen ist:
+   1 = neue Datei, 2 = speichern unter, 3 = oeffnen. */
+int  edg_warte = 0;
 int  edg_meldung = 0;            /* 0 keine, 1 gespeichert, 2 uebersetzt, 3 Fehler */
 int  edg_build = 0;              /* laeuft gerade ein Uebersetzungslauf? */
 int  edg_ort = 0;                /* 1 = Name und Ordner stehen fest */
@@ -885,14 +888,16 @@ char* edg_neu_text(int i) {
 /* Eine kleine Vorlage, damit man nicht vor einer leeren Seite sitzt. */
 
 char* edg_vorlage(int i) {
-    if (i == 0) return "int main() {\n    print(\"Hello from TOOBAD-OS\\n\");\n    getkey();\n    return 0;\n}\n";
+    if (i == 0) return "
+int main() {\n    print(\"Hello from TOOBAD-OS\\n\");\n    getkey();\n    return 0;\n}\n";
     if (i == 1) return "; TB-32 assembler\nstart:\n    li r1, text\n    movi r0, 1\n    int 0x10\n    hlt\ntext:\n    .db \"Hello\", 0\n";
     if (i == 2) return "print(\"Hello from TOOBAD-OS\")\n";
     /* Die BIOS-Vorlage startet sofort -- sie laedt den Bootsektor und
        springt hinein. Alles Weitere baut man drumherum. Was ein BIOS
        liefern muss, sagt der ?-Knopf. */
     if (i == 3) return ".include \"const.inc\"\n.org ROM_BASE\n\nentry:\n    jmp startup                   ; 0x00\n    .db \"TBBI\"                    ; 0x04 signature\n    .dw 0                         ; 0x08 length\n    .dw 0                         ; 0x0C checksum\n    .db \"MY BIOS\", 0              ; 0x10 name on the splash screen\n    .space 24\n\nstartup:                          ; 0x30\n    li sp, BIOS_STACK\n    cli\n    li r10, BDA_BASE              ; clear the BIOS data area\n    li r11, 256\n    movi r12, 0\n.clear:\n    stw [r10], r12\n    addi r10, r10, 4\n    subi r11, r11, 1\n    cmpi r11, 0\n    jnz .clear\n    movi r10, ATTR_NORMAL\n    stwa BDA_ATTR, r10\n\n    movi r10, 100                 ; 100 timer ticks per second\n    out P_TIMER_HZ, r10\n    sti\n\n    movi r1, 0                    ; read the boot sector\n    movi r2, 1\n    li r3, BOOT_ADDR\n    out P_DISK_LBA, r1\n    out P_DISK_COUNT, r2\n    out P_DISK_ADDR, r3\n    movi r10, 1\n    out P_DISK_CMD, r10\n    in r0, P_DISK_STATUS\n    cmpi r0, 0\n    jnz .stop\n\n    li r10, BOOT_ADDR             ; ... and jump into it\n    jmpr r10\n.stop:\n    hlt\n    jmp .stop\n";
-    return "int main() {\n    print(\"Hello from TOOBAD-OS\\n\");\n    getkey();\n    return 0;\n}\n";
+    return "
+int main() {\n    print(\"Hello from TOOBAD-OS\\n\");\n    getkey();\n    return 0;\n}\n";
 }
 
 int edg_neu_wahl = 0;            /* welche Vorlage gerade angelegt wird */
@@ -919,15 +924,13 @@ void edg_neu(int i) {
    auf, wenn einer gewaehlt wurde -- bricht man ab, bleibt die Startseite
    stehen und es entsteht keine halbe Datei. */
 
-/* Neue Datei: Vorlage anlegen und gleich in den Editor wechseln. Den Namen
-   kann man oben in der Leiste aendern -- der Dateidialog des Kernels steht
-   einem eigenstaendigen Programm nicht zur Verfuegung. */
+/* Neue Datei: erst den Platz aussuchen, dann entsteht sie. Der Dateidialog
+   gehoert dem Kernel und steht jedem Programm offen. */
 void edg_neu_starten(int i) {
     edg_neu_wahl = i;
     edg_ort = 0;
-    edg_neu(i);
-    edg_screen = 1;
-    edg_namemode = 1;
+    edg_warte = 1;
+    datei_dialog(DLG_SPEICHERN, "", edg_neu_name(i));
 }
 
 void edg_neu_anlegen() {
@@ -1435,7 +1438,7 @@ int edg_klick(int w, int mx, int my) {
             /* Speichern fragt jetzt nach Ort und Namen -- wie es sich
                gehoert. Der bisherige Name steht als Vorschlag drin. */
             if (edg_ort && edg_name[0]) edg_speichern();
-            else edg_namemode = 1;
+            else { edg_warte = 2; datei_dialog(DLG_SPEICHERN, "", edg_name); }
             return 1;
         }
         if (treffer(mx, my, x + cb_pos(n, CB_NAME), y, cb_w(CB_NAME), 16))
@@ -1537,6 +1540,36 @@ void app_build(int w) {
    Hauptschleife
    ========================================================================== */
 
+/* Hat der Benutzer im Dateidialog etwas ausgewaehlt? */
+void edg_dialog_pruefen() {
+    char name[24];
+    int r;
+    if (edg_warte == 0) return;
+    r = datei_gewaehlt(name);
+    if (r == 0) return;
+    if (r == 2) { edg_warte = 0; return; }
+    if (edg_warte == 1) {
+        edg_neu(edg_neu_wahl);
+        memset(edg_name, 0, 20);
+        strncpy(edg_name, name, 18);
+        syn_sprache(edg_name);
+        edg_ort = 1;
+        edg_screen = 1;
+        edg_speichern();
+    } else if (edg_warte == 2) {
+        memset(edg_name, 0, 20);
+        strncpy(edg_name, name, 18);
+        syn_sprache(edg_name);
+        edg_ort = 1;
+        edg_speichern();
+    } else {
+        edg_ort = 1;
+        edg_oeffnen(name);
+        edg_screen = 1;
+    }
+    edg_warte = 0;
+}
+
 int main() {
     int e[4];
     int art; int laufen;
@@ -1588,6 +1621,7 @@ int main() {
             app_editor(0);
             fenster_fertig();
         } else {
+            edg_dialog_pruefen();
             /* Laeuft gerade eine Uebersetzung? Dann den Fortschritt zeigen
                und nachsehen, ob sie fertig ist. */
             if (edg_build) {

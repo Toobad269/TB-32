@@ -107,6 +107,25 @@ int pt_y1 = 0;
 int pt_undo_da = 0;
 int pt_win = 0 - 1;                  /* Fenster, in dem gerade gezogen wird */
 int pt_namemode = 0;                 /* Dateiname wird gerade getippt */
+/* Worauf wir warten, waehrend der Dateidialog des Kernels offen ist:
+   1 = neues Bild, 2 = speichern unter, 3 = oeffnen. */
+int pt_warte = 0;
+
+void pt_dialog_pruefen() {
+    char name[24];
+    int r;
+    if (pt_warte == 0) return;
+    r = datei_gewaehlt(name);
+    if (r == 0) return;
+    if (r == 2) { pt_warte = 0; return; }
+    memset(pt_name, 0, 20);
+    strncpy(pt_name, name, 20);
+    pt_ort = 1;
+    if (pt_warte == 1) { pt_neu_anlegen(); pt_speichern(); }
+    else if (pt_warte == 2) pt_speichern();
+    else if (pt_warte == 3) pt_laden();
+    pt_warte = 0;
+}
 char pt_name[24];
 int pt_meldung = 0;                  /* 0 nichts, 1 gespeichert, 2 geladen, 3 Fehler */
 
@@ -309,14 +328,13 @@ void pt_neu_anlegen() {
     pt_fuellen_roh(PAINT_BUF, C_WHITE, PAINT_W * PAINT_H);
 }
 
-/* Frueher oeffnete das den Dateidialog des Kernels. Ein eigenstaendiges
-   Programm hat den nicht -- es fragt den Namen in seinem eigenen Fenster ab
-   (pt_namemode), so wie es das fuer "Save as" schon immer getan hat. */
+/* Der Dateidialog gehoert dem Kernel und steht jedem Programm offen: erst
+   den Platz aussuchen, dann entsteht das Bild. */
 void pt_neu() {
     pt_ort = 0;
-    pt_neu_anlegen();
-    pt_namemode = 1;
+    pt_warte = 1;
     pt_meldung = 0;
+    datei_dialog(DLG_SPEICHERN, ".TBI", pt_name[0] ? pt_name : "PICTURE.TBI");
 }
 
 /* --- Datei --------------------------------------------------------------- */
@@ -549,11 +567,11 @@ int pt_klick(int i, int mx, int my) {
     if (treffer(mx, my, x + 2, j + 32, 47, 14)) {
         /* Steht der Platz schon fest, wird ohne Nachfrage gespeichert. */
         if (pt_ort && pt_name[0]) pt_speichern();
-        else pt_namemode = 1;
+        else { pt_warte = 2; datei_dialog(DLG_SPEICHERN, ".TBI", pt_name); }
         return 1;
     }
     if (treffer(mx, my, x + 2, j + 48, 47, 14)) {
-        pt_namemode = 2;          /* 2 = Name zum Oeffnen */
+        pt_warte = 3; datei_dialog(DLG_OEFFNEN, ".TBI", pt_name);
         return 1;
     }
 
@@ -716,6 +734,7 @@ int main() {
             app_paint(0);
             fenster_fertig();
         } else {
+            pt_dialog_pruefen();
             /* Zieht gerade jemand? Dann die Maus selbst verfolgen. */
             if (pt_zieht) {
                 gx_maus_lesen();

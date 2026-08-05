@@ -115,7 +115,7 @@ int fw_frisch[6];                 /* Programm hat neu gemalt */
    zu malen ist Sache des Schreibtischs selbst -- macht es das Programm aus
    seinem eigenen Prozess heraus, malt die Oberflaeche gleich darauf wieder
    ihr eigenes Bild darueber, und das neue Fenster war nie zu sehen. */
-int fw_wunsch = 0;
+
 
 #define EDG_COLS    edg_cols
 #define EDG_ROWS    edg_rows
@@ -1328,6 +1328,7 @@ void draw_window_inhalt(int i) {
     if (win_type[i] == APP_BIOSFRAGE) app_biosfrage(i);
     if (win_type[i] == APP_BIOSHILFE) app_bioshilfe(i);
     if (win_type[i] == APP_POWER)     app_power(i);
+    if (win_type[i] == APP_DIALOG)    app_dialog(i);
     if (win_type[i] == APP_FREMD)     app_fremd(i);
 }
 
@@ -1498,6 +1499,7 @@ char* win_kurz(int typ) {
     if (typ == APP_BIOSHILFE) return "Help";
     if (typ == APP_POWER)     return "Power";
     if (typ == APP_BROWSER)   return "Browser";
+    if (typ == APP_DIALOG)    return "File";
     if (typ == APP_FREMD)     return "Program";
     if (typ == APP_CLOCK)   return "Clock";
     if (typ == APP_ABOUT)   return "About";
@@ -2444,6 +2446,9 @@ void gui_main() {
                 if (bh_top < 0) bh_top = 0;
                 if (bh_top > 24) bh_top = 24;
                 if (neu == 0) draw_window(win_top);
+            } else if (win_top >= 0 && win_type[win_top] == APP_DIALOG) {
+                dlg_taste(k);
+                neu = 1;
             } else if (win_top >= 0 && win_type[win_top] == APP_FREMD) {
                 fw_melden(win_top, FE_TASTE, keychar(k), keycode(k));
             } else if (win_top >= 0 && win_type[win_top] == APP_BROWSER) {
@@ -2654,7 +2659,9 @@ void gui_main() {
                                     zieh_von = i;
                                 }
                             }
-                                                } else if (win_type[i] == APP_POWER) {
+                                                } else if (win_type[i] == APP_DIALOG) {
+                            if (dlg_klick(i, mx, my)) neu = 1;
+                        } else if (win_type[i] == APP_POWER) {
                             /* Beim Ausraeumen der ausgezogenen Fenster ist
                                dieser Zweig mit verschwunden -- das Fenster
                                ging auf, die Knoepfe taten aber nichts. */

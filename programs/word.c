@@ -121,6 +121,28 @@ int wd_form = 1;                     /* Form fuer den naechsten neuen Absatz */
 int wd_stift = C_BLACK;              /* Farbe fuer neu getippten Text */
 int wd_namemode = 0;
 int wd_namemode2 = 0;
+/* Worauf wir warten, waehrend der Dateidialog offen ist:
+   1 = neues Dokument, 2 = speichern unter, 3 = oeffnen, 4 = Bild. */
+int wd_warte = 0;
+
+/* Der Dialog gehoert dem Kernel; wir fragen in der Hauptschleife nach, ob
+   der Benutzer etwas ausgewaehlt hat. */
+void wd_dialog_pruefen() {
+    char name[24];
+    int r;
+    if (wd_warte == 0) return;
+    r = datei_gewaehlt(name);
+    if (r == 0) return;
+    if (r == 2) { wd_warte = 0; return; }
+    memset(wd_name, 0, 20);
+    strncpy(wd_name, name, 20);
+    wd_ort = 1;
+    if (wd_warte == 1) { wd_neu_anlegen(); wd_speichern(); }
+    else if (wd_warte == 2) wd_speichern();
+    else if (wd_warte == 3) wd_laden();
+    else if (wd_warte == 4) wd_bild_einfuegen_name(wd_name);
+    wd_warte = 0;
+}
 char wd_name[24];
 /* 1 = Name und Ordner stehen fest, "Save" speichert ohne Nachfrage.
    Siehe pt_ort in paint.c -- dieselbe Regel. */
@@ -791,7 +813,7 @@ int wd_menue_klick(int mx, int my) {
     if (i == 8) wd_clip_einfuegen();
     if (i == 9) { wd_sel_von = 0; wd_sel_bis = wd_len; }
     if (i == 10) wd_auswahl_weg();
-    if (i == 11) wd_namemode = 3;      /* 3 = Name eines Bildes */
+    if (i == 11) { wd_warte = 4; datei_dialog(DLG_BILD, ".TBI", "BILD.TBI"); }
     if (i == 12) wd_bild_loeschen(wd_bild_sel);
     if (i == 13) wd_als_text();
     wd_menue = 0;
@@ -1031,21 +1053,22 @@ int wd_klick(int i, int mx, int my) {
     if (treffer(mx, my, x + 222, y + 3, 24, 16)) { wd_liste_umschalten(WL_PUNKT); return 1; }
     if (treffer(mx, my, x + 248, y + 3, 24, 16)) { wd_liste_umschalten(WL_ZAHL);  return 1; }
     if (treffer(mx, my, x + 294, y + 3, 40, 16)) {
-        /* "Neu": leeren Text anlegen und nach dem Namen fragen. Der
-           Dateidialog gehoerte dem Kernel -- ein eigenstaendiges Programm
-           fragt in seinem eigenen Fenster. */
+        /* "Neu": erst den Platz aussuchen, dann entsteht das Dokument.
+           Der Dateidialog gehoert dem Kernel und steht jedem Programm
+           offen -- so sieht er ueberall gleich aus. */
         wd_ort = 0;
-        wd_neu_anlegen();
-        wd_namemode = 1;
+        wd_warte = 1;                /* 1 = neu anlegen, wenn der Name steht */
+        datei_dialog(DLG_SPEICHERN, ".TBW",
+                     wd_name[0] ? wd_name : "DOCUMENT.TBW");
         return 1;
     }
     if (treffer(mx, my, x + 336, y + 3, 46, 16)) {
         if (wd_ort && wd_name[0]) wd_speichern();
-        else wd_namemode = 1;
+        else { wd_warte = 2; datei_dialog(DLG_SPEICHERN, ".TBW", wd_name); }
         return 1;
     }
     if (treffer(mx, my, x + 384, y + 3, 46, 16)) {
-        wd_namemode = 2;              /* 2 = Name zum Oeffnen */
+        wd_warte = 3; datei_dialog(DLG_OEFFNEN, ".TBW", wd_name);
         return 1;
     }
     if (treffer(mx, my, x + 432, y + 5, 92, 12)) { wd_namemode = 1; return 1; }
@@ -1290,6 +1313,7 @@ int main() {
             app_word(0);
             fenster_fertig();
         } else {
+            wd_dialog_pruefen();     /* hat der Benutzer eine Datei gewaehlt? */
             /* Zieht gerade jemand einen Rahmen oder markiert Text? Dann die
                Maus selbst verfolgen -- Ereignisse kommen nur beim Druecken. */
             if (wd_zieht || wd_griff) {

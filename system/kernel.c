@@ -19,6 +19,7 @@
 #include "browser.c"
 #include "term.c"
 #include "syscall.c"
+#include "dialog.c"
 #include "gui.c"
 
 #define CMDMAX 128

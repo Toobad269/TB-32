@@ -73,6 +73,18 @@ int  mitschrift_zeile(int n)      { return sc(54, n, 0, 0, 0); }
 int  ordner_eintrag(int n, int aus) { return sc(55, n, aus, 0, 0); }
 int  ordner_wechseln(char* name)  { return sc(56, (int)name, 0, 0, 0); }
 void ordner_pfad(char* aus)       { sc(57, (int)aus, 0, 0, 0); }
+/* --- Der gemeinsame Dateidialog des Systems ----------------------------
+   datei_dialog(modus, endung, vorschlag) macht ihn auf; danach fragt man
+   mit datei_gewaehlt(puffer) nach: 0 = noch offen, 1 = ausgewaehlt (der
+   Name steht im Puffer, der Ordner ist schon gewechselt), 2 = abgebrochen.
+   Modus: 0 = oeffnen, 1 = speichern, 2 = Bild einfuegen. */
+#define DLG_OEFFNEN   0
+#define DLG_SPEICHERN 1
+#define DLG_BILD      2
+void datei_dialog(int modus, char* endung, char* vorschlag) {
+    sc(90, modus, (int)endung, (int)vorschlag, 0);
+}
+int  datei_gewaehlt(char* aus)    { return sc(91, (int)aus, 0, 0, 0); }
 /* BIOS: Anleitung zeigen, bauen und testen/brennen -- das bleibt im Kernel. */
 void bios_hilfe()                 { sc(58, 0, 0, 0, 0); }
 void bios_bauen(int modus, char* quelle) { sc(59, modus, (int)quelle, 0, 0); }
