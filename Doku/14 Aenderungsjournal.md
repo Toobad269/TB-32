@@ -9,6 +9,35 @@ Die tiefer liegenden Fallen haben zusätzlich einen ausführlichen Eintrag in
 
 ---
 
+## Nachlese zum Speicherfehler -- und drei Kleinigkeiten
+
+Vieles, was Colin an Word meldete („die Größe lässt sich nicht mehr
+einstellen, nichts speichert"), war **derselbe Speicherfehler**: Words Text
+liegt bei 7,2 MB, und der Speichertest schrieb genau dort seine Muster hin.
+Nach der Trennung der Programmplätze funktionieren die Knöpfe wieder --
+nachgeprüft: A+ setzt die große Schrift, Speichern schreibt die Datei und
+meldet *saved*.
+
+Drei echte Fehler blieben übrig:
+
+**Der Coder öffnete beim Start stumm eine fremde Datei.** Er liest seit dem
+Umzug einen Dateinamen aus dem Argumentfeld -- und dort stand noch der Name
+des zuletzt gestarteten Programms (`PROMPT.TBX`). Wer den Coder aus dem Menü
+öffnete, landete sofort im Editor statt im Auswahlschirm. Das Argumentfeld
+wird jetzt geleert, bevor ein Programm aus dem Menü startet.
+
+**Speichern in Word führte ins Nichts.** Der Dateidialog des Kernels ist
+weggefallen; das Namensfeld war da, aber ENTER schloss es nur. Jetzt
+speichert ENTER auch -- beziehungsweise öffnet oder fügt ein Bild ein, je
+nachdem, wofür der Name gedacht war.
+
+**Ein Fenster brauchte eine Sekunde zum Erscheinen.** `fw_neu` füllte den
+Bildpuffer Byte für Byte -- bei bis zu 100000 Bytes in TB-32-Code ist das
+genau die Wartezeit, die man sah. Jetzt macht das der Blockkopierer, und das
+Fenster ist sofort da.
+
+---
+
 ## Der Fehler hinter allen anderen: jedes Programm lud an dieselbe Adresse
 
 Colin meldete vier Dinge auf einmal: Paint bekam wirre Striche, sobald der

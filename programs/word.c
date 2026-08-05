@@ -120,6 +120,7 @@ int wd_umbr_gueltig = 0;             /* Umbruch passt zum aktuellen Text? */
 int wd_form = 1;                     /* Form fuer den naechsten neuen Absatz */
 int wd_stift = C_BLACK;              /* Farbe fuer neu getippten Text */
 int wd_namemode = 0;
+int wd_namemode2 = 0;
 char wd_name[24];
 /* 1 = Name und Ordner stehen fest, "Save" speichert ohne Nachfrage.
    Siehe pt_ort in paint.c -- dieselbe Regel. */
@@ -1126,7 +1127,20 @@ void wd_taste(int k) {
 
     if (wd_namemode) {
         n = strlen(wd_name);
-        if (code == K_ENTER || code == K_ESC) { wd_namemode = 0; return; }
+        if (code == K_ENTER) {
+            /* Mit dem Namen ist auch der Platz klar -- also gleich
+               speichern. Frueher stand hier der Dateidialog des Kernels,
+               der genau das tat; ohne ihn wartete der Benutzer auf etwas,
+               das nie kam. Modus 2 heisst: der Name war zum Oeffnen. */
+            wd_namemode2 = wd_namemode;
+            wd_namemode = 0;
+            wd_ort = 1;
+            if (wd_namemode2 == 2) wd_laden();
+            else if (wd_namemode2 == 3) wd_bild_einfuegen_name(wd_name);
+            else wd_speichern();
+            return;
+        }
+        if (code == K_ESC) { wd_namemode = 0; return; }
         if (code == K_BACKSPACE) { if (n > 0) wd_name[n - 1] = 0; return; }
         if (c >= 32 && c < 127 && n < 20) {
             wd_name[n] = toupper(c);

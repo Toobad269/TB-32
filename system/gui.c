@@ -23,6 +23,11 @@
 #define P_GFX_TAUSCH 0x53
 #define P_BLT_BG   0x4C
 #define P_MOUSE_WHEEL 0x63
+#define P_DMA_SRC  0x56
+#define P_DMA_DST  0x57
+#define P_DMA_LEN  0x58
+#define P_DMA_VAL  0x59
+#define P_DMA_CMD  0x5A
 #define P_MCUR_X   0x4D
 #define P_MCUR_Y   0x4E
 #define P_MCUR_ON  0x4F
@@ -1250,7 +1255,13 @@ int fw_neu(char* titel, int breite, int hoehe, int pid) {
     fw_lese[i] = 0;
     fw_schreib[i] = 0;
     fw_frisch[i] = 0;
-    memset((char*)fw_addr(i), C_WINBG, breite * hoehe);
+    /* Mit dem Blockkopierer statt Byte fuer Byte: das sind bis zu 100000
+       Bytes, und in TB-32-Code gerechnet dauert das eine gute Sekunde --
+       genau die Wartezeit, bis ein Fenster erscheint. */
+    sys_out(P_DMA_DST, fw_addr(i));
+    sys_out(P_DMA_LEN, breite * hoehe);
+    sys_out(P_DMA_VAL, C_WINBG);
+    sys_out(P_DMA_CMD, 2);
     fw_wunsch = 1;               /* der Schreibtisch malt sich gleich neu */
     fw_melden(i, FE_MALEN, 0, 0);
     return i;
@@ -1887,6 +1898,10 @@ int endet_auf(char* name, char* endung) {
    Menue Fensterprogramme sein. */
 void gui_prog_starten(char* name) {
     if (mt_active == 0) mt_enable();
+    /* Das Argumentfeld leeren. Sonst findet das naechste Programm dort noch
+       den Dateinamen von vorhin -- der Coder oeffnete beim Start stumm die
+       zuletzt gestartete Datei, weil da noch "PROMPT.TBX" stand. */
+    prog_setargs("");
     prog_run(name, 1);
 }
 
