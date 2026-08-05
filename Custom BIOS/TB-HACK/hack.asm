@@ -55,6 +55,47 @@
 .align 4
 
 ; ===========================================================================
+;  Zwei Handgriffe, die jedes Werkzeug braucht
+; ===========================================================================
+
+; hk_kopf(r1 = Name des Werkzeugs): der Balken ganz oben
+;
+;  Links der Name, rechts die Marke des Chips. Das ist keine Zierde: die vier
+;  Werkzeuge nehmen den ganzen Bildschirm ein, und dann ist der Kopfbalken die
+;  einzige Stelle, an der noch steht, wessen Firmware hier gerade laeuft.
+hk_kopf:
+    push r6
+    mov r6, r1
+    movi r1, 0
+    movi r2, 0
+    movi r3, SCR_W
+    movi r4, 0x20
+    movi r5, A_SEL
+    call vid_hline
+    movi r1, 2
+    movi r2, 0
+    mov r3, r6
+    movi r4, A_SEL
+    call vid_putsat
+    movi r1, 58
+    movi r2, 0
+    li r3, s_hk_marke
+    movi r4, A_SEL
+    call vid_putsat
+    pop r6
+    ret
+
+; hk_linie(r1 = Bildzeile): eine duenne Trennlinie ueber die Arbeitsflaeche
+hk_linie:
+    mov r2, r1
+    movi r1, 1
+    movi r3, SCR_W-2
+    movi r4, 0xC4                     ; einfache waagerechte Linie, CP437
+    movi r5, A_BG
+    call vid_hline
+    ret
+
+; ===========================================================================
 ;  Eingabe einer Hexzahl
 ; ===========================================================================
 
@@ -216,22 +257,15 @@ hk_attr:
 hk_mon_rahmen:
     movi r1, A_BG
     call vid_clear
-    movi r1, 0
-    movi r2, 0
-    movi r3, SCR_W
-    movi r4, 0x20
-    movi r5, A_SEL
-    call vid_hline
-    movi r1, 2
-    movi r2, 0
-    li r3, s_hk_montitle
-    movi r4, A_SEL
-    call vid_putsat
+    li r1, s_hk_montitle
+    call hk_kopf
     movi r1, 1
     movi r2, 2
     li r3, s_hk_monkopf
     movi r4, A_TITLE
     call vid_putsat
+    movi r1, 3                        ; Spaltenkopf vom Dump trennen
+    call hk_linie
     movi r1, 1
     movi r2, 21
     li r3, s_hk_monkeys1
@@ -596,17 +630,10 @@ hk_ports:
 .redraw:
     movi r1, A_BG
     call vid_clear
-    movi r1, 0
-    movi r2, 0
-    movi r3, SCR_W
-    movi r4, 0x20
-    movi r5, A_SEL
-    call vid_hline
-    movi r1, 2
-    movi r2, 0
-    li r3, s_hk_ptitle
-    movi r4, A_SEL
-    call vid_putsat
+    li r1, s_hk_ptitle
+    call hk_kopf
+    movi r1, 12                       ; die drei Werte vom Hinweis trennen
+    call hk_linie
     movi r1, 6
     movi r2, 6
     li r3, s_hk_pport
@@ -741,22 +768,15 @@ hk_cmos:
 .redraw:
     movi r1, A_BG
     call vid_clear
-    movi r1, 0
-    movi r2, 0
-    movi r3, SCR_W
-    movi r4, 0x20
-    movi r5, A_SEL
-    call vid_hline
-    movi r1, 2
-    movi r2, 0
-    li r3, s_hk_ctitle
-    movi r4, A_SEL
-    call vid_putsat
+    li r1, s_hk_ctitle
+    call hk_kopf
     movi r1, 5
     movi r2, 4
     li r3, s_hk_ckopf
     movi r4, A_TITLE
     call vid_putsat
+    movi r1, 5                        ; Spaltenkopf von den Zeilen trennen
+    call hk_linie
     movi r1, 5
     movi r2, 13
     li r3, s_hk_chint1
@@ -1059,17 +1079,10 @@ hk_patches:
 .redraw:
     movi r1, A_BG
     call vid_clear
-    movi r1, 0
-    movi r2, 0
-    movi r3, SCR_W
-    movi r4, 0x20
-    movi r5, A_SEL
-    call vid_hline
-    movi r1, 2
-    movi r2, 0
-    li r3, s_hk_pattitle
-    movi r4, A_SEL
-    call vid_putsat
+    li r1, s_hk_pattitle
+    call hk_kopf
+    movi r1, 10                       ; die vier Zeilen vom Hinweis trennen
+    call hk_linie
     movi r1, 5
     movi r2, 12
     li r3, s_hk_pathint1
@@ -1249,6 +1262,7 @@ hk_patch_anwenden:
 ; ===========================================================================
 ;  Texte
 ; ===========================================================================
+s_hk_marke:     .db "TB-HACK BIOS v2.5.2", 0
 s_hk_hexkeys:   .db "0-9 A-F  type      BACKSPACE  erase      ENTER  ok      ESC  cancel", 0
 
 s_hk_montitle:  .db "TB-HACK MEMORY MONITOR", 0

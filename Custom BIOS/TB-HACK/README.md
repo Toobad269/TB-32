@@ -68,6 +68,27 @@ cell, in two bytes — one would have stopped at 255, and the disk has 16384.
 The `55 AA` at the end of a boot sector is a convention, not a property of
 the disk, so it can be switched off for a sector you wrote yourself.
 
+## What it looks like
+
+Green phosphor on black, not BIOS blue — POST, Setup and all four tools.
+A colour attribute on the TB-32 is `background << 4 | foreground`, both
+indices into the card's 16 colours, so the whole look is seven numbers:
+
+| | | |
+|---|---|---|
+| `A_BG` / `ATTR_NORMAL` | `0x02` | green on black — frames, rows, hex bytes, key help: everything at rest |
+| `A_TITLE` / `ATTR_BRIGHT` | `0x0A` | bright green on black — headings, the address column, measured values |
+| `A_SEL` / `ATTR_TITLE` | `0x20` | black on green — the header bar and the selected row, inverse rather than a different hue |
+| `ATTR_ERR` | `0x0C` | **stays red.** An error message that looks like everything else isn't one |
+
+Three brightness levels of one colour — that's what a terminal has, and
+more would stop being one. Because the rest of the firmware draws through
+exactly these four names, the four tools are coloured by the same change.
+
+Each tool also carries a header bar with its name on the left and the chip's
+name on the right. That isn't decoration: a tool fills the whole screen, and
+then the bar is the only place still saying whose firmware you are inside.
+
 ## What was changed
 
 Four of the five files are copies from `firmware/`. Only `hack.asm` is new.
@@ -76,8 +97,8 @@ Four of the five files are copies from `firmware/`. Only `hack.asm` is new.
 |---|---|
 | `hack.asm` | **new** — monitor, ports, CMOS, sectors, patches, hex input |
 | `bios.asm` | five places: name in the header and in the POST line, one `.include`, the boot sector from CMOS, the skippable signature check, the call to `hk_patch_anwenden` |
-| `setup.asm` | the *Hack* tab, six `REG_` numbers, the dispatch branches, F5 |
-| `const.inc` | `HK_*` scratch addresses, `CM_HKBSEC0`…`CM_HKP2V` |
+| `setup.asm` | the *Hack* tab, six `REG_` numbers, the dispatch branches, F5, the four colour attributes |
+| `const.inc` | `HK_*` scratch addresses, `CM_HKBSEC0`…`CM_HKP2V`, the `ATTR_*` colours |
 | `video.asm` | unchanged |
 
 ### Why F5 resets the boot settings

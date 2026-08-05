@@ -10,10 +10,19 @@
 .equ SET_Y,        6
 .equ SET_ENTSIZE,  16
 .equ SET_TABS,     6                 ; Main, Hardware, Cooling, Security, Firmware, Hack
-.equ A_BG,         0x17              ; grau auf blau
-.equ A_TITLE,      0x1E              ; gelb auf blau
-.equ A_SEL,        0x70              ; schwarz auf grau
-.equ A_HELP,       0x1B              ; hellcyan auf blau
+; TB-HACK sieht anders aus als ein serienmaessiges BIOS, und das mit Absicht:
+; kein Blau, sondern der gruene Phosphor eines alten Terminals. Ein Attribut
+; ist Hintergrund<<4 | Vordergrund, beides Palettenindizes -- 0 ist schwarz,
+; 2 gruen, 10 hellgruen (hardware/devices.py, _default_palette).
+;
+; Drei Stufen, mehr braucht es nicht und mehr waere auch kein Terminal:
+; alles Ruhende dunkelgruen, alles Betonte hellgruen, das Gewaehlte invers.
+; Weil der ganze Rest der Firmware ueber genau diese vier Namen zeichnet,
+; faerbt das hier auch die Werkzeuge in hack.asm mit.
+.equ A_BG,         0x02              ; gruen auf schwarz -- Rahmen und Zeilen
+.equ A_TITLE,      0x0A              ; hellgruen auf schwarz -- Ueberschriften
+.equ A_SEL,        0x20              ; schwarz auf gruen -- Auswahl und Balken
+.equ A_HELP,       0x02              ; gruen auf schwarz -- Tastenhilfe
 
 ; Sonderregister: alles ab 0xE0 ist kein normaler CMOS-Platz, sondern eine
 ; Zeile mit eigenem Verhalten -- Uhr, Anzeige eines Messwerts oder ein Knopf.

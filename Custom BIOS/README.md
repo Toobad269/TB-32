@@ -7,7 +7,7 @@ with its own name, its own source, and its own test.
 |---|---|
 | [`TB-LOCK/`](TB-LOCK/) | The stock BIOS plus a **Setup password**. Without the password, nobody gets into Setup anymore |
 | [`COMPANY-OS/`](COMPANY-OS/) | A **company BIOS**: power-on password, owner entry, blocked programs, event log, Secure Boot in three stages, flash lock in the chip itself |
-| [`TB-HACK/`](TB-HACK/) | The other direction — a **tinkerer's BIOS**: hex monitor, port console, raw CMOS editor, sector editor, free choice of boot sector, boot patches |
+| [`TB-HACK/`](TB-HACK/) | The other direction — a **tinkerer's BIOS**: hex monitor, port console, raw CMOS editor, sector editor, free choice of boot sector, boot patches. In green phosphor instead of BIOS blue |
 
 ## Why this works
 

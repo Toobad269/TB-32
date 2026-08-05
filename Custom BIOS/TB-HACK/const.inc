@@ -89,12 +89,15 @@
 .equ C_YELLOW,      0x0E
 .equ C_WHITE,       0x0F
 
-.equ ATTR_NORMAL,   0x07
-.equ ATTR_BRIGHT,   0x0F
-.equ ATTR_TITLE,    0x1F            ; weiss auf blau
-.equ ATTR_HILIGHT,  0x70            ; schwarz auf grau (Auswahlbalken)
+; TB-HACK: derselbe gruene Phosphor wie im Setup, damit schon der Selbsttest
+; zeigt, welcher Chip im Sockel steckt. ATTR_ERR bleibt bewusst rot -- eine
+; Fehlermeldung, die aussieht wie alles andere, ist keine.
+.equ ATTR_NORMAL,   0x02            ; gruen auf schwarz
+.equ ATTR_BRIGHT,   0x0A            ; hellgruen auf schwarz
+.equ ATTR_TITLE,    0x20            ; schwarz auf gruen (Kopfbalken)
+.equ ATTR_HILIGHT,  0xA0            ; schwarz auf hellgruen (Auswahlbalken)
 .equ ATTR_OK,       0x0A
-.equ ATTR_ERR,      0x0C
+.equ ATTR_ERR,      0x0C            ; rot bleibt rot
 
 ; --- I/O-Ports -------------------------------------------------------------
 .equ P_PIC_ACK,     0x0000
