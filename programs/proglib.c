@@ -85,6 +85,21 @@ void datei_dialog(int modus, char* endung, char* vorschlag) {
     sc(90, modus, (int)endung, (int)vorschlag, 0);
 }
 int  datei_gewaehlt(char* aus)    { return sc(91, (int)aus, 0, 0, 0); }
+
+/* --- Fortschritt melden -------------------------------------------------
+   Ein Programm, das lange rechnet (der Compiler etwa), sagt dem System, wie
+   weit es ist. Der Coder zeigt es an. CC und ASM riefen das bisher als nackte
+   Nummern auf -- jetzt hat es einen Namen. */
+void fortschritt(int prozent)     { sc(28, prozent, 0, 0, 0); }
+void fortschritt_text(char* s)    { sc(29, (int)s, 0, 0, 0); }
+
+/* --- Verzeichniseintraege ohne Umweg -------------------------------------
+   ordner_eintrag() ist der bequeme Weg; wer stattdessen die ganze Tabelle
+   durchgehen will (CHKDSK, Werkzeuge), kann es auch einzeln. */
+int  datei_anzahl()               { return sc(24, 0, 0, 0, 0); }
+char* datei_name(int i)           { return (char*)sc(25, i, 0, 0, 0); }
+int  datei_belegt(int i)          { return sc(26, i, 0, 0, 0); }
+int  datei_groesse(int i)         { return sc(27, i, 0, 0, 0); }
 /* BIOS: Anleitung zeigen, bauen und testen/brennen -- das bleibt im Kernel. */
 void bios_hilfe()                 { sc(58, 0, 0, 0, 0); }
 void bios_bauen(int modus, char* quelle) { sc(59, modus, (int)quelle, 0, 0); }
