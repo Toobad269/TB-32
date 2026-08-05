@@ -9,6 +9,33 @@ Die tiefer liegenden Fallen haben zusätzlich einen ausführlichen Eintrag in
 
 ---
 
+## Die Rückgabe des Dateidialogs trägt
+
+Der Dialog gab sein Ergebnis längst zurück, und das Programm handelte auch
+richtig -- **es malte sich nur nicht neu.** Die Abfrage steht in der
+Leerlaufschleife, und die zeichnet sonst nichts; das Fenster zeigte deshalb
+weiter den alten Auswahlschirm, obwohl der Coder innerlich schon im Editor
+war.
+
+Das war schwer zu sehen, weil alles andere stimmte: Der Dialog nahm Tasten
+an, `dlg_status` wurde gesetzt, das Programm holte es ab. Erst ein Zähler im
+Kernel („wie oft fragt das Programm nach?") zeigte, dass die Kette
+vollständig lief -- 110 Abfragen bei offenem Dialog. Damit war klar: der
+Fehler liegt **hinter** der Rückgabe, nicht davor.
+
+`*_dialog_pruefen()` meldet jetzt, ob sich etwas geändert hat, und die
+Hauptschleife zeichnet dann nach. In Word, Paint und im Coder gleichermaßen.
+
+Nachgewiesen: Im Coder „C program" anklicken → der Dialog kommt, man wählt
+Ordner und Namen → der Editor öffnet sich mit der Vorlage, und in der
+Statuszeile steht **saved**. Die Datei liegt da, wo man sie hingelegt hat.
+
+**Noch offen:** Paint meldet beim Speichern eines neuen Bildes „no such file
+/ name missing", obwohl der Name aus dem Dialog richtig ankommt. Der Dialog
+ist es nicht -- der Fehler steckt im Schreiben der 125 KB großen Bilddatei.
+
+---
+
 ## Der Dateidialog ist zurück -- als Dienst des Kernels
 
 Colin: *„früher musste man beim Erstellen einer Datei den Pfad auswählen --

@@ -1540,14 +1540,17 @@ void app_build(int w) {
    Hauptschleife
    ========================================================================== */
 
-/* Hat der Benutzer im Dateidialog etwas ausgewaehlt? */
-void edg_dialog_pruefen() {
+/* Hat der Benutzer im Dateidialog etwas ausgewaehlt?
+   Rueckgabe: 1 = es hat sich etwas geaendert, also neu malen. Genau daran
+   hing es: das Programm handelte richtig, zeichnete aber nicht nach, und
+   das Fenster zeigte weiter den alten Auswahlschirm. */
+int edg_dialog_pruefen() {
     char name[24];
     int r;
-    if (edg_warte == 0) return;
+    if (edg_warte == 0) return 0;
     r = datei_gewaehlt(name);
-    if (r == 0) return;
-    if (r == 2) { edg_warte = 0; return; }
+    if (r == 0) return 0;
+    if (r == 2) { edg_warte = 0; return 1; }
     if (edg_warte == 1) {
         edg_neu(edg_neu_wahl);
         memset(edg_name, 0, 20);
@@ -1568,6 +1571,7 @@ void edg_dialog_pruefen() {
         edg_screen = 1;
     }
     edg_warte = 0;
+    return 1;
 }
 
 int main() {
@@ -1621,7 +1625,11 @@ int main() {
             app_editor(0);
             fenster_fertig();
         } else {
-            edg_dialog_pruefen();
+            if (edg_dialog_pruefen()) {
+                fenster_malziel();
+                app_editor(0);
+                fenster_fertig();
+            }
             /* Laeuft gerade eine Uebersetzung? Dann den Fortschritt zeigen
                und nachsehen, ob sie fertig ist. */
             if (edg_build) {

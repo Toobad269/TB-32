@@ -111,13 +111,13 @@ int pt_namemode = 0;                 /* Dateiname wird gerade getippt */
    1 = neues Bild, 2 = speichern unter, 3 = oeffnen. */
 int pt_warte = 0;
 
-void pt_dialog_pruefen() {
+int pt_dialog_pruefen() {
     char name[24];
     int r;
-    if (pt_warte == 0) return;
+    if (pt_warte == 0) return 0;
     r = datei_gewaehlt(name);
-    if (r == 0) return;
-    if (r == 2) { pt_warte = 0; return; }
+    if (r == 0) return 0;
+    if (r == 2) { pt_warte = 0; return 1; }
     memset(pt_name, 0, 20);
     strncpy(pt_name, name, 20);
     pt_ort = 1;
@@ -125,6 +125,7 @@ void pt_dialog_pruefen() {
     else if (pt_warte == 2) pt_speichern();
     else if (pt_warte == 3) pt_laden();
     pt_warte = 0;
+    return 1;
 }
 char pt_name[24];
 int pt_meldung = 0;                  /* 0 nichts, 1 gespeichert, 2 geladen, 3 Fehler */
@@ -734,7 +735,11 @@ int main() {
             app_paint(0);
             fenster_fertig();
         } else {
-            pt_dialog_pruefen();
+            if (pt_dialog_pruefen()) {
+                fenster_malziel();
+                app_paint(0);
+                fenster_fertig();
+            }
             /* Zieht gerade jemand? Dann die Maus selbst verfolgen. */
             if (pt_zieht) {
                 gx_maus_lesen();

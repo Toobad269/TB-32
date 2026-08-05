@@ -127,13 +127,13 @@ int wd_warte = 0;
 
 /* Der Dialog gehoert dem Kernel; wir fragen in der Hauptschleife nach, ob
    der Benutzer etwas ausgewaehlt hat. */
-void wd_dialog_pruefen() {
+int wd_dialog_pruefen() {
     char name[24];
     int r;
-    if (wd_warte == 0) return;
+    if (wd_warte == 0) return 0;
     r = datei_gewaehlt(name);
-    if (r == 0) return;
-    if (r == 2) { wd_warte = 0; return; }
+    if (r == 0) return 0;
+    if (r == 2) { wd_warte = 0; return 1; }
     memset(wd_name, 0, 20);
     strncpy(wd_name, name, 20);
     wd_ort = 1;
@@ -142,6 +142,7 @@ void wd_dialog_pruefen() {
     else if (wd_warte == 3) wd_laden();
     else if (wd_warte == 4) wd_bild_einfuegen_name(wd_name);
     wd_warte = 0;
+    return 1;
 }
 char wd_name[24];
 /* 1 = Name und Ordner stehen fest, "Save" speichert ohne Nachfrage.
@@ -1313,7 +1314,11 @@ int main() {
             app_word(0);
             fenster_fertig();
         } else {
-            wd_dialog_pruefen();     /* hat der Benutzer eine Datei gewaehlt? */
+            if (wd_dialog_pruefen()) {   /* eine Datei gewaehlt -> neu malen */
+                fenster_malziel();
+                app_word(0);
+                fenster_fertig();
+            }
             /* Zieht gerade jemand einen Rahmen oder markiert Text? Dann die
                Maus selbst verfolgen -- Ereignisse kommen nur beim Druecken. */
             if (wd_zieht || wd_griff) {
