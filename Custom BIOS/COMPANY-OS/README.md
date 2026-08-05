@@ -69,17 +69,23 @@ from File* macht es richtig (Befehl 3).
 | **A7** Flash-Sperre im Bauteil | `hardware/devices.py`, `FLASH_LOCK` |
 | **A8** Chassis Intrusion | `intrusion_pruefen` |
 | NVRAM, 256 Byte, eigener Baustein | `hardware/devices.py`, `nv_*` |
-| Ereignisspeicher (Ablage, noch ohne Reiter) | `ev_log`, `NV_LOG` |
-| Inventar: Seriennummer, Startzähler | `inv_start_zaehlen`, `BDA_INVENT` |
+| **B1** Ereignisspeicher mit eigenem Reiter | `ev_log`, `ev_zeile_zeigen` |
+| **B2** Secure Boot dreistufig: Off / Audit / Enforce | `secure_pruefen` |
+| **B3** Inventar im Setup und im Speicher | `REG_INVSER`, `BDA_INVENT` |
+| **B6** Firmentext schon beim Einschalten | `firma_startbild` |
 | `build.py` lässt ein fremdes BIOS in Ruhe | `fremdes_bios()` |
 | `pc.py --bios <datei>` | `pc.py` |
 | Systemseite: Sperren durchsetzen, grau im Startmenü | `system/gui.c`, `gesperrt()` |
 
-**43 Prüfungen** laufen auf der echten Maschine: `python3 "Custom BIOS/COMPANY-OS/pruefen.py"`
+**55 Prüfungen** laufen auf der echten Maschine: `python3 "Custom BIOS/COMPANY-OS/pruefen.py"`
 
-**Der ganze A-Teil steht.** Offen sind: **B1** Reiter *Event Log*, **B2**
-Secure Boot dreistufig, **B3** Inventar im Systemmonitor, **B4**
-F12-Startmenü, **B6** Startbild, die **C**-Punkte und **B5** Netzwerkstart.
+**Der A-Teil steht vollständig, von B fehlen noch B4 und B5.** Offen sind:
+**B4** F12-Startmenü, **B5** Netzwerkstart und die **C**-Punkte (Numlock,
+POST-Zeit, Startverzögerung, Reiter *Exit*).
+
+B3 zeigt das Inventar im Setup und legt es unter `BDA_INVENT` ab; die
+Anzeige im Systemmonitor wäre der nächste kleine Schritt auf der
+Systemseite.
 
 Zu A6 eine Einordnung: `boot` liest heute immer Sektor 0, und Floppy wie
 Netz stehen als *not installed* — es gibt noch keine zweite Startquelle,

@@ -622,6 +622,11 @@ post:
 
     movi r1, ATTR_NORMAL
     call vid_clear
+    ; B6: der Firmentext, und zwar NACH dem vid_clear. Beim ersten Anlauf
+    ; stand der Aufruf oben bei nv_init -- der Selbsttest raeumte den Text
+    ; eine Zeile spaeter wieder weg, und auf dem Schirm war nie etwas zu
+    ; sehen.
+    call firma_startbild
 
     ; --- Kopfzeile -----------------------------------------------------
     movi r1, 0
@@ -804,6 +809,15 @@ kuehlung_anwenden:
 ;     Ist die Pruefung eingeschaltet und die Summe eine andere als die
 ;     gemerkte, bootet der Rechner NICHT. Genau das ist der Sinn: lieber
 ;     stehenbleiben als etwas Fremdes starten.
+; B2: Secure Boot kennt jetzt drei Stufen statt An/Aus.
+;
+;   0  Disabled          gar nicht pruefen
+;   1  Audit (warn only) pruefen, melden, protokollieren -- und trotzdem starten
+;   2  Enforce (halt)    pruefen und bei Abweichung stehenbleiben
+;
+; Die mittlere Stufe ist die, die man beim Entwickeln am meisten braucht:
+; nach jedem `build.py` stimmt die gemerkte Summe nicht mehr, und man will
+; gewarnt werden statt ausgesperrt. Echte Firmware kennt dieselben drei.
 secure_pruefen:
     push r6
     push r10
@@ -811,14 +825,29 @@ secure_pruefen:
     call cmos_read
     cmpi r0, 0
     jz .raus                          ; ausgeschaltet
+    mov r10, r0                       ; Stufe merken: 1 = Audit, 2 = Enforce
     call secure_gemerkt
     mov r6, r0
     cmpi r6, 0
     jz .raus                          ; noch nie etwas gemerkt
+    push r10
     call secure_summe
+    pop r10
     cmp r0, r6
     jz .gut
 
+    movi r1, EV_SECURE                ; in beiden Stufen protokollieren
+    push r10
+    call ev_log
+    pop r10
+    cmpi r10, 2
+    jz .anhalten
+    ; --- Audit: melden, aber weiterlaufen lassen -------------------------
+    li r1, s_sec_audit
+    call pw_melden
+    jmp .raus
+
+.anhalten:
     ; Abbild veraendert. Nicht einfach anhalten: wer den Kernel absichtlich
     ; neu gebaut hat, muss ins Setup kommen und die neue Summe merken lassen.
     ; Genau so machen es echte Rechner auch -- wer am Geraet steht, darf.
@@ -1058,6 +1087,7 @@ s_sec_bad:    .db "The boot image is not the one this machine trusts.", 0
 s_sec_hint1:  .db "If you rebuilt the system yourself, this is expected.", 0
 s_sec_hint2:  .db "DEL = Setup (Security > Trust Current Boot Image)", 0
 s_sec_halt:   .db "Secure Boot: halted", 0
+s_sec_audit:  .db "Secure Boot (Audit): the boot image changed -- started anyway.", 0
 s_booting:    .db "Starting system ...", 0
 ; Der Eigentuemer. Wer sein eigenes Firmen-BIOS baut, aendert genau diese
 ; Zeile und laesst bauen.py laufen. Hoechstens 31 Zeichen.

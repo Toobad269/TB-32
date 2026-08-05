@@ -367,7 +367,7 @@ pw_pruefen:
     mov r3, r7
     call pw_fragen
     cmpi r0, 0
-    jl .nein                          ; mit ESC abgebrochen
+    jl .abbruch                       ; mit ESC abgebrochen: -1, kein Fehlversuch
     li r1, PW_BUF1
     call pw_hash
     mov r6, r0
@@ -376,6 +376,10 @@ pw_pruefen:
     jnz .nein
     call pw_puffer_loeschen
     movi r0, 1
+    jmp .done
+.abbruch:
+    call pw_puffer_loeschen
+    li r0, 0xFFFFFFFF
     jmp .done
 .nein:
     call pw_puffer_loeschen
@@ -397,22 +401,43 @@ pw_tor:
     cmpi r0, 0
     jz .frei
 
-    movi r6, PW_VERSUCHE
+    ; A2 gilt auch hier: der Zaehler liegt in der Knopfzelle, nicht in einem
+    ; Register. Sonst waere dieses Tor die weiche Stelle -- dreimal raten,
+    ; Reset, dreimal raten, und so fort. Und jeder Fehlversuch gehoert ins
+    ; Protokoll, egal an welchem der beiden Tore er passiert.
+    call pw_fehler_lesen
+    cmpi r0, PW_MAXTRIES
+    jge .abgelehnt
+
 .versuch:
     movi r1, ATTR_NORMAL
     call vid_clear
     li r1, s_pw_locked
     call pw_pruefen
     cmpi r0, 1
-    jz .frei
-    subi r6, r6, 1
-    cmpi r6, 0
-    jg .nochmal
-    jmp .abgelehnt
-.nochmal:
+    jz .richtig
+    cmpi r0, 0
+    jl .weg                           ; mit ESC abgebrochen: kein Fehlversuch
+
+    movi r1, EV_BADPW
+    call ev_log
+    call pw_fehler_plus
+    cmpi r0, PW_MAXTRIES
+    jge .abgelehnt
     li r1, s_pw_wrong
     call pw_melden
     jmp .versuch
+
+.richtig:
+    call pw_fehler_null
+    jmp .frei
+
+.weg:
+    movi r1, ATTR_NORMAL
+    call vid_clear
+    movi r0, 0
+    pop r6
+    ret
 
 .abgelehnt:
     movi r1, ATTR_NORMAL

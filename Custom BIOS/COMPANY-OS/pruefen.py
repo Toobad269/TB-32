@@ -347,6 +347,99 @@ def main():
     pruefe("... und es steht auf dem Schirm",
            "Boot source was changed" in C.gesehen, C.bild())
 
+    # === B1/B2/B3/B6 ====================================================
+    print("\n--- B1: Ereignisspeicher ---------------------------------------")
+    evcmos = os.path.join(tmp, "cmos_ev.bin")
+    E = Lauf(chip, evcmos, platte)
+    E.warte(5.0)                             # ein Start schreibt EV_BOOT
+    E2 = Lauf(chip, evcmos, platte)
+    E2.ins_setup()
+    E2.reiter(6)                             # Reiter Event Log
+    b = E2.bild()
+    pruefe("Der Reiter Event Log ist da", "Event Log" in b, b)
+    pruefe("Der Start steht drin", "Started" in b, b)
+    pruefe("Leere Plaetze zeigen einen Strich", "--" in b, b)
+    # Ein falsches Passwort muss auftauchen
+    E2.eingabe("ESC", 1.0)
+    E3 = Lauf(chip, evcmos, platte)
+    E3.ins_setup()
+    E3.reiter(4)
+    E3.eingabe("DOWN", 0.0)
+    E3.warte(0.2)
+    E3.eingabe("ENTER", 0.5)
+    E3.eingabe("sup", 0.2)
+    E3.eingabe("ENTER", 0.4)
+    E3.eingabe("sup", 0.2)
+    E3.eingabe("ENTER", 0.8)
+    E3.eingabe("F10", 1.0)
+    E4 = Lauf(chip, evcmos, platte)
+    E4.ins_setup()
+    E4.eingabe("daneben", 0.2)
+    E4.eingabe("ENTER", 1.2)
+    E4.eingabe("sup", 0.2)
+    E4.eingabe("ENTER", 1.2)
+    E4.reiter(6)
+    pruefe("Ein falsches Passwort landet im Protokoll",
+           "Wrong password" in E4.bild(), E4.bild())
+    # Leeren
+    for _ in range(8):
+        E4.eingabe("DOWN", 0.0)
+    E4.warte(0.3)
+    E4.eingabe("ENTER", 0.8)
+    pruefe("Der Ereignisspeicher laesst sich leeren",
+           "Event log cleared" in E4.gesehen, E4.bild())
+
+    print("\n--- B2: Secure Boot dreistufig ---------------------------------")
+    S2 = Lauf(chip, os.path.join(tmp, "cmos_sb.bin"), platte)
+    S2.ins_setup()
+    S2.reiter(3)                             # Security
+    S2.eingabe("ENTER", 0.4)
+    pruefe("Stufe 1 heisst Audit", "Audit" in S2.bild(), S2.bild())
+    S2.eingabe("ENTER", 0.4)
+    pruefe("Stufe 2 heisst Enforce", "Enforce" in S2.bild(), S2.bild())
+    S2.eingabe("ENTER", 0.4)
+    pruefe("Stufe 3 ist wieder Disabled", "Disabled" in S2.bild(), S2.bild())
+    # Audit einstellen, Abbild verbiegen -> warnen, aber starten
+    S2.eingabe("ENTER", 0.4)                 # Audit
+    S2.eingabe("DOWN", 0.0)
+    S2.eingabe("DOWN", 0.3)
+    S2.eingabe("ENTER", 0.8)                 # Trust Current Boot Image
+    S2.eingabe("F10", 1.0)
+    kaputt = os.path.join(tmp, "hd_audit.img")
+    shutil.copy(platte, kaputt)
+    with open(kaputt, "r+b") as f:
+        f.seek(500)
+        f.write(b"\xA5" * 8)
+    S3 = Lauf(chip, os.path.join(tmp, "cmos_sb.bin"), kaputt)
+    S3.warte(7.0)
+    pruefe("Audit warnt, haelt aber nicht an",
+           "Audit" in S3.gesehen and "Mounting" in S3.gesehen, S3.bild())
+
+    print("\n--- B3/B6: Inventar und Startbild ------------------------------")
+    I = Lauf(chip, cmos, platte)
+    I.ins_setup()
+    I.reiter(5)
+    for _ in range(8):
+        I.eingabe("DOWN", 0.0)
+    I.warte(0.4)
+    b = I.bild()
+    pruefe("Seriennummer, Startzaehler und Betriebszeit stehen im Setup",
+           "Serial Number" in b and "Power-On Count" in b
+           and "Operating Time" in b, b)
+    pruefe("Die Seriennummer ist gefuellt", "TB32-" in b, b)
+
+    # Der Owner Tag wurde weiter oben absichtlich ausgeschaltet -- ohne ihn
+    # darf beim Einschalten auch nichts stehen. Fuer B6 also erst wieder an.
+    B5 = Lauf(chip, cmos, platte)
+    B5.ins_setup()
+    B5.reiter(5)
+    B5.eingabe("ENTER", 0.4)
+    B5.eingabe("F10", 1.0)
+    B6 = Lauf(chip, cmos, platte)
+    B6.warte(2.0)
+    pruefe("Der Firmentext steht schon beim Einschalten da",
+           "ACME GmbH" in B6.gesehen, B6.bild())
+
     # === 5. A7: die Flash-Sperre ========================================
     print("\n--- A7: der Chip laesst sich aus dem System nicht brennen -------")
     T = Lauf(chip, cmos, platte)
@@ -391,11 +484,9 @@ def main():
     shutil.rmtree(tmp, ignore_errors=True)
 
     print("\n--- Noch nicht gebaut, deshalb hier nicht geprueft -------------")
-    for offen in ("B1     Reiter Event Log (die Ablage im NVRAM steht)",
-                  "B2     Secure Boot dreistufig (Enforce/Audit/Off)",
-                  "B3     Inventar im Systemmonitor anzeigen",
-                  "B4/B6  F12-Startmenue, Firmen-Startbild",
-                  "B5     Netzwerkstart"):
+    for offen in ("B4     F12-Startmenue",
+                  "B5     Netzwerkstart",
+                  "C      Numlock, POST-Zeit, Startverzoegerung, Reiter Exit"):
         print(f"  [ offen ] {offen}")
 
     farbe = GRUEN if FEHLT == 0 else ROT

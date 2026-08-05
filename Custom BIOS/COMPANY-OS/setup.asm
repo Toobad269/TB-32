@@ -9,16 +9,24 @@
 .equ SET_X,        4
 .equ SET_Y,        6
 .equ SET_ENTSIZE,  16
-.equ SET_TABS,     7                 ; + Company
+.equ SET_TABS,     8                 ; + Company, + Event Log
 .equ A_BG,         0x17              ; grau auf blau
 .equ A_TITLE,      0x1E              ; gelb auf blau
 .equ A_SEL,        0x70              ; schwarz auf grau
 .equ A_HELP,       0x1B              ; hellcyan auf blau
 
-; Sonderregister: alles ab 0xE0 ist kein normaler CMOS-Platz, sondern eine
+; Sonderregister: alles ab 0xC0 ist kein normaler CMOS-Platz, sondern eine
 ; Zeile mit eigenem Verhalten -- Uhr, Anzeige eines Messwerts oder ein Knopf.
 ; (Die Grenze lag frueher bei 0xF0; dort war nach vierzehn Sonderzeilen kein
-; Platz mehr. CMOS-Plaetze gehen nur bis 0x3F, also ist 0xE0 reichlich weit.)
+; Platz mehr. Dann war auch ab 0xE0 kein Platz mehr -- Ereignisspeicher und
+; Inventar brauchen zusammen zwoelf Zeilen. CMOS-Plaetze gehen nur bis 0x3F,
+; also ist selbst 0xC0 noch reichlich weit weg.)
+.equ REG_EV0,      0xC0            ; acht Zeilen Ereignisspeicher, 0xC0..0xC7
+.equ REG_EV7,      0xC7
+.equ REG_EVCLR,    0xC8            ; Knopf: Ereignisspeicher leeren
+.equ REG_INVSER,   0xC9            ; nur Anzeige: Seriennummer
+.equ REG_INVBOOT,  0xCA            ; nur Anzeige: Anzahl Starts
+.equ REG_INVMIN,   0xCB            ; nur Anzeige: Betriebsminuten
 .equ REG_BIOSLEN,  0xE0            ; nur Anzeige: Groesse des BIOS-Chips
 .equ REG_BIOSSUM,  0xE1            ; nur Anzeige: Pruefsumme des Chips
 .equ REG_FLASH,    0xE2            ; Knopf: BIOS aus einer Datei neu brennen
@@ -323,12 +331,14 @@ setup_change:
     jz .pwuset
     cmpi r7, REG_PWUCLR
     jz .pwuclr
+    cmpi r7, REG_EVCLR
+    jz .evclr
     cmpi r7, REG_POL0
     jl .kein_pol
     cmpi r7, REG_POL4
     jle .polbit
 .kein_pol:
-    cmpi r7, 0xE0
+    cmpi r7, 0xC0
     jae .done                         ; reine Anzeigezeilen
     ldw r8, [r6+8]                    ; r8 = Anzahl moeglicher Werte
     mov r10, r7
@@ -376,6 +386,11 @@ setup_change:
     jmp .done
 .bootgesperrt:
     li r1, s_a6_fest
+    call setup_message
+    jmp .done
+.evclr:
+    call ev_leeren
+    li r1, s_ev_geleert
     call setup_message
     jmp .done
 .polbit:
@@ -1032,6 +1047,19 @@ setup_value:
     jz .action
     cmpi r6, REG_PWUSTATE
     jz .pwustate
+    cmpi r6, REG_EVCLR
+    jz .action
+    cmpi r6, REG_INVSER
+    jz .invser
+    cmpi r6, REG_INVBOOT
+    jz .invboot
+    cmpi r6, REG_INVMIN
+    jz .invmin
+    cmpi r6, REG_EV0
+    jl .kein_ev
+    cmpi r6, REG_EV7
+    jle .evzeile
+.kein_ev:
     cmpi r6, REG_POL0
     jl .kein_polv
     cmpi r6, REG_POL4
@@ -1111,6 +1139,52 @@ setup_value:
     jmp .done
 .pwu_nein:
     li r1, s_pw_notinst
+    mov r2, r4
+    call vid_puts
+    jmp .done
+
+; --- B1: eine Zeile des Ereignisspeichers -------------------------------
+.evzeile:
+    subi r6, r6, REG_EV0
+    mov r1, r6
+    mov r2, r4
+    call ev_zeile_zeigen
+    jmp .done
+
+; --- B3: Inventar -------------------------------------------------------
+.invser:
+    li r1, TXT_BUF
+    push r4
+    li r2, NV_SERIAL
+    push r1
+    mov r1, r2
+    li r2, TXT_BUF
+    movi r3, 15
+    call nv_str_lesen
+    pop r1
+    pop r4
+    li r1, TXT_BUF
+    mov r2, r4
+    call vid_puts
+    jmp .done
+.invboot:
+    push r4
+    movi r1, NV_BOOTS
+    call nv_read32
+    pop r4
+    mov r1, r0
+    mov r2, r4
+    call vid_putn
+    jmp .done
+.invmin:
+    push r4
+    movi r1, NV_MINUTES
+    call nv_read32
+    pop r4
+    mov r1, r0
+    mov r2, r4
+    call vid_putn
+    li r1, s_minuten
     mov r2, r4
     call vid_puts
     jmp .done
@@ -1514,11 +1588,12 @@ setup_tabs:
     .dw tab_cooling,  6
     .dw tab_security, 4
     .dw tab_password, 8
-    .dw tab_company,  9
+    .dw tab_company,  12
+    .dw tab_events,   10
     .dw tab_firmware, 5
 
 setup_tabnamen:
-    .dw s_tab_main, s_tab_hw, s_tab_cool, s_tab_sec, s_tab_pw, s_tab_comp, s_tab_fw
+    .dw s_tab_main, s_tab_hw, s_tab_cool, s_tab_sec, s_tab_pw, s_tab_comp, s_tab_ev, s_tab_fw
 
 ;  je Eintrag: Beschriftung, CMOS-Register, Anzahl Werte, Klartexttabelle
 tab_main:
@@ -1546,7 +1621,7 @@ tab_cooling:
     .dw s_e_tmax,  REG_TMAX,     0, 0
 
 tab_security:
-    .dw s_e_sec,   CM_SECURE,    2, opts_onoff
+    .dw s_e_sec,   CM_SECURE,    3, opts_secure
     .dw s_e_sum,   REG_SUM,      0, 0
     .dw s_e_trust, REG_TRUST,    0, 0
     .dw s_e_secinfo, REG_INFO,   0, 0
@@ -1570,7 +1645,22 @@ tab_company:
     .dw s_e_codisk, REG_POL4,   0, 0
     .dw s_e_coblk,  REG_COBLK,  0, 0
     .dw s_e_coclr,  REG_COCLR,  0, 0
+    .dw s_e_invser, REG_INVSER, 0, 0
+    .dw s_e_invbt,  REG_INVBOOT,0, 0
+    .dw s_e_invmin, REG_INVMIN, 0, 0
     .dw s_e_coinfo, REG_INFO,   0, 0
+
+tab_events:
+    .dw s_e_ev1, REG_EV0,   0, 0
+    .dw s_e_ev2, REG_EV0+1, 0, 0
+    .dw s_e_ev3, REG_EV0+2, 0, 0
+    .dw s_e_ev4, REG_EV0+3, 0, 0
+    .dw s_e_ev5, REG_EV0+4, 0, 0
+    .dw s_e_ev6, REG_EV0+5, 0, 0
+    .dw s_e_ev7, REG_EV0+6, 0, 0
+    .dw s_e_ev8, REG_EV0+7, 0, 0
+    .dw s_e_evclr, REG_EVCLR, 0, 0
+    .dw s_e_evinfo, REG_INFO, 0, 0
 
 tab_firmware:
     .dw s_e_blen,  REG_BIOSLEN,  0, 0
@@ -1590,6 +1680,7 @@ felder_datum:
     .dw CM_YEAR,  0, 99, s_f_jahr
 
 opts_onoff:  .dw s_off, s_on
+opts_secure: .dw s_off, s_audit, s_enforce
 opts_fan:    .dw s_fan0, s_fan1, s_fan2
 opts_boot:   .dw s_boot0, s_boot1, s_boot2
 opts_speed:  .dw s_spd0, s_spd1, s_spd2, s_spd3, s_spd4
@@ -1639,10 +1730,25 @@ s_e_copw:    .db "Require Login Password", 0
 s_e_codisk:  .db "Boot From Internal Disk Only", 0
 s_e_coblk:   .db "Blocked Programs", 0
 s_e_coclr:   .db "Configuration Cleared", 0
+s_e_invser:  .db "Serial Number", 0
+s_e_invbt:   .db "Power-On Count", 0
+s_e_invmin:  .db "Operating Time", 0
 s_e_coinfo:  .db "The system reads these at every start", 0
 s_co_yes:    .db "Yes -- settings were reset", 0
 s_co_no:     .db "No", 0
 s_a6_fest:   .db "Boot source is locked by system policy (Company > Boot From Internal Disk Only).", 0
+s_ev_geleert:.db "Event log cleared.", 0
+s_minuten:   .db " min", 0
+s_e_ev1:     .db "1", 0
+s_e_ev2:     .db "2", 0
+s_e_ev3:     .db "3", 0
+s_e_ev4:     .db "4", 0
+s_e_ev5:     .db "5", 0
+s_e_ev6:     .db "6", 0
+s_e_ev7:     .db "7", 0
+s_e_ev8:     .db "8", 0
+s_e_evclr:   .db "Clear Event Log", 0
+s_e_evinfo:  .db "Newest first. Survives a restart, not a dead battery", 0
 s_e_pwstate: .db "Supervisor Password", 0
 s_e_pwset:   .db "Set / Change Password", 0
 s_e_pwclr:   .db "Clear Password", 0
@@ -1679,6 +1785,7 @@ s_tab_cool:  .db " Cooling ", 0
 s_tab_sec:   .db " Security ", 0
 s_tab_pw:    .db " Password ", 0
 s_tab_comp:  .db " Company ", 0
+s_tab_ev:    .db " Event Log ", 0
 s_tab_fw:    .db " Firmware ", 0
 
 s_fan0:      .db "Automatic", 0
@@ -1694,6 +1801,8 @@ s_vgatyp:    .db "TB-VGA 640x400, 256 colours", 0
 
 s_on:        .db "Enabled", 0
 s_off:       .db "Disabled", 0
+s_audit:     .db "Audit (warn only)", 0
+s_enforce:   .db "Enforce (halt)", 0
 s_boot0:     .db "Hard Disk 0", 0
 s_boot1:     .db "Floppy (not installed)", 0
 s_boot2:     .db "Network (not installed)", 0

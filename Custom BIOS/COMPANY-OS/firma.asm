@@ -900,3 +900,223 @@ boot_quelle_sichern:
 
 s_a6_zurueck: .db "Boot source was changed -- reset to the internal disk.", 0
 .align 4
+
+; ===========================================================================
+;  B1 -- den Ereignisspeicher anzeigen
+;
+;  Die Zeilen stehen mit dem NEUESTEN oben. Der Ring zeigt mit NV_LOGHEAD auf
+;  den naechsten freien Platz, also ist head-1 der juengste Eintrag.
+; ===========================================================================
+ev_zeile_zeigen:                      ; r1 = Zeile 0..7, r2 = Attribut
+    push r6
+    push r7
+    push r8
+    mov r8, r2                        ; Attribut retten
+    mov r6, r1
+
+    movi r1, NV_LOGHEAD
+    call nv_read
+    subi r0, r0, 1                    ; juengster Eintrag
+    sub r0, r0, r6                    ; r6 Schritte zurueck
+    andi r7, r0, 7
+    muli r7, r7, NV_LOGLEN
+    addi r7, r7, NV_LOG               ; r7 = Adresse des Eintrags
+
+    mov r1, r7
+    call nv_read
+    cmpi r0, 0
+    jz .leer
+
+    push r0
+    mov r1, r0
+    call ev_name
+    mov r1, r0
+    mov r2, r8
+    call vid_puts
+    pop r0
+
+    li r1, s_ev_bei
+    mov r2, r8
+    call vid_puts
+    addi r1, r7, 3                    ; Tag
+    call nv_read
+    mov r1, r0
+    mov r2, r8
+    call vid_putn
+    li r1, s_ev_punkt
+    mov r2, r8
+    call vid_puts
+    addi r1, r7, 4                    ; Monat
+    call nv_read
+    mov r1, r0
+    mov r2, r8
+    call vid_putn
+    li r1, s_ev_luecke
+    mov r2, r8
+    call vid_puts
+    addi r1, r7, 1                    ; Stunde
+    call nv_read
+    mov r1, r0
+    mov r2, r8
+    call vid_putn
+    li r1, s_ev_doppel
+    mov r2, r8
+    call vid_puts
+    addi r1, r7, 2                    ; Minute
+    call nv_read
+    cmpi r0, 10
+    jge .keine_null
+    push r0
+    li r1, s_ev_null
+    mov r2, r8
+    call vid_puts
+    pop r0
+.keine_null:
+    mov r1, r0
+    mov r2, r8
+    call vid_putn
+    jmp .fertig
+.leer:
+    li r1, s_ev_leer
+    mov r2, r8
+    call vid_puts
+.fertig:
+    pop r8
+    pop r7
+    pop r6
+    ret
+
+; --- Klartext zu einer Ereignisart (r1 = Art) -> r0 = Zeiger --------------
+ev_name:
+    cmpi r1, EV_BADPW
+    jz .badpw
+    cmpi r1, EV_CLEARED
+    jz .cleared
+    cmpi r1, EV_FLASH
+    jz .flash
+    cmpi r1, EV_SECURE
+    jz .secure
+    cmpi r1, EV_DEFAULTS
+    jz .defaults
+    cmpi r1, EV_LOCKOUT
+    jz .lockout
+    cmpi r1, EV_BOOT
+    jz .boot
+    cmpi r1, EV_BOOTSRC
+    jz .bootsrc
+    li r0, s_ev_unbekannt
+    ret
+.badpw:    li r0, s_ev_badpw
+    ret
+.cleared:  li r0, s_ev_cleared
+    ret
+.flash:    li r0, s_ev_flash
+    ret
+.secure:   li r0, s_ev_secure
+    ret
+.defaults: li r0, s_ev_defaults
+    ret
+.lockout:  li r0, s_ev_lockout
+    ret
+.boot:     li r0, s_ev_boot
+    ret
+.bootsrc:  li r0, s_ev_bootsrc
+    ret
+
+ev_leeren:
+    push r6
+    movi r6, NV_LOG
+.loop:
+    cmpi r6, NV_LOG+64
+    jae .fertig
+    mov r1, r6
+    movi r2, 0
+    call nv_write
+    addi r6, r6, 1
+    jmp .loop
+.fertig:
+    movi r1, NV_LOGHEAD
+    movi r2, 0
+    call nv_write
+    pop r6
+    ret
+
+s_ev_leer:      .db "--", 0
+s_ev_bei:       .db "   ", 0
+s_ev_punkt:     .db ".", 0
+s_ev_luecke:    .db "  ", 0
+s_ev_doppel:    .db ":", 0
+s_ev_null:      .db "0", 0
+s_ev_badpw:     .db "Wrong password", 0
+s_ev_cleared:   .db "Configuration cleared", 0
+s_ev_flash:     .db "BIOS flashed", 0
+s_ev_secure:    .db "Secure Boot halted", 0
+s_ev_defaults:  .db "Setup defaults loaded", 0
+s_ev_lockout:   .db "Locked out", 0
+s_ev_boot:      .db "Started", 0
+s_ev_bootsrc:   .db "Boot source reset", 0
+s_ev_unbekannt: .db "Unknown", 0
+.align 4
+
+; ===========================================================================
+;  B6 -- das Startbild der Firma
+;
+;  Den BIOS-Namen malt das Mainboard schon in die Bildmitte, bevor ueberhaupt
+;  Code laeuft. Darunter kommt der Firmentext -- aus demselben Speicher wie
+;  der Eigentuemer-Eintrag, also ohne eine einzige zusaetzliche Einstellung.
+;  Kleine Arbeit, grosse Wirkung: der Rechner sieht ab dem Einschaltknopf
+;  nach seinem Eigentuemer aus und nicht erst ab dem Schreibtisch.
+; ===========================================================================
+firma_startbild:
+    push r6
+    push r7
+    movi r1, POL_OWNER
+    call pol_frage
+    cmpi r0, 0
+    jz .nichts
+
+    li r1, NV_FIRMA
+    li r2, TXT_BUF
+    movi r3, 31
+    call nv_str_lesen
+    li r10, TXT_BUF                   ; leerer Text? Dann nichts malen
+    ldb r0, [r10]
+    cmpi r0, 0
+    jz .nichts
+
+    li r1, TXT_BUF                    ; mittig setzen
+    call firma_laenge
+    mov r6, r0
+    shri r6, r6, 1
+    movi r7, SCR_W/2
+    sub r7, r7, r6
+    cmpi r7, 0
+    jge .x_ok
+    movi r7, 0
+.x_ok:
+    mov r1, r7
+    movi r2, 14
+    li r3, TXT_BUF
+    movi r4, ATTR_BRIGHT
+    call vid_putsat
+.nichts:
+    pop r7
+    pop r6
+    ret
+
+firma_laenge:                         ; r1 = Zeiger -> r0 = Laenge
+    push r6
+    mov r6, r1
+    movi r0, 0
+.loop:
+    add r10, r6, r0
+    ldb r11, [r10]
+    cmpi r11, 0
+    jz .fertig
+    addi r0, r0, 1
+    cmpi r0, 40
+    jl .loop
+.fertig:
+    pop r6
+    ret
+.align 4
