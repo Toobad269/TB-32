@@ -9,6 +9,33 @@ Die tiefer liegenden Fallen haben zusätzlich einen ausführlichen Eintrag in
 
 ---
 
+## Paint speichert -- der Fehler war die Meldung
+
+Paint konnte die ganze Zeit speichern. Ich hatte beim Testen auf **Open**
+statt auf **Save** gedrückt, und Paint sagte dazu *„no such file / name
+missing"* -- derselbe Satz für zwei völlig verschiedene Lagen:
+
+* die Datei zum Öffnen gibt es nicht
+* das Speichern hat nicht geklappt
+
+Also suchte ich den Fehler beim Speichern, wo keiner war. Jetzt gibt es zwei
+Sätze: **„no such file"** und **„could not save"**. Eine Fehlermeldung, die
+zwei Ursachen zusammenwirft, schickt den Suchenden in die falsche Richtung
+-- das hat mich hier eine halbe Stunde gekostet.
+
+Nachgewiesen mit dem ganzen Weg: malen → Save → Ordner und Namen im Dialog
+wählen → *saved* → Open → dieselbe Datei → *loaded*, und das Bild ist wieder
+da.
+
+**Nebenbei zwei Kleinigkeiten:** Die Statuszeile wurde vor dem Schreiben
+nicht gewischt, „saved" und „loaded" standen übereinander und ergaben
+Buchstabensalat. Und `pt_dialog_pruefen()` stand vor der Deklaration von
+`pt_name` -- das geht bei diesem Ein-Durchgang-Compiler zwar, ist aber genau
+die Sorte Anordnung, bei der er stillschweigend eine zweite Variable anlegt.
+Jetzt steht sie dahinter.
+
+---
+
 ## Die Rückgabe des Dateidialogs trägt
 
 Der Dialog gab sein Ergebnis längst zurück, und das Programm handelte auch

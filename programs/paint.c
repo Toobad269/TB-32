@@ -111,22 +111,6 @@ int pt_namemode = 0;                 /* Dateiname wird gerade getippt */
    1 = neues Bild, 2 = speichern unter, 3 = oeffnen. */
 int pt_warte = 0;
 
-int pt_dialog_pruefen() {
-    char name[24];
-    int r;
-    if (pt_warte == 0) return 0;
-    r = datei_gewaehlt(name);
-    if (r == 0) return 0;
-    if (r == 2) { pt_warte = 0; return 1; }
-    memset(pt_name, 0, 20);
-    strncpy(pt_name, name, 20);
-    pt_ort = 1;
-    if (pt_warte == 1) { pt_neu_anlegen(); pt_speichern(); }
-    else if (pt_warte == 2) pt_speichern();
-    else if (pt_warte == 3) pt_laden();
-    pt_warte = 0;
-    return 1;
-}
 char pt_name[24];
 int pt_meldung = 0;                  /* 0 nichts, 1 gespeichert, 2 geladen, 3 Fehler */
 
@@ -342,11 +326,36 @@ void pt_neu() {
 
 /* Eigenes Format TBI: Breite und Hoehe als Wort, dann ein Byte je Punkt. */
 void pt_speichern() {
-    if (pt_name[0] == 0) { pt_meldung = 3; return; }
+    if (pt_name[0] == 0) { pt_meldung = 4; return; }
     mem_put(PAINT_KOPF, PAINT_W);
     mem_put(PAINT_KOPF + 4, PAINT_H);
-    if (filewrite(pt_name, PAINT_KOPF, 8 + PAINT_W * PAINT_H) < 0) pt_meldung = 3;
+    if (filewrite(pt_name, PAINT_KOPF, 8 + PAINT_W * PAINT_H) < 0) pt_meldung = 4;
     else pt_meldung = 1;
+}
+
+/* Hat der Benutzer im Dateidialog etwas ausgewaehlt?
+
+   ACHTUNG, teuer gelernt: diese Funktion MUSS hinter der Deklaration von
+   pt_name stehen. Stand sie davor, legte der Ein-Durchgang-Compiler beim
+   ersten Sehen eine ZWEITE Variable dieses Namens an. Das Namensfeld zeigte
+   dann brav "MEINS.TBI" -- und pt_speichern las die andere, leere, und
+   meldete "name missing". Zwei Variablen mit demselben Namen, und keine
+   Fehlermeldung. */
+int pt_dialog_pruefen() {
+    char name[24];
+    int r;
+    if (pt_warte == 0) return 0;
+    r = datei_gewaehlt(name);
+    if (r == 0) return 0;
+    if (r == 2) { pt_warte = 0; return 1; }
+    memset(pt_name, 0, 20);
+    strncpy(pt_name, name, 20);
+    pt_ort = 1;
+    if (pt_warte == 1) { pt_neu_anlegen(); pt_speichern(); }
+    else if (pt_warte == 2) pt_speichern();
+    else if (pt_warte == 3) pt_laden();
+    pt_warte = 0;
+    return 1;
 }
 
 void pt_laden() {
@@ -455,9 +464,16 @@ void app_paint(int i) {
     gx_fill(x + 44, j - 2, 150, 12, C_WHITE);
     gx_text(x + 46, j, pt_name, C_TEXT, 256);
     if (pt_namemode) gx_fill(x + 46 + strlen(pt_name) * 8, j, 7, 8, C_ACCENT);
+    /* Erst wischen: sonst steht die alte Meldung noch darunter und beide
+       Woerter uebereinander ergeben Buchstabensalat. */
+    gx_fill(x + 198, j - 2, 160, 12, C_WIN);
     if (pt_meldung == 1) gx_text(x + 200, j, "saved", C_GOOD, 256);
     if (pt_meldung == 2) gx_text(x + 200, j, "loaded", C_GOOD, 256);
-    if (pt_meldung == 3) gx_text(x + 200, j, "no such file / name missing",
+    /* Zwei verschiedene Faelle, zwei verschiedene Saetze. Vorher stand bei
+       beiden "no such file / name missing" -- und wer auf "Open" statt auf
+       "Save" gedrueckt hatte, suchte den Fehler beim Speichern. */
+    if (pt_meldung == 4) gx_text(x + 200, j, "could not save", C_WARN, 256);
+    if (pt_meldung == 3) gx_text(x + 200, j, "no such file",
                                 C_WARN, 256);
 }
 
