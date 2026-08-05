@@ -9,6 +9,40 @@ Die tiefer liegenden Fallen haben zusätzlich einen ausführlichen Eintrag in
 
 ---
 
+## COMPANY-OS: das Pflichtenheft steht, und der Flash-Spuk ist erklaert
+
+Colin baut den Firmen-Reiter selbst. Also nicht coden, sondern aufschreiben,
+was das BIOS koennen soll -- in `Custom BIOS/COMPANY-OS/README.md`.
+
+**Der Fund dabei ist der eigentliche Ertrag.** Sein „mal ist das geflashte
+BIOS da, mal nicht" ist kein Fehler im BIOS: `build.py` baut
+`firmware/bios.bin` bei JEDEM Durchlauf neu -- und genau diese Datei ist der
+ROM-Baustein. Wer COMPANY-OS flasht und danach einmal baut, hat wieder das
+Serien-BIOS auf dem Chip. Bei einem echten Mainboard kann das nicht
+passieren, weil der Compiler nicht an den Flash kommt; bei uns liegt beides
+im selben Ordner.
+
+Drei Auswege stehen in der README: `build.py` den Chip in Ruhe lassen, wenn
+im Kopf ein fremder BIOS-Name steht; ein `--bios <datei>` in `pc.py` zum
+Ausprobieren ohne Flashen (`Machine(rom=...)` kann es schon, `pc.py` reicht
+es nur nicht durch); oder beides.
+
+Im Pflichtenheft ausserdem: die sechs Zeilen des Reiters *Company*, wo die
+Einstellungen liegen koennen (im CMOS sind unter der Pruefsumme genau elf
+Byte frei -- Schalter und Sperrliste passen, die 32 Byte Firmentext nicht,
+dafuer NVRAM-Baustein oder selbstbeschreibender Chip), der Weg ins System
+ueber den BIOS-Datenbereich samt neuer Sperrliste ab 0x528, die vier
+Anfasspunkte in `system/gui.c`, und zwei Fallen, die man nur einmal erlebt:
+die Kopfpruefsumme nach dem Patchen neu rechnen, und den Firmenblock hinter
+die ersten 16 KB legen, weil Secure Boot genau die misst.
+
+Programme sperrt das BIOS ueber eine feste Namenstabelle mit einem Bit pro
+Programm -- so wie ein echtes BIOS „USB Ports: Enabled/Disabled" kennt. Weil
+das BIOS die Namen hat, legt es sie im Klartext in den Speicher; das System
+muss dann keine Bits deuten.
+
+---
+
 ## Paint speichert -- der Fehler war die Meldung
 
 Paint konnte die ganze Zeit speichern. Ich hatte beim Testen auf **Open**
