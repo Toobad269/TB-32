@@ -9,6 +9,47 @@ Die tiefer liegenden Fallen haben zusätzlich einen ausführlichen Eintrag in
 
 ---
 
+## Der Fehler hinter allen anderen: jedes Programm lud an dieselbe Adresse
+
+Colin meldete vier Dinge auf einmal: Paint bekam wirre Striche, sobald der
+Speichertest lief; Paint ließ sich danach nicht mehr schließen; BENCH war
+grau; und als Flappy dazukam, fror alles ein. **Das war ein einziger
+Fehler.**
+
+In `prog_start.asm` stand `.org 0x00200000`. Jedes Programm wurde also an
+dieselbe Stelle geladen und lief dort. Solange nur eines lief, war das in
+Ordnung -- so hat es jahrzehntelang funktioniert. Seit die Programme aus dem
+Kernel ausgezogen sind und **mehrere gleichzeitig in Fenstern laufen**,
+überschreibt das zweite dem ersten den Code unter den Füßen weg.
+
+Dazu kam die zweite Hälfte: `MEMTEST` prüfte den Bereich **3 bis 9 MB** --
+und genau dort liegen die Leinwand von Paint (6 MB) und der Text von Word
+(7,2 MB). Der Speichertest schrieb ihnen ihre Daten mit Prüfmustern voll.
+Die „schrägen Mini-Striche" in Paint waren wörtlich die Muster des
+Speichertests.
+
+**Die Lösung ist die, die frühe Systeme auch hatten, lange bevor es
+Speicherverwaltung gab: jedes Programm bekommt seinen Platz beim Bauen
+zugewiesen.**
+
+* `build.py` teilt zu: Werkzeuge (CC, ASM, PY) laufen allein und behalten den
+  alten Platz mit 512 KB; Fensterprogramme bekommen je 128 KB ab 2,5 MB.
+* Jedes Programm trägt im Kopf `"TBXP"` und seine Adresse. Der Lader liest
+  sie, schiebt das Programm mit dem Blockkopierer dorthin und startet es da.
+* Programme **ohne** diesen Kopf -- etwa auf dem Gerät selbst übersetzte --
+  landen wie früher an der ersten Stelle. Alte Dateien laufen weiter.
+* `MEMTEST` prüft jetzt 10 bis 14 MB, wo nichts anderes liegt.
+
+Nachgewiesen: Paint, Speichertest und Flappy laufen **gleichzeitig**, jedes
+in seinem Fenster, nichts friert ein und nichts malt in fremde Daten.
+
+Und die Lehre, die über dieses Projekt hinausgeht: Der Umzug der Programme
+aus dem Kernel war fachlich richtig -- aber er hat eine Annahme gebrochen,
+die niemand aufgeschrieben hatte, weil sie zwanzig Jahre lang stimmte.
+*Nur ein Programm zur Zeit.*
+
+---
+
 ## Jedes Programm läuft jetzt im Fenster
 
 Systematisch durchgetestet: **alle dreizehn** Programme aus dem Startmenü

@@ -193,6 +193,22 @@ def build():
         progs_dir = fs.pfad_ordner("PROGS")
         source_dir = fs.pfad_ordner("SOURCE")
 
+        # --- Jedes Programm bekommt seinen eigenen Platz im Speicher -------
+        # Bis hierher lud jedes Programm an dieselbe Adresse. Solange nur
+        # eines lief, ging das gut; seit mehrere gleichzeitig in Fenstern
+        # laufen, ueberschrieb das zweite dem ersten den Code. Jetzt bekommt
+        # jedes beim Bauen seinen Platz zugewiesen -- so haben es die fruehen
+        # Systeme auch gemacht, lange bevor es Speicherverwaltung gab.
+        # Werkzeuge (CC, ASM, PY) laufen immer allein und sind gross --
+        # sie behalten den alten Platz und bekommen reichlich davon.
+        # Fensterprogramme laufen NEBENEINANDER und bekommen je einen
+        # eigenen kleinen Platz.
+        WERKZEUG_BASIS = 0x00200000         # 512 KB fuer eines der Werkzeuge
+        PROG_BASIS = 0x00280000
+        PROG_SLOT = 0x00020000              # 128 KB je Fensterprogramm
+        PROG_MAXSLOTS = 16
+        slot_nr = 0
+
         namen = []
         for datei in sorted(os.listdir(progdir)):
             if not datei.endswith(".c"):
@@ -202,8 +218,24 @@ def build():
             with open(os.path.join(progdir, datei), encoding="utf-8") as f:
                 src = f.read()
             asm = compile_source(src, progdir)
-            code, _, _ = assemble_text(progstart + "\n" + asm, progdir)
             name = datei[:-2].upper()[:11] + ".TBX"
+            if name in WERKZEUGE:
+                basis = WERKZEUG_BASIS
+                platz = 0x00080000
+            else:
+                if slot_nr >= PROG_MAXSLOTS:
+                    raise SystemExit(
+                        f"Mehr als {PROG_MAXSLOTS} Fensterprogramme -- der "
+                        f"Speicher hat nicht so viele Plaetze.")
+                basis = PROG_BASIS + slot_nr * PROG_SLOT
+                platz = PROG_SLOT
+                slot_nr += 1
+            vorspann = f".equ PROG_BASE, 0x{basis:08X}\n"
+            code, _, _ = assemble_text(vorspann + progstart + "\n" + asm, progdir)
+            if len(code) > platz:
+                raise SystemExit(
+                    f"{datei} ist {len(code)} Bytes gross, der Platz fasst "
+                    f"nur {platz}.")
             if name in WERKZEUGE:
                 ziel, wo = system_dir, "SYSTEM"
             elif name in SYSTEMPROGRAMME:
@@ -222,7 +254,7 @@ def build():
                     fs.delete(name, anderer)
                     print(f"  Aufgeraeumt  alte Fassung von {name} entfernt")
             fs.put(name, code, ziel)
-            namen.append(f"{wo}\\{name}")
+            namen.append(f"{wo}\\{name}@{basis >> 20}M")
         if namen:
             print("  Programme " + ", ".join(namen))
         print("  Zum Selberuebersetzen  " +

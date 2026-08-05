@@ -5,8 +5,13 @@
 #include "proglib.c"
 #include "gfxlib.c"
 
-#define TEST_START 0x00300000        /* 3 MB -- oberhalb aller Systempuffer */
-#define TEST_END   0x00900000        /* 9 MB */
+/* Der Bereich muss FREI sein. Frueher stand hier 3 bis 9 MB -- da liegen
+   inzwischen die Programmplaetze (ab 2,5 MB) und die Puffer von Paint und
+   Word. Der Speichertest schrieb ihnen ihre Daten mit Mustern voll: Paint
+   zeigte wirre Striche, und wer danach etwas anklickte, sass vor einer
+   eingefrorenen Maschine. Jetzt oberhalb von allem. */
+#define TEST_START 0x00A00000        /* 10 MB */
+#define TEST_END   0x00E00000        /* 14 MB -- darunter der Ladeplatz */
 #define SCHRITT    4096
 
 int lauf(char* name, int muster, int adressmuster) {

@@ -6,7 +6,20 @@
 ;  nur über INT 0x40 mit ihm.
 ; ===========================================================================
 
-.org 0x00200000
+; Wohin dieses Programm gehoert, legt build.py fest: es stellt ein
+; .equ PROG_BASE, <Adresse> davor. Frueher stand hier fest 0x00200000 --
+; und damit lud JEDES Programm an dieselbe Stelle. Solange nur eines lief,
+; ging das gut. Seit mehrere gleichzeitig in Fenstern laufen, ueberschrieb
+; das zweite dem ersten den Code unter den Fuessen weg: Paint bekam wirre
+; Striche, wenn der Speichertest lief, und alles fror ein, sobald ein
+; drittes dazukam.
+.org PROG_BASE
+
+; Ein kleiner Kopf, damit der Lader weiss, wohin das Programm gehoert.
+; Programme ohne diesen Kopf (etwa auf dem Geraet selbst uebersetzte) landen
+; wie frueher an der ersten Stelle -- das bleibt gueltig.
+    .dw 0x54425850                     ; "TBXP"
+    .dw PROG_BASE                      ; hierhin gehoert es
 
 prog_entry:
     call main

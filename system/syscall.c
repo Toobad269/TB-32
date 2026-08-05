@@ -6,7 +6,15 @@
    Diese Datei ist die andere Seite dieser Tuer.
    ========================================================================== */
 
-#define PROG_ADDR   0x00200000       /* hierhin werden Programme geladen */
+#define PROG_ADDR   0x00200000       /* Werkzeuge und alte Programme */
+/* Zwischenplatz beim Laden: von hier wandert das Programm an SEINEN Platz.
+   Er liegt hoch genug, dass er keinem Programmplatz in die Quere kommt. */
+#define PROG_LADE   0x00E00000
+#define PROG_MAGIC  0x54425850       /* "TBXP" -- der Kopf eines Programms */
+#define P_DMA_SRC   0x56
+#define P_DMA_DST   0x57
+#define P_DMA_LEN   0x58
+#define P_DMA_CMD   0x5A
 #define PROG_ARGS   0x00008200       /* hier findet ein Programm seine Argumente */
 #define PROG_MAX    0x00080000       /* bis zu 512 KB pro Programm */
 #define PROG_STACK  0x002F0000
@@ -295,17 +303,42 @@ void prog_setargs(char* args) {
 
 /* Laedt ein Programm von der Platte und startet es.
    Rueckgabe: 0 = gelaufen, -1 = nicht gefunden */
+/* Ein Programm laden und starten.
+
+   Frueher landete JEDES Programm an derselben Adresse. Solange nur eines
+   lief, war das in Ordnung -- seit mehrere gleichzeitig in Fenstern laufen,
+   ueberschrieb das zweite dem ersten den Code unter den Fuessen weg. Die
+   Folgen sahen aus wie Zauberei: Paint bekam wirre Striche, sobald der
+   Speichertest lief, und der Rechner fror ein, wenn ein drittes dazukam.
+
+   Jetzt traegt jedes Programm im Kopf, wohin es gehoert (build.py weist den
+   Platz beim Bauen zu). Programme ohne diesen Kopf -- etwa auf dem Geraet
+   selbst uebersetzte -- landen wie frueher an der ersten Stelle. */
 int prog_run(char* name, int hintergrund) {
-    int n;
-    n = fs_read_prog(name, PROG_ADDR, PROG_MAX);
+    int n; int adr; int start; int i; int pid;
+
+    n = fs_read_prog(name, PROG_LADE, PROG_MAX);
     if (n < 0) return 0 - 1;
+
+    adr = PROG_ADDR;
+    start = adr;
+    if (mem_get(PROG_LADE) == PROG_MAGIC) {
+        adr = mem_get(PROG_LADE + 4);
+        start = adr + 8;                 /* hinter dem Kopf faengt der Code an */
+        if (adr < PROG_ADDR || adr > PROG_LADE - PROG_MAX) adr = PROG_ADDR;
+    }
+    /* An seinen Platz schieben -- mit dem Blockkopierer, sonst dauert es. */
+    sys_out(P_DMA_SRC, PROG_LADE);
+    sys_out(P_DMA_DST, adr);
+    sys_out(P_DMA_LEN, n);
+    sys_out(P_DMA_CMD, 1);
+
     if (hintergrund) {
-        int pid;
         if (mt_active == 0) mt_enable();
-        pid = proc_start(name, PROG_ADDR);
+        pid = proc_start(name, start);
         if (pid >= 0) p_bg[pid] = 1;
         return pid;
     }
-    call_addr(PROG_ADDR);
+    call_addr(start);
     return 0;
 }
