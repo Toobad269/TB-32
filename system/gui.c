@@ -146,6 +146,7 @@ int  edg_pid = 0 - 1;
 int  edg_run_danach = 0;         /* nach dem Uebersetzen gleich starten? */
 char edg_ziel[20];
 int  menu_offen = 0;            /* Startmenue aufgeklappt? */
+int  sperr_hinweis = 0;         /* "Blocked by system policy" anzeigen? */
 /* Welche Maustaste hat den letzten Klick ausgeloest? Bit 0 links, Bit 1
    Mitte, Bit 2 rechts -- so liefert es die Maus. Der Schreibtisch hat das
    bisher weggeworfen und jeden Klick gleich behandelt. */
@@ -1179,6 +1180,16 @@ void win_vollbild(int i) {
    genau das ist der Sinn: der Eintrag liegt UNTER dem Betriebssystem. */
 #define BDA_FIRMA   0x00000500
 #define BDA_POLICY  0x00000524
+#define BDA_BLOCK   0x00000528       /* 16 Namen a 16 Byte, leer = Ende */
+#define BDA_BLOCKN  16
+#define BDA_INVENT  0x00000628       /* Seriennummer(16), Starts(4), Minuten(4) */
+
+/* Bits im Schalterwort -- dieselbe Belegung wie CM_POLICY in der Firmware */
+#define POL_OWNER    1
+#define POL_NOCC     2
+#define POL_NONET    4
+#define POL_NEEDPW   8
+#define POL_INTDISK 16
 
 char* firma_text() { return (char*)BDA_FIRMA; }
 
@@ -1189,6 +1200,39 @@ int firma_da() {
 }
 
 int firma_policy() { return mem_get(BDA_POLICY); }
+
+int firma_bit(int maske) { return (firma_policy() & maske) != 0; }
+
+/* --- Sperrt die Firmware dieses Programm? --------------------------------
+
+   Zwei Quellen. Erstens die Liste, die das BIOS beim Start in den Speicher
+   gelegt hat -- ein Name je Platz, leerer Name heisst Ende. Zweitens die
+   beiden groben Schalter fuer Compiler und Netz: die haengen nicht an der
+   Liste, weil sie ganze Gruppen meinen.
+
+   Der Compiler ist dabei kein Schikanepunkt, sondern der wichtigste: Der
+   TB-32 hat keinen Speicherschutz. Wer den Coder hat, schreibt sich ein
+   Programm, das die Ports selbst anspricht -- und dann waere jede andere
+   Sperre nur noch Zierde. */
+int gesperrt(char* name) {
+    int i; char* eintrag;
+
+    if (firma_bit(POL_NOCC)) {
+        if (strcmp(name, "CODER.TBX") == 0) return 1;
+        if (strcmp(name, "CC.TBX") == 0)    return 1;
+        if (strcmp(name, "ASM.TBX") == 0)   return 1;
+    }
+    if (firma_bit(POL_NONET)) {
+        if (strcmp(name, "BROWSER.TBX") == 0) return 1;
+    }
+
+    for (i = 0; i < BDA_BLOCKN; i++) {
+        eintrag = (char*)(BDA_BLOCK + i * 16);
+        if (*eintrag == 0) return 0;         /* leerer Name = Ende der Liste */
+        if (strcmp(eintrag, name) == 0) return 1;
+    }
+    return 0;
+}
 
 /* Ein Bild aus dem Arbeitsspeicher auf den Schirm bringen (Blitter-Befehl 4). */
 void g_bild(int x, int y, int w, int h, int quelle) {
@@ -1473,7 +1517,10 @@ void draw_menu() {
     for (z = 0; z < n; z++) {
         i = menu_top + z;
         g_text_max(MENU_X + 20, y + 6 + z * MENU_ZH, menu_text(i),
-                   menu_datei[i] < 0 ? C_TEXT : C_ACCENT, 256, MENU_W - 40);
+                   gesperrt(menu_text(i)) ? C_WINDARK
+                                          : (menu_datei[i] < 0 ? C_TEXT
+                                                               : C_ACCENT),
+                   256, MENU_W - 40);
     }
     /* Pfeile, wenn es mehr gibt als hineinpasst */
     if (menu_top > 0) {
@@ -1838,7 +1885,7 @@ void draw_desktop() {
     g_text(8, 8, "TOOBAD-OS Desktop", C_WHITE, 256);
     /* Gehoert der Rechner einer Firma, steht das oben rechts -- immer
        sichtbar, nicht wegklickbar. */
-    if (firma_da())
+    if (firma_da() && firma_bit(POL_OWNER))
         g_text(G_W - 8 - strlen(firma_text()) * 8, 8, firma_text(),
                C_WINDARK, 256);
     g_fill(8, 18, 136, 1, C_ACCENT);
@@ -1850,6 +1897,15 @@ void draw_desktop() {
 
     draw_taskbar();
     if (menu_offen) draw_menu();
+    /* Ein Programm, das die Firmware sperrt, verschwindet NICHT aus dem
+       Menue -- es wird grau und sagt beim Anklicken warum. Etwas, das
+       unsichtbar ist, sieht nach einem Fehler aus; etwas Graues sieht nach
+       einer Regel aus. */
+    if (sperr_hinweis) {
+        g_panel(G_W / 2 - 150, BAR_Y - 60, 300, 34, 0);
+        g_text(G_W / 2 - 138, BAR_Y - 49, "Blocked by system policy.",
+               C_TEXT, 256);
+    }
 }
 
 /* ==========================================================================
@@ -1899,6 +1955,11 @@ int endet_auf(char* name, char* endung) {
    Schreibtisch malt daneben weiter. Genau deshalb sollen alle Programme im
    Menue Fensterprogramme sein. */
 void gui_prog_starten(char* name) {
+    /* Der eine Punkt, durch den jeder Start aus der Oberflaeche laeuft --
+       aus dem Startmenue genauso wie aus der Dateiverwaltung. Deshalb steht
+       die Pruefung hier und nicht an den drei Aufrufstellen. */
+    if (gesperrt(name)) { sperr_hinweis = 1; return; }
+    sperr_hinweis = 0;
     if (mt_active == 0) mt_enable();
     /* Das Argumentfeld leeren. Sonst findet das naechste Programm dort noch
        den Dateinamen von vorhin -- der Coder oeffnete beim Start stumm die
@@ -2164,7 +2225,7 @@ void gl_malen(int neu_anlegen) {
         if (gl_fehler) g_text(160, 206, "Wrong password.", C_WARN, 256);
         else g_text(160, 206, "ENTER to sign in", C_WINDARK, 256);
     }
-    if (firma_da())
+    if (firma_da() && firma_bit(POL_OWNER))
         g_text((G_W - strlen(firma_text()) * 8) / 2, 300, firma_text(),
                C_WINDARK, 256);
     gl_power_malen();
@@ -2524,8 +2585,15 @@ void gui_main() {
                     }
                     if (i == 0) starte(APP_FILES, "File Manager", 400, 230);
                     if (i == 1) {
-                        if (win_find(APP_BROWSER) < 0) br_init();
-                        starte(APP_BROWSER, "Browser", 600, 340);
+                        /* Der Browser steckt im Kernel und ist keine Datei --
+                           er kommt an gesperrt() vorbei und braucht seine
+                           eigene Zeile. */
+                        if (firma_bit(POL_NONET)) sperr_hinweis = 1;
+                        else {
+                            sperr_hinweis = 0;
+                            if (win_find(APP_BROWSER) < 0) br_init();
+                            starte(APP_BROWSER, "Browser", 600, 340);
+                        }
                     }
                     if (i == 2) starte(APP_CLOCK, "Clock", 200, 130);
                     if (i == 3) starte(APP_ABOUT, "About TOOBAD-OS", 340, 150);
