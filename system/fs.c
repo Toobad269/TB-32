@@ -288,7 +288,14 @@ int fs_read_idx(int idx, int addr, int maxbytes) {
     if (idx < 0 || ent_type(idx) != FT_FILE) return 0 - 1;
     bytes = ent_size(idx);
     if (bytes > maxbytes) bytes = maxbytes;
-    sys_diskread(ent_start(idx), sectors_for(bytes), addr);
+    /* Der Lesefehler wurde bisher verschluckt. Das faellt auf, sobald die
+       Firmware Sektoren verweigert -- COMPANY-OS tut das bei gesperrten
+       Programmen: es kam trotzdem eine Laenge zurueck, der Aufrufer hielt
+       das Laden fuer gelungen und sprang in den Muell, der noch im Speicher
+       stand. Auf dem Schirm stand dann "Invalid opcode" statt einer
+       Meldung. */
+    if (sys_diskread(ent_start(idx), sectors_for(bytes), addr) != 0)
+        return 0 - 1;
     return bytes;
 }
 
@@ -304,7 +311,8 @@ int fs_read(char* name, int addr, int maxbytes) {
     if (idx < 0) return 0 - 1;
     bytes = ent_size(idx);
     if (bytes > maxbytes) bytes = maxbytes;
-    sys_diskread(ent_start(idx), sectors_for(bytes), addr);
+    if (sys_diskread(ent_start(idx), sectors_for(bytes), addr) != 0)
+        return 0 - 1;
     return bytes;
 }
 

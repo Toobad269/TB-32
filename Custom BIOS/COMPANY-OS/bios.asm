@@ -369,7 +369,22 @@ int_disk:
     movi r0, 0xFF
     jmp .done
 .read:
+    ; Die Sektorsperre. Sie sitzt HIER im Dienst und nicht in disk_read --
+    ; die Firmware liest damit selbst den Bootsektor, den Kernel und das
+    ; Verzeichnis, und die duerfen nie blockiert werden. Was durch diesen
+    ; Einsprung kommt, ist dagegen immer eine Bitte des Betriebssystems.
+    push r1
+    push r2
+    call blk_sektor_frage
+    mov r10, r0
+    pop r2
+    pop r1
+    cmpi r10, 0
+    jnz .gesperrt
     call disk_read
+    jmp .done
+.gesperrt:
+    movi r0, DISK_GESPERRT
     jmp .done
 .write:
     call disk_write
@@ -615,6 +630,7 @@ post:
     call intrusion_pruefen
     call inv_start_zaehlen
     call firma_veroeffentlichen
+    call blk_sektoren_bauen           ; Namen zu Sektorbereichen aufloesen
 
     push r6
     push r7

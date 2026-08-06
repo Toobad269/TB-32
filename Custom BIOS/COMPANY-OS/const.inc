@@ -94,6 +94,23 @@
 .equ TXT_BUF,       0x00000770      ; 32 Byte Arbeitsplatz fuer den Firmentext
 .equ NV_WAR_DA,     0x00000790      ; war das NVRAM schon eingerichtet?
 .equ SETUP_ENDE,    0x00000798      ; Reiter Exit: Setup verlassen
+; Die Sektorsperre: je gesperrtem Programm ein Paar (Startsektor, Anzahl).
+; 16 Eintraege a 8 Byte. Sie liegt im Arbeitsplatz der Firmware, nicht im
+; Bereich fuer das Betriebssystem -- das System soll sie nicht einmal sehen,
+; geschweige denn aendern koennen.
+.equ BLK_SEK,       0x000007A0      ; 16 * 8 Byte
+.equ BLK_SEKN,      16
+.equ DISK_GESPERRT, 0xB0            ; Status, den INT 0x13 dann zurueckgibt
+
+; Aufbau eines Verzeichniseintrags (dieselben Zahlen wie in fs.c)
+.equ FS_DIRSEC0,    513
+.equ FS_DIRSECS,    8
+.equ FS_ENTSIZE,    32
+.equ FS_MAXFILES,   128
+.equ FS_E_START,    16
+.equ FS_E_SIZE,     20
+.equ FS_E_INFO,     24
+.equ FS_FT_DIR,     2
 .equ INTRUSION_FLAG,0x00000794      ; wurde die Knopfzelle gezogen? (nur dieser Start)
 .equ BDA_SBHEAD,    0x000004A8      ; Ringpuffer der Bildschirmhistorie
 .equ BDA_SBCOUNT,   0x000004AC

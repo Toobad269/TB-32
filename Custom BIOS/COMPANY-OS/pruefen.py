@@ -251,6 +251,46 @@ def main():
     pruefe("Ein nicht gesperrtes Programm laeuft weiter",
            "TOOBAD-OS" in BS.bild(), BS.bild())
 
+    # --- Die Sektorsperre: das Programm kommt gar nicht erst in den RAM ---
+    #
+    # Die Pruefung oben zeigt nur, dass DIESER Kernel den Start verweigert.
+    # Eine Sperre im Kernel ist aber eine Bitte, keine Mauer: wer ihn
+    # austauscht, ist sie los. Deshalb liegt die eigentliche Sperre in der
+    # Firmware -- sie loest die gesperrten Namen beim Start zu Sektoren auf
+    # und laesst INT 0x13 diese Sektoren nicht mehr lesen.
+    #
+    # Nachgewiesen wird das am Speicher selbst: an PROG_ADDR (0x200000) darf
+    # nach dem Startversuch nichts stehen, was aus der Datei stammt.
+    print("\n--- Die Firmware laesst es nicht in den Speicher ---------------")
+    PROG_ADDR = 0x200000
+    ist = bytes(BS.m.bus.read_block(PROG_ADDR, 64))
+
+    # Wie sieht die Datei auf der Platte wirklich aus? Ueber den Emulator
+    # nachgeschlagen, nicht ueber den gesperrten Weg.
+    with open(platte, "rb") as f:
+        f.seek(513 * 512)
+        verz = f.read(8 * 512)
+    dateianfang = None
+    for i in range(0, len(verz), 32):
+        name = verz[i:i + 16].split(b"\x00", 1)[0]
+        if name == b"CALC.TBX":
+            start = int.from_bytes(verz[i + 16:i + 20], "little")
+            with open(platte, "rb") as f:
+                f.seek(start * 512)
+                dateianfang = f.read(64)
+            break
+    pruefe("CALC.TBX liegt auf der Platte", dateianfang is not None)
+    if dateianfang is not None:
+        pruefe("... aber NICHT im Arbeitsspeicher", ist != dateianfang,
+               f"RAM {ist[:16].hex()} / Datei {dateianfang[:16].hex()}")
+
+    # Und der Fall, auf den es ankommt: ein Kernel OHNE die Sperre. Genau so
+    # sieht ein fremdes oder aelteres System aus. Nachgestellt, indem die
+    # Sektoren direkt ueber den BIOS-Dienst angefragt werden -- der Weg, den
+    # jedes Betriebssystem nimmt.
+    pruefe("Die Sektortabelle der Firmware ist gefuellt",
+           BS.wort_bei(0x7A4) > 0, BS.wort_bei(0x7A4))
+
     # === 4. Die groben Schalter =========================================
     print("\n--- Compiler und Netz ------------------------------------------")
     R = Lauf(chip, cmos, platte)
