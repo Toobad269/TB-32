@@ -1,8 +1,9 @@
-# TOOBAD TB-32
+# TOOBAD TB-32 — Stabil with Defender
 
-> **Beta.** Das Projekt ist in Arbeit und wird ohne jede Gewähr
-> veröffentlicht. Es gibt keine Zusicherung, dass es bei dir läuft, und
-> keine Haftung für irgendetwas.
+> **Stabil with Defender.** Diese Fassung baut auf der stabilen Version auf und
+> ergänzt sie um einen ganzen Sicherheits-Stack (**TOOBAD DEFENDER**) und ein
+> **OS-Auswahlmenü** im BIOS. Trotzdem ohne jede Gewähr veröffentlicht: keine
+> Zusicherung, dass es bei dir läuft, und keine Haftung für irgendetwas.
 
 Ein vollständiger virtueller PC. Der Grundsatz: **Python emuliert nur die
 Chips.** BIOS, Betriebssystem, Oberfläche und alle Programme sind echter
@@ -20,6 +21,43 @@ Passwort an. Ein leeres Passwort bedeutet: der Rechner ist offen und fragt
 nicht. Das Konto liegt als versteckte Datei `\USER.DAT` auf der virtuellen
 Platte -- gelöscht wird es über *Start ▸ Settings ▸ Reset this machine* oder
 auf dem Mac mit `python3 reset.py`.
+
+## TOOBAD DEFENDER — der Sicherheits-Stack
+
+Diese Fassung schützt das System gegen bösartige Programme — und zeigt zugleich,
+wo die Grenzen eines Schutzes liegen. Alle Bausteine sind **TB-32-Code**:
+
+- **Passwortschutz für Systemdateien.** `DEL`, `REN`, Überschreiben und das
+  Anlegen neuer Dateien in `\SYSTEM` verlangen `SUDO` und das Passwort — in der
+  Kommandozeile wie im Schreibtisch (Passwortfenster). `KERNEL.BIN` löscht sich
+  nicht mehr im Vorbeigehen.
+- **Der Wächter (Disk + Speicher).** Ein Programm, das per rohem Portbefehl die
+  Platte zerstören oder per Zeiger den Kernel-Speicher überschreiben will, wird
+  von der **Hardware** abgefangen — erkannt daran, dass der Befehl aus dem
+  Programm-Bereich kommt (privilegiertes I/O in klein). Ein Popup meldet den
+  Angriff mit *Allow / Keep blocked / Terminate*. Schalten mit `DEFENDER`.
+- **Autostart nur mit Zustimmung.** Ein Programm darf sich für den Start
+  anmelden — der Defender fragt vorher „Allow / Deny", statt es heimlich
+  zuzulassen.
+- **Fehler-Isolation.** Ein abstürzendes Programm (Division durch Null,
+  ungültiger Befehl) reißt nicht mehr die ganze Maschine mit — nur der Prozess
+  ist weg, der Rechner läuft weiter.
+
+Zum Ausprobieren liegen als Quelltext bei: `TAKT` und `SEUCHE` (Angreifer),
+`CRASH` (Absturz-Tester) und `UHRAPP` (fragt brav nach Autostart). Alles nur im
+Emulator; ein `python3 build.py` stellt jede Platte wieder her. Details im
+[Änderungsjournal](Doku/14%20Aenderungsjournal.md).
+
+## Betriebssystem auswählen (Bootmenü)
+
+Liegt mehr als ein Betriebssystem auf der Platte, zeigt das BIOS beim Start ein
+**Auswahlmenü** — wie ein echtes UEFI-Bootmenü. Pfeiltasten wählen, ENTER
+bootet den gewählten Kernel.
+
+**Eigenes OS dazunehmen:** einen Ordner `os/<name>/` mit `kernel.c` und
+`start.asm` (lädt bei `0x00010000`) anlegen, dann `python3 build.py` — es steht
+als `\SYSTEM\<NAME>.BIN` im Menü. TOOBAD-OS bleibt `KERNEL.BIN`. Als Beispiel
+liegt `os/tbos/` (TBOS 0.1) bei.
 
 ## Netzwerk
 
@@ -95,8 +133,8 @@ Betriebssystem läuft.
 | | |
 |---|---|
 | **CPU** | TB-32 — 32 Bit, 16 Register, feste 4-Byte-Befehle, 57 Opcodes |
-| **BIOS** | eigene Firmware mit Setup, Secure Boot und austauschbarem Chip |
-| **OS** | TOOBAD-OS mit Dateisystem, Multitasking, Fenstern, Paint, Word, Coder |
+| **BIOS** | eigene Firmware mit Setup, Secure Boot, **OS-Auswahlmenü** und austauschbarem Chip |
+| **OS** | TOOBAD-OS mit Dateisystem, Multitasking, Fenstern, Paint, Word, Coder — und **TOOBAD DEFENDER** (Passwortschutz, Hardware-Wächter, Fehler-Isolation) |
 | **Werkzeuge** | Assembler und C-Compiler — **jeweils einmal für den Mac und einmal für den TB-32 selbst** |
 | **Emulator** | einmal in Python (Referenz), einmal in C (~150× schneller) |
 
@@ -153,6 +191,9 @@ das nennt man Bootstrapping, und es ist der eigentliche Prüfstein.
 | `CALC` | Taschenrechner |
 | `FLAPPY` | Spiel, zeigt die Grafikleistung |
 | `BENCH` `MEMTEST` `KELLERTEST` `CRASH` | Messen und Kaputtmachen zum Prüfen |
+| `DEFENDER` | Virenwächter: Scan, Clean, Schutz an/aus (`SUDO DEFENDER`) |
+| `TAKT` `SEUCHE` | Demo-Angreifer — zum Testen des Defenders, nur im Emulator |
+| `UHRAPP` | brav: fragt den Defender höflich um Autostart-Erlaubnis |
 
 **Auf dem Schreibtisch** (Startmenü):
 
@@ -179,7 +220,7 @@ Erkenntnisse) und `16 Eigenes BIOS schreiben`.
 ## Tests
 
 ```bash
-python3 tools/selftest.py       # 62 Prüfungen vom Einschalten bis zum Desktop
+python3 tools/selftest.py       # 82 Prüfungen vom Einschalten bis zum Desktop
 python3 tools/ctest.py          # Sprachtests für den Compiler
 python3 tools/bootstrap.py      # der Compiler übersetzt sich selbst
 python3 tools/emu_vergleich.py  # C gegen Python, Befehl für Befehl
