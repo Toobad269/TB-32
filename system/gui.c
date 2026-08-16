@@ -1178,62 +1178,6 @@ void win_vollbild(int i) {
    System es an: oben rechts auf dem Schreibtisch und im Anmeldeschirm.
    Loeschen kann man es nur, indem man ein anderes BIOS einspielt -- und
    genau das ist der Sinn: der Eintrag liegt UNTER dem Betriebssystem. */
-#define BDA_FIRMA   0x00000500
-#define BDA_POLICY  0x00000524
-#define BDA_BLOCK   0x00000528       /* 16 Namen a 16 Byte, leer = Ende */
-#define BDA_BLOCKN  16
-#define BDA_INVENT  0x00000628       /* Seriennummer(16), Starts(4), Minuten(4) */
-
-/* Bits im Schalterwort -- dieselbe Belegung wie CM_POLICY in der Firmware */
-#define POL_OWNER    1
-#define POL_NOCC     2
-#define POL_NONET    4
-#define POL_NEEDPW   8
-#define POL_INTDISK 16
-
-char* firma_text() { return (char*)BDA_FIRMA; }
-
-int firma_da() {
-    int c;
-    c = byte_get(BDA_FIRMA);
-    return c >= 32 && c < 127;
-}
-
-int firma_policy() { return mem_get(BDA_POLICY); }
-
-int firma_bit(int maske) { return (firma_policy() & maske) != 0; }
-
-/* --- Sperrt die Firmware dieses Programm? --------------------------------
-
-   Zwei Quellen. Erstens die Liste, die das BIOS beim Start in den Speicher
-   gelegt hat -- ein Name je Platz, leerer Name heisst Ende. Zweitens die
-   beiden groben Schalter fuer Compiler und Netz: die haengen nicht an der
-   Liste, weil sie ganze Gruppen meinen.
-
-   Der Compiler ist dabei kein Schikanepunkt, sondern der wichtigste: Der
-   TB-32 hat keinen Speicherschutz. Wer den Coder hat, schreibt sich ein
-   Programm, das die Ports selbst anspricht -- und dann waere jede andere
-   Sperre nur noch Zierde. */
-int gesperrt(char* name) {
-    int i; char* eintrag;
-
-    if (firma_bit(POL_NOCC)) {
-        if (strcmp(name, "CODER.TBX") == 0) return 1;
-        if (strcmp(name, "CC.TBX") == 0)    return 1;
-        if (strcmp(name, "ASM.TBX") == 0)   return 1;
-    }
-    if (firma_bit(POL_NONET)) {
-        if (strcmp(name, "BROWSER.TBX") == 0) return 1;
-    }
-
-    for (i = 0; i < BDA_BLOCKN; i++) {
-        eintrag = (char*)(BDA_BLOCK + i * 16);
-        if (*eintrag == 0) return 0;         /* leerer Name = Ende der Liste */
-        if (strcmp(eintrag, name) == 0) return 1;
-    }
-    return 0;
-}
-
 /* Ein Bild aus dem Arbeitsspeicher auf den Schirm bringen (Blitter-Befehl 4). */
 void g_bild(int x, int y, int w, int h, int quelle) {
     sys_out(P_BLT_SRC, quelle);

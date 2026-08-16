@@ -1292,3 +1292,295 @@ boot_verzoegern:
     pop r6
     ret
 .align 4
+
+; ===========================================================================
+;  Die Sektorsperre -- die Firmware laesst gesperrte Programme gar nicht
+;  erst in den Arbeitsspeicher
+;
+;  Vorher sass die Sperre im Kernel (prog_run). Das ist eine Bitte, keine
+;  Mauer: wer den Kernel austauscht -- und das kann auf diesem Rechner jeder,
+;  der einen Compiler hat --, ist sie los. Und das Programm lag dabei schon
+;  im RAM; verweigert wurde erst der Sprung hinein.
+;
+;  Hier ist es umgekehrt. Beim Start loest die Firmware jeden gesperrten
+;  Namen zu seinem Sektorbereich auf und merkt sich das Paar. Danach
+;  verweigert INT 0x13 -- der Dienst, ueber den JEDE Dateilesung des Systems
+;  laeuft -- jeden Lesezugriff, der diesen Bereich beruehrt. Das Programm
+;  kommt nicht in den Speicher, egal welches Betriebssystem darueber laeuft
+;  und egal ob es ueber das Startmenue, die Dateiverwaltung oder START
+;  gerufen wird.
+;
+;  Was das NICHT kann, und das gehoert dazu: Die Tabelle entsteht beim Start
+;  aus dem Verzeichnis. Verschiebt das System die Datei danach, zeigt der
+;  gemerkte Bereich ins Leere, bis zum naechsten Neustart. Die Sperre im
+;  Kernel bleibt deshalb bestehen -- sie kennt Namen statt Sektoren und faengt
+;  genau diesen Fall ab. Zwei Schichten, jede mit einer anderen Schwaeche.
+; ===========================================================================
+
+.align 4
+
+; --- fs_name_gleich(r1 = Eintrag, r2 = Name) -> r0 = 1 bei Gleichheit -----
+fs_name_gleich:
+    push r6
+    push r7
+    push r8
+    push r9
+    mov r6, r1
+    mov r7, r2
+    movi r8, 0
+.loop:
+    cmpi r8, FS_E_START               ; das Namensfeld ist 16 Byte lang
+    jge .ja
+    add r10, r6, r8
+    ldb r0, [r10]
+    add r10, r7, r8
+    ldb r9, [r10]
+    cmp r0, r9
+    jnz .nein
+    cmpi r0, 0
+    jz .ja
+    addi r8, r8, 1
+    jmp .loop
+.ja:
+    movi r0, 1
+    jmp .fertig
+.nein:
+    movi r0, 0
+.fertig:
+    pop r9
+    pop r8
+    pop r7
+    pop r6
+    ret
+
+; ---------------------------------------------------------------------------
+;  fs_suchen(r1 = Name, r2 = Elternordner+1, r3 = 1 wenn ein Ordner gesucht
+;            wird) -> r0 = Eintragsnummer, oder -1
+;
+;  Das Verzeichnis muss vorher bei SEC_PUFFER liegen.
+; ---------------------------------------------------------------------------
+fs_suchen:
+    push r6
+    push r7
+    push r8
+    push r9
+    mov r7, r1
+    mov r8, r2
+    mov r9, r3
+    li r6, SEC_PUFFER
+    movi r0, 0
+.loop:
+    cmpi r0, FS_MAXFILES
+    jge .nichts
+    push r0
+    mov r1, r6
+    mov r2, r7
+    call fs_name_gleich
+    mov r10, r0
+    pop r0
+    cmpi r10, 0
+    jz .weiter
+
+    ldw r10, [r6+FS_E_INFO]
+    shri r11, r10, 16                 ; Elternordner+1
+    cmp r11, r8
+    jnz .weiter
+    andi r10, r10, 0xFF               ; Art
+    cmpi r9, 0
+    jz .keine_ordnerpruefung
+    cmpi r10, FS_FT_DIR
+    jnz .weiter
+    jmp .gefunden
+.keine_ordnerpruefung:
+    cmpi r10, FS_FT_DIR
+    jz .weiter                        ; Ordner sind hier nicht gemeint
+.gefunden:
+    pop r9
+    pop r8
+    pop r7
+    pop r6
+    ret
+.weiter:
+    addi r6, r6, FS_ENTSIZE
+    addi r0, r0, 1
+    jmp .loop
+.nichts:
+    li r0, 0xFFFFFFFF
+    pop r9
+    pop r8
+    pop r7
+    pop r6
+    ret
+
+; ---------------------------------------------------------------------------
+;  blk_sektoren_bauen -- beim Start die Tabelle fuellen
+; ---------------------------------------------------------------------------
+blk_sektoren_bauen:
+    push r6
+    push r7
+    push r8
+    push r9
+
+    li r6, BLK_SEK                    ; Tabelle leeren
+    movi r7, 0
+.leeren:
+    cmpi r7, BLK_SEKN*8
+    jae .geleert
+    add r10, r6, r7
+    movi r11, 0
+    stw [r10], r11
+    addi r7, r7, 4
+    jmp .leeren
+.geleert:
+
+    li r1, FS_DIRSEC0                 ; Verzeichnis holen
+    movi r2, FS_DIRSECS
+    li r3, SEC_PUFFER
+    call disk_read
+    cmpi r0, 0
+    jnz .raus
+
+    ; Die beiden Programmordner einmal nachschlagen
+    li r1, s_d_system
+    movi r2, 0
+    movi r3, 1
+    call fs_suchen
+    addi r8, r0, 1                    ; r8 = \SYSTEM als Elternnummer (0 = keiner)
+    cmpi r0, 0
+    jge .sys_ok
+    movi r8, 0
+.sys_ok:
+    cmpi r8, 0
+    jz .sysprogs_fehlt
+    li r1, s_d_progs
+    mov r2, r8
+    movi r3, 1
+    call fs_suchen
+    addi r8, r0, 1                    ; r8 = \SYSTEM\PROGS
+    cmpi r0, 0
+    jge .sysprogs_ok
+.sysprogs_fehlt:
+    movi r8, 0
+.sysprogs_ok:
+
+    li r1, s_d_progs                  ; r9 = \PROGS im Hauptverzeichnis
+    movi r2, 0
+    movi r3, 1
+    call fs_suchen
+    addi r9, r0, 1
+    cmpi r0, 0
+    jge .progs_ok
+    movi r9, 0
+.progs_ok:
+
+    movi r6, 0                        ; r6 = Programmnummer
+    movi r7, 0                        ; r7 = naechster Tabellenplatz
+.programm:
+    cmpi r6, BDA_BLOCKN
+    jge .raus
+    mov r1, r6
+    call blk_gesetzt
+    cmpi r0, 0
+    jz .naechstes
+
+    mov r1, r6
+    call blk_name
+    mov r1, r0
+
+    push r1                           ; erst in \SYSTEM\PROGS
+    mov r2, r8
+    movi r3, 0
+    call fs_suchen
+    pop r1
+    cmpi r0, 0
+    jge .eintragen
+
+    push r1                           ; dann in \PROGS
+    mov r2, r9
+    movi r3, 0
+    call fs_suchen
+    pop r1
+    cmpi r0, 0
+    jge .eintragen
+
+    movi r2, 0                        ; zuletzt im Hauptverzeichnis
+    movi r3, 0
+    call fs_suchen
+    cmpi r0, 0
+    jl .naechstes
+
+.eintragen:
+    muli r10, r0, FS_ENTSIZE
+    li r11, SEC_PUFFER
+    add r10, r10, r11                 ; r10 = Eintrag
+    ldw r0, [r10+FS_E_START]          ; Startsektor
+    ldw r11, [r10+FS_E_SIZE]          ; Groesse in Byte
+    addi r11, r11, 511                ; aufrunden auf ganze Sektoren
+    shri r11, r11, 9
+    cmpi r11, 0
+    jnz .laenge_ok
+    movi r11, 1
+.laenge_ok:
+    shli r1, r7, 3
+    li r2, BLK_SEK
+    add r1, r1, r2
+    stw [r1], r0
+    stw [r1+4], r11
+    addi r7, r7, 1
+    cmpi r7, BLK_SEKN
+    jge .raus
+.naechstes:
+    addi r6, r6, 1
+    jmp .programm
+.raus:
+    pop r9
+    pop r8
+    pop r7
+    pop r6
+    ret
+
+; ---------------------------------------------------------------------------
+;  blk_sektor_frage(r1 = LBA, r2 = Anzahl) -> r0 = 1, wenn gesperrt
+;
+;  Zwei Bereiche ueberschneiden sich, wenn jeder vor dem Ende des anderen
+;  anfaengt. Genau das steht hier, sonst nichts.
+; ---------------------------------------------------------------------------
+blk_sektor_frage:
+    push r6
+    push r7
+    push r8
+    push r9
+    mov r8, r1                        ; Anfang der Anfrage
+    add r9, r1, r2                    ; Ende (ausschliesslich)
+    li r6, BLK_SEK
+    movi r7, 0
+.loop:
+    cmpi r7, BLK_SEKN
+    jge .frei
+    ldw r0, [r6]                      ; Startsektor
+    ldw r1, [r6+4]                    ; Anzahl
+    cmpi r1, 0
+    jz .frei                          ; leerer Platz = Ende der Tabelle
+    add r1, r0, r1                    ; Ende des gesperrten Bereichs
+    cmp r8, r1
+    jge .weiter                       ; Anfrage faengt erst danach an
+    cmp r0, r9
+    jge .weiter                       ; Anfrage hoert schon davor auf
+    movi r0, 1
+    jmp .fertig
+.weiter:
+    addi r6, r6, 8
+    addi r7, r7, 1
+    jmp .loop
+.frei:
+    movi r0, 0
+.fertig:
+    pop r9
+    pop r8
+    pop r7
+    pop r6
+    ret
+
+s_d_system:  .db "SYSTEM", 0
+s_d_progs:   .db "PROGS", 0
+.align 4
