@@ -221,12 +221,23 @@ def wort(m, adresse):
     return int.from_bytes(m.bus.read_block(adresse, 4), "little", signed=True)
 
 
+def _br_define(name):
+    """Eine Adresse/Zahl aus den #defines von browser.c holen -- so bleibt der
+    Test richtig, auch wenn die Puffer im Speicher verschoben werden."""
+    import re
+    quelle = open(os.path.join(ROOT, "system", "browser.c")).read()
+    treffer = re.search(r"#define\s+" + name + r"\s+(0x[0-9A-Fa-f]+|\d+)", quelle)
+    return int(treffer.group(1), 0)
+
+
 def seitentext(m, sym):
     """Die dargestellten Zeilen als ein Text."""
     n = wort(m, sym["br_anzahl"])
+    basis = _br_define("BR_TEXT")
+    breite = _br_define("BR_ZEILEMAX")
     aus = []
     for i in range(min(n, 40)):
-        roh = m.bus.read_block(0x00190000 + i * 100, 100)
+        roh = m.bus.read_block(basis + i * breite, breite)
         aus.append(roh.split(b"\0")[0].decode("latin1"))
     return "\n".join(aus)
 

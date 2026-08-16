@@ -29,6 +29,20 @@ also innerhalb des Textbereichs geblieben. Halb behoben ist nicht behoben.
 0x19C000`. Bis zum Programm-Band bei `0x200000` ist reichlich Luft. Der Kernel
 wird dadurch nicht größer (390788 Byte) und endet weit unter den Puffern.
 
+**Nachtrag — Puffer viel größer, damit echte Seiten ganz laden.** Der
+Rohpuffer war nur 64 KB groß; größere Webseiten wurden abgeschnitten und
+„gingen nicht" (der Nutzer vermutete zu wenig RAM — es war der Puffer, nicht
+der Gesamtspeicher). Die Browser-Puffer sind jetzt in die freie Lücke
+**`0x300000`–`0x600000`** verschoben (zwischen Programm-Band und Paint, 3 MiB
+frei) und deutlich größer: `BR_ROH 0x300000` mit **1 MiB** (`BR_ROHMAX`),
+`BR_TEXT 0x400000` mit **4000 Zeilen**, `BR_LINKS 0x470000` mit **128**
+Verweisen, `BR_KRATZ 0x480000`. Die C-Arrays `br_stil`/`br_link` wachsen auf
+4000 mit (sonst schriebe der Renderer über ihr Ende). Kernel dadurch 419588
+Byte. **Kein zusätzlicher RAM nötig** — der Platz war längst da; 1 GB wäre
+ohnehin unmöglich, weil das VRAM fest bei 32 MiB (`0x02000000`) liegt und vom
+RAM überdeckt würde. Der Selbsttest holt/rendert/klickt jetzt eine echte
+zweiseitige Seite über den Proxy — end-to-end grün.
+
 ---
 
 ## Betriebssystem-Auswahl im BIOS-Setup — mehrere OS, du wählst den Standard

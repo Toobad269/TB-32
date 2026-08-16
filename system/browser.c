@@ -12,32 +12,35 @@
    Projekt. Dafuer ist spaeter ein Vermittler auf dem Pi vorgesehen.
    =========================================================================== */
 
-#define BR_ROH      0x00180000       /* die Antwort, wie sie ankommt */
-#define BR_ROHMAX   65536
-#define BR_TEXT     0x00190000       /* daraus gemachte Zeilen */
+/* Die Puffer des Browsers liegen im freien Speicher OBERHALB des Programm-
+   Bands (0x200000..0x300000). Zwischen 0x300000 und 0x600000 (dort faengt
+   Paint an) sind 3 MiB frei -- die nehmen wir. So kann der Rohpuffer gross
+   genug sein, dass echte Webseiten ganz hineinpassen (frueher nur 64 KB, da
+   war jede groessere Seite abgeschnitten -- DAS liess Seiten "nicht gehen",
+   nicht der Gesamt-RAM).
+
+   WICHTIG -- die vier Puffer duerfen sich nicht ueberschneiden:
+
+     BR_ROH   0x300000 .. 0x400000   (1 MiB Antwort, wie sie ankommt)
+     BR_TEXT  0x400000 .. 0x470000   (4000 Zeilen x 100 = 400000 Byte)
+     BR_LINKS 0x470000 .. 0x480000   (128 Verweise x 160 = 20480 Byte)
+     BR_KRATZ 0x480000 .. 0x481000   (Umbruch-Rest + HTTP-Anfrage)
+
+   Alles bleibt unter 0x600000 (Paint). Wer noch groessere Seiten will, kann
+   BR_ROHMAX weiter erhoehen -- Platz bis 0x600000 ist da. */
+#define BR_ROH      0x00300000       /* die Antwort, wie sie ankommt */
+#define BR_ROHMAX   1048576          /* 1 MiB -- eine ganze Webseite passt rein */
+#define BR_TEXT     0x00400000       /* daraus gemachte Zeilen */
 #define BR_ZEILEMAX 100              /* Zeichen je Zeile */
-#define BR_ZEILEN   400              /* so viele Zeilen merken wir uns */
-#define BR_LINKMAX  32
-/* WICHTIG -- die drei Puffer duerfen sich nicht ueberschneiden, sonst frisst
-   eine lange Seite die Verweise und den Kratzpuffer auf:
-
-     BR_ROH   0x180000 .. 0x190000   (65536 Byte Antwort)
-     BR_TEXT  0x190000 .. 0x19A000   (400 Zeilen x 100 = 40000 Byte)
-     BR_LINKS 0x19A000 .. 0x19C000   (32 Verweise x 160 = 5120 Byte)
-     BR_KRATZ 0x19C000 .. 0x19D000   (Umbruch-Rest + HTTP-Anfrage)
-
-   Frueher lag BR_LINKS bei 0x196000 und BR_KRATZ bei 0x198000 -- beides
-   MITTEN im Textbereich (Zeile ~245 bzw. ~327). Ab einer langen Seite
-   ueberschrieb der Text die Verweise und den Kratzpuffer; Links gingen ins
-   Leere und die Anzeige wurde Kraut und Rueben. Jeder Puffer bekommt jetzt
-   seinen eigenen Bereich; bis 0x200000 (Programm-Band) ist reichlich Luft. */
-#define BR_LINKS    0x0019A000       /* Ziele der Verweise, je 160 Byte */
-#define BR_KRATZ    0x0019C000
+#define BR_ZEILEN   4000             /* so viele Zeilen merken wir uns */
+#define BR_LINKMAX  128
+#define BR_LINKS    0x00470000       /* Ziele der Verweise, je 160 Byte */
+#define BR_KRATZ    0x00480000
 
 int  br_anzahl = 0;                  /* wie viele Zeilen die Seite hat */
 int  br_top = 0;                     /* erste sichtbare Zeile */
-int  br_stil[400];                   /* 0 = Text, 1 = Ueberschrift */
-int  br_link[400];                   /* Verweis dieser Zeile, -1 = keiner */
+int  br_stil[4000];                  /* 0 = Text, 1 = Ueberschrift */
+int  br_link[4000];                  /* Verweis dieser Zeile, -1 = keiner */
 int  br_linkanzahl = 0;
 int  br_laeuft = 0;                  /* wird gerade geholt? */
 int  br_breite = 70;                 /* Zeichen je Zeile, setzt das Fenster */
