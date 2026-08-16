@@ -968,10 +968,13 @@ boot:
 ;           CM_OS > 0 -> das gewaehlte System nach 0x10000 laden und starten.
 ;  os_setup_screen  zeigt die Liste im Setup und speichert die Wahl in CM_OS.
 ; ===========================================================================
-.equ MENU_TAB,   0x00000600
-.equ MENU_COUNT, 0x00000624
-.equ MENU_SEL,   0x00000628
-.equ MENU_SYSP,  0x0000062C
+; ACHTUNG: NICHT bei 0x600 -- dort liegen SETUP_TAB/SETUP_ROW/SETUP_SAVE des
+; Setups (const.inc). Lag der Scratch dort, ueberschrieb das Speichern die
+; Setup-Variablen, und der Setup zeichnete danach Muell (Endlos-"Blau").
+.equ MENU_TAB,   0x00000700
+.equ MENU_COUNT, 0x00000724
+.equ MENU_SEL,   0x00000728
+.equ MENU_SYSP,  0x0000072C
 
 os_enum:
     li r1, SS_DIRSEC0
@@ -1192,7 +1195,8 @@ os_setup_screen:
     movi r10, CM_OS
     call cmos_write
 .ende:
-    ret
+    call setup_frame                  ; den Setup-Rahmen zurueckholen (wir haben
+    ret                               ; den Schirm uebernommen); Felder malt .loop
 
 name_ist_kernel:
     push r2

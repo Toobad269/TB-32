@@ -36,10 +36,16 @@ TOOBAD-OS bleibt `KERNEL.BIN`. Eigenes OS dazunehmen: Ordner anlegen +
   `CM_OS`. Aufgerufen über den Setup-Eintrag `REG_OS` (wie der „Flash
   BIOS"-Button).
 
-**Zwei Fallen dabei:** (1) Der Assembler will Stores als `st [ziel], quelle` —
+**Drei Fallen dabei:** (1) Der Assembler will Stores als `st [ziel], quelle` —
 `stw r4, [r0]` (vertauscht) gab „Speicherzugriff braucht [klammern]". (2) Jeder
 Setup-Reiter hat seine Eintragszahl in `setup_tabs`; einen Eintrag hinzufügen
-heißt, auch die Zahl (Main: 7 → 8) mitzuziehen.
+heißt, auch die Zahl (Main: 7 → 8) mitzuziehen. (3) **Der teuerste:** Mein
+Menü-Scratch lag bei `0x600` — genau dort stehen `SETUP_TAB`/`SETUP_ROW`/
+`SETUP_SAVE` (`const.inc`). Das Speichern überschrieb die Setup-Variablen, das
+Setup zeichnete danach einen Müll-Reiter → „unendlich blau". Scratch nach
+`0x700` verschoben. Und weil eine Aktion nur die Felder (`​.loop`) neu malt,
+nicht den Rahmen (`.redraw`), holt `os_setup_screen` am Ende `setup_frame`
+selbst zurück, sonst blieb der OS-Titel über dem Setup stehen.
 
 ---
 
