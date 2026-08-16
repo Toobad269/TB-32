@@ -45,6 +45,7 @@ def test_cmos():
     d = bytearray(open(ziel, "rb").read().ljust(64, b"\x00")) if os.path.exists(ziel) \
         else bytearray(64)
     d[0x1D] = 1                       # 1 = Textkonsole
+    d[0x1E] = 1                       # OS-Auswahlmenue ueberspringen -> Standard-OS
     with open(ziel, "wb") as f:
         f.write(bytes(d))
     return ziel

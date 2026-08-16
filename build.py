@@ -230,6 +230,33 @@ def build():
         if sysdateien:
             print(f"  System    {sysdateien} Dateien in SYSTEM\\ sichtbar gemacht")
 
+        # --- Weitere Betriebssysteme aus os/<name>/ ------------------------
+        # Jeder Ordner unter os/ ist ein eigenes bootbares System: kernel.c +
+        # start.asm werden uebersetzt und als \SYSTEM\<NAME>.BIN abgelegt. Das
+        # BIOS zeigt beim Start ein Auswahlmenue mit allen gefundenen Systemen
+        # (TOOBAD-OS ist KERNEL.BIN). So kann man sein eigenes OS dazulegen,
+        # ohne TOOBAD-OS anzufassen.
+        os_dir = os.path.join(ROOT, "os")
+        os_namen = []
+        if os.path.isdir(os_dir):
+            for name in sorted(os.listdir(os_dir)):
+                unter = os.path.join(os_dir, name)
+                kpath = os.path.join(unter, "kernel.c")
+                spath = os.path.join(unter, "start.asm")
+                if not (os.path.isfile(kpath) and os.path.isfile(spath)):
+                    continue
+                with open(kpath, encoding="utf-8") as f:
+                    casm2 = compile_source(f.read(), unter)
+                with open(spath, encoding="utf-8") as f:
+                    start2 = f.read()
+                data2, _, _ = assemble_text(start2 + "\n" + casm2, unter)
+                ziel = name.upper()[:11] + ".BIN"
+                fs.put(ziel, data2, system_dir)
+                os_namen.append(ziel)
+        if os_namen:
+            print("  Systeme   " + ", ".join("SYSTEM\\" + n for n in os_namen)
+                  + "  (im Bootmenue waehlbar)")
+
         # KEIN Benutzerkonto. Wer den Rechner frisch baut, richtet ihn beim
         # ersten Start selbst ein: Name, Passwort, fertig. Frueher legte
         # build.py hier ein offenes Konto "user" an -- praktisch beim

@@ -9,6 +9,35 @@ Die tiefer liegenden Fallen haben zusätzlich einen ausführlichen Eintrag in
 
 ---
 
+## OS-Auswahlmenü im BIOS — mehrere Betriebssysteme, du wählst
+
+Wie bei echtem UEFI: Das BIOS zeigt beim Start ein **Bootmenü**, wenn mehr als
+ein Betriebssystem auf der Platte liegt. Mit den Pfeiltasten wählt man, ENTER
+lädt den gewählten Kernel nach `0x00010000` und springt hinein — genau das,
+was sonst der Bootsektor fest mit `KERNEL.BIN` macht, nur eben wählbar.
+
+**Mehrere OS bauen.** Jeder Ordner unter `os/<name>/` (mit `kernel.c` +
+`start.asm`) wird von `build.py` zu `\SYSTEM\<NAME>.BIN` übersetzt. TOOBAD-OS
+bleibt `KERNEL.BIN`. Ein eigenes OS dazunehmen heißt also: `os/meinos/`
+anlegen, `python3 build.py` — fertig, es steht im Menü. Mitgeliefert als
+Beispiel: `os/tbos/` (TBOS 0.1).
+
+**Wie es umgesetzt ist.** Die Routine `os_auswahl` in `firmware/bios.asm` läuft
+am Anfang von `boot:`. Sie liest das TBFS-Verzeichnis (wie `kernel_finden` es
+für Secure Boot schon tat), sammelt alle `*.BIN` in `\SYSTEM` außer `BIOS.BIN`,
+und zeigt bei ≥2 Treffern das Menü. Bei ≤1 kehrt sie zurück und der gewohnte
+Boot über den Bootsektor läuft weiter — der alte Weg bleibt also unangetastet.
+
+**Abschaltbar** über CMOS `0x1E` (`CM_NOMENU`): Die Testwerkzeuge setzen es auf
+1 und booten ohne Menü direkt das Standard-OS, damit automatische Läufe nicht
+am Menü hängen. Für echte Nutzer ist es 0 → Menü an.
+
+**Falle, die dabei auffiel:** Der Assembler will bei Stores `st [ziel], quelle`
+— erst die Adresse in Klammern, dann der Wert. `stw r4, [r0]` (vertauscht)
+gab „Speicherzugriff braucht [klammern]".
+
+---
+
 ## Autostart auf Nachfrage — der Defender fragt, statt SUDO zu verlangen
 
 Bisher war die Regel hart: Autostart-Eintrag = Schreiben in `\SYSTEM` = braucht

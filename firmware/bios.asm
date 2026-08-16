@@ -895,6 +895,7 @@ mem_test:
 ; ===========================================================================
 
 boot:
+    call os_auswahl                   ; OS-Menue; bootet selbst oder kehrt zurueck
     push r6
     movi r1, 0
     movi r2, SCR_H-1
@@ -950,6 +951,241 @@ boot:
     movi r2, ATTR_ERR
     call print
     pop r6
+    ret
+
+; ===========================================================================
+;  OS-Auswahlmenue
+;
+;  Sucht in \SYSTEM alle Kernel (Name endet auf ".BIN", ausser BIOS.BIN) und
+;  zeigt -- wenn mehr als eines da ist -- ein Menue. Mit den Pfeiltasten
+;  waehlt man, ENTER laedt den gewaehlten Kernel nach 0x00010000 und springt
+;  hinein. Genau das macht sonst der Bootsektor mit KERNEL.BIN -- nur dass man
+;  jetzt WELCHES System waehlen kann. Wer ein eigenes OS als \SYSTEM\X.BIN
+;  ablegt (build.py baut os/<name>/ dorthin), findet es hier wieder.
+;
+;  Hoechstens ein System (oder Platte unlesbar) -> Ruecksprung, dann laeuft
+;  der gewohnte Boot ueber den Bootsektor weiter. So bleibt der alte Weg heil.
+; ===========================================================================
+.equ MENU_TAB,   0x00000600           ; bis zu 8 Zeiger auf Verzeichniseintraege
+.equ MENU_COUNT, 0x00000624
+.equ MENU_SEL,   0x00000628
+.equ MENU_SYSP,  0x0000062C
+
+os_auswahl:
+    movi r10, CM_NOMENU               ; Menue per CMOS abgeschaltet? (Testwerkzeuge)
+    call cmos_read
+    cmpi r0, 0
+    jnz .zurueck
+    li r1, SS_DIRSEC0                  ; Verzeichnis lesen
+    movi r2, SS_DIRSECS
+    li r3, SEC_PUFFER
+    call disk_read
+    cmpi r0, 0
+    jnz .zurueck
+
+    li r4, SEC_PUFFER                  ; \SYSTEM-Ordner finden
+    movi r5, 0
+    li r6, 0x54535953                  ; "SYST"
+    li r7, 0x00004D45                  ; "EM"
+.sys_loop:
+    ldw r9, [r4]
+    cmp r9, r6
+    jnz .sys_next
+    ldw r9, [r4+4]
+    cmp r9, r7
+    jnz .sys_next
+    ldw r9, [r4+SS_E_INFO]
+    shri r0, r9, 16
+    cmpi r0, 0
+    jnz .sys_next
+    andi r9, r9, 0xFF
+    cmpi r9, SS_FT_DIR
+    jz .sys_found
+.sys_next:
+    addi r4, r4, SS_ENTSIZE
+    addi r5, r5, 1
+    cmpi r5, SS_MAXFILES
+    jl .sys_loop
+    jmp .zurueck
+.sys_found:
+    addi r5, r5, 1                     ; Elternwert der Kinder = SYSTEM-Index+1
+    stwa MENU_SYSP, r5
+
+    li r4, SEC_PUFFER                  ; Kandidaten sammeln
+    movi r5, 0
+    movi r8, 0                         ; Kandidatenzahl
+    ldwa r7, MENU_SYSP
+.scan:
+    ldw r9, [r4+SS_E_INFO]
+    andi r0, r9, 0xFF
+    cmpi r0, 1                         ; FT_FILE?
+    jnz .scan_next
+    shri r0, r9, 16
+    cmp r0, r7                         ; liegt in \SYSTEM?
+    jnz .scan_next
+    mov r1, r4
+    call name_ist_bin
+    cmpi r0, 0
+    jz .scan_next
+    li r0, MENU_TAB
+    shli r1, r8, 2
+    add r0, r0, r1
+    stw [r0], r4
+    addi r8, r8, 1
+    cmpi r8, 8
+    jl .scan_next
+    jmp .scan_done
+.scan_next:
+    addi r4, r4, SS_ENTSIZE
+    addi r5, r5, 1
+    cmpi r5, SS_MAXFILES
+    jl .scan
+.scan_done:
+    stwa MENU_COUNT, r8
+    cmpi r8, 2                         ; weniger als 2 -> kein Menue
+    jl .zurueck
+
+    movi r5, 0                         ; Auswahl = 0
+    stwa MENU_SEL, r5
+.redraw:
+    movi r1, ATTR_NORMAL
+    call vid_clear
+    movi r1, 4
+    movi r2, 3
+    li r3, s_osmenu
+    movi r4, ATTR_TITLE
+    call vid_putsat
+    movi r1, 4
+    movi r2, 4
+    li r3, s_oshint
+    movi r4, ATTR_NORMAL
+    call vid_putsat
+    movi r6, 0                         ; Zeilenindex
+.draw_loop:
+    ldwa r0, MENU_SEL                  ; Marker '>' oder ' '
+    cmp r0, r6
+    jz .mk_sel
+    movi r3, 0x20
+    jmp .mk_do
+.mk_sel:
+    movi r3, 0x3E
+.mk_do:
+    movi r1, 4
+    addi r2, r6, 6
+    movi r4, ATTR_BRIGHT
+    call vid_putat
+    ldwa r0, MENU_SEL                  ; Name, markiert oder normal
+    cmp r0, r6
+    jz .nm_hi
+    movi r4, ATTR_NORMAL
+    jmp .nm_do
+.nm_hi:
+    movi r4, ATTR_HILIGHT
+.nm_do:
+    li r0, MENU_TAB
+    shli r1, r6, 2
+    add r0, r0, r1
+    ldw r3, [r0]                       ; Zeiger auf Eintrag = Name (0-terminiert)
+    movi r1, 6
+    addi r2, r6, 6
+    call vid_putsat
+    addi r6, r6, 1
+    ldwa r0, MENU_COUNT
+    cmp r6, r0
+    jl .draw_loop
+.key:
+    call kbd_getkey
+    shri r10, r0, 8
+    cmpi r10, K_ENTER
+    jz .boot_it
+    cmpi r10, K_UP
+    jz .up
+    cmpi r10, K_DOWN
+    jz .down
+    jmp .key
+.up:
+    ldwa r0, MENU_SEL
+    cmpi r0, 0
+    jz .key
+    subi r0, r0, 1
+    stwa MENU_SEL, r0
+    jmp .redraw
+.down:
+    ldwa r0, MENU_SEL
+    addi r0, r0, 1
+    ldwa r1, MENU_COUNT
+    cmp r0, r1
+    jl .down_ok
+    jmp .key
+.down_ok:
+    stwa MENU_SEL, r0
+    jmp .redraw
+.boot_it:
+    ldwa r0, MENU_SEL
+    li r1, MENU_TAB
+    shli r0, r0, 2
+    add r1, r1, r0
+    ldw r4, [r1]                       ; Zeiger auf gewaehlten Eintrag
+    ldw r1, [r4+SS_E_START]            ; Startsektor
+    ldw r2, [r4+SS_E_SIZE]             ; Groesse in Byte
+    addi r2, r2, 511
+    shri r2, r2, 9                     ; -> Sektoren
+    li r3, KERNEL_ADDR
+    call disk_read
+    li r10, KERNEL_ADDR
+    jmpr r10                           ; ab ins gewaehlte System
+.zurueck:
+    ret
+
+; r1 = Zeiger auf Verzeichniseintrag. r0 = 1, wenn der Name auf ".BIN" endet
+; und NICHT "BIOS.BIN" ist, sonst 0. Erhaelt r2/r3/r4.
+name_ist_bin:
+    push r2
+    push r3
+    push r4
+    movi r2, 0
+.len:
+    add r3, r1, r2
+    ldb r4, [r3]
+    cmpi r4, 0
+    jz .have_len
+    addi r2, r2, 1
+    cmpi r2, 16
+    jl .len
+.have_len:
+    cmpi r2, 4
+    jl .no
+    subi r2, r2, 4
+    add r3, r1, r2
+    ldb r4, [r3]
+    cmpi r4, 0x2E                      ; '.'
+    jnz .no
+    ldb r4, [r3+1]
+    cmpi r4, 0x42                      ; 'B'
+    jnz .no
+    ldb r4, [r3+2]
+    cmpi r4, 0x49                      ; 'I'
+    jnz .no
+    ldb r4, [r3+3]
+    cmpi r4, 0x4E                      ; 'N'
+    jnz .no
+    ldw r4, [r1]                       ; "BIOS.BIN" ausschliessen
+    li r3, 0x534F4942                  ; "BIOS"
+    cmp r4, r3
+    jnz .yes
+    ldw r4, [r1+4]
+    li r3, 0x4E49422E                  ; ".BIN"
+    cmp r4, r3
+    jz .no
+.yes:
+    movi r0, 1
+    jmp .fertig
+.no:
+    movi r0, 0
+.fertig:
+    pop r4
+    pop r3
+    pop r2
     ret
 
 ; ===========================================================================
@@ -1019,6 +1255,8 @@ s_sec_hint2:  .db "DEL = Setup (Security > Trust Current Boot Image)", 0
 s_sec_halt:   .db "Secure Boot: halted", 0
 s_booting:    .db "Starting system ...", 0
 s_bootmsg:    .db "Booting from Hard Disk 0 ... ", 0
+s_osmenu:     .db "TOOBAD BIOS  --  Select Operating System", 0
+s_oshint:     .db "Arrow keys to choose, ENTER to boot.", 0
 s_nosig:      .db "no boot signature", 0
 s_diskerr:    .db "read error", 0
 s_nosys:      .db "No bootable device found", 0
