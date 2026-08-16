@@ -29,8 +29,27 @@ import sys
 import urllib.error
 import urllib.request
 
-MAXGROESSE = 512 * 1024          # mehr passt im TB-32 ohnehin nicht in den Puffer
+MAXGROESSE = 1024 * 1024         # passend zum Browserpuffer BR_ROHMAX (1 MiB)
 FRIST = 15
+
+
+# Sehr viele Seiten leiten per 308 (Permanent Redirect) von http auf https um
+# -- so macht es Caddy und nginx von Haus aus, z. B. games.toobad.ch. Pythons
+# urllib kennt die 308 aber erst ab 3.11; auf 3.9/3.10 lehnt sie
+# `redirect_request` sogar ausdruecklich ab und wirft einen Fehler. Der TB-32
+# saehe dann nur eine leere Weiterleitungsseite. Dieser Opener folgt der 308
+# genau wie einer 307 (Ziel wird geholt, Methode bleibt GET) -- wie es jeder
+# echte Browser tut. So reicht `games.toobad.ch` statt `https://games...`.
+class _Weiterleiter(urllib.request.HTTPRedirectHandler):
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        if code == 308:
+            code = 307
+        return super().redirect_request(req, fp, code, msg, headers, newurl)
+
+    http_error_308 = urllib.request.HTTPRedirectHandler.http_error_302
+
+
+_OEFFNER = urllib.request.build_opener(_Weiterleiter)
 
 
 def fehlerseite(code, titel, text):
@@ -95,7 +114,7 @@ class Vermittler(socketserver.StreamRequestHandler):
             anfrage = urllib.request.Request(
                 ziel, headers={"User-Agent": "TOOBAD-OS/2.5.2",
                                "Accept": "text/html, text/plain"})
-            with urllib.request.urlopen(anfrage, timeout=FRIST) as antwort:
+            with _OEFFNER.open(anfrage, timeout=FRIST) as antwort:
                 inhalt = antwort.read(MAXGROESSE)
                 art = antwort.headers.get("Content-Type", "text/html")
                 code = antwort.status

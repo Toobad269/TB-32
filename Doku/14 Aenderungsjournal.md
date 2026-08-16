@@ -9,6 +9,31 @@ Die tiefer liegenden Fallen haben zusätzlich einen ausführlichen Eintrag in
 
 ---
 
+## Proxy folgt jetzt 308-Weiterleitungen (http→https) — echte Seiten laden
+
+**Symptom:** `games.toobad.ch` „geht nicht", `https://games.toobad.ch`
+dagegen schon. **Ursache:** Die Seite (Caddy) leitet per **308 Permanent
+Redirect** von http auf https um. Pythons `urllib` kennt die 308 aber erst ab
+**3.11**; auf 3.9/3.10 *lehnt* `redirect_request` sie sogar ausdrücklich ab.
+Der Proxy fing die 308 dann als „Fehler" ab und reichte eine **leere**
+Weiterleitungsseite durch — der Browser zeigte nur „page has moved". Den
+`Location`-Kopf gibt der Proxy nicht weiter, also konnte auch der Browser der
+Weiterleitung nicht selbst folgen.
+
+**Fix** (`proxy.py`): ein eigener Opener (`_Weiterleiter`), der die 308 wie
+eine 307 behandelt (Ziel holen, Methode bleibt GET) — wie jeder echte Browser.
+Damit reicht `games.toobad.ch` statt `https://games…`. Nebenbei `MAXGROESSE`
+von 512 KB auf 1 MiB angehoben, passend zum vergrößerten Browserpuffer.
+
+**YouTube geht trotzdem nicht — und kann es nicht.** Die Seite liefert fast
+nur JavaScript (`window.WIZ_global_data = …`), kein servergerenderter Text. Ein
+reiner Text-Browser (kein JS, kein CSS) kann daraus nichts anzeigen — so wie
+Lynx oder w3m auch nicht. Das ist keine Puffer- oder Netzfrage, sondern fehlt
+schlicht eine JavaScript-Maschine. Seiten mit echtem HTML-Text (Wikipedia,
+Blogs, `games.toobad.ch` …) gehen dagegen.
+
+---
+
 ## Browser: überlappende Puffer — lange Seiten fraßen Verweise und Anzeige
 
 **Symptom:** „Der Browser geht nicht, er hat zu wenig RAM." **Ursache:** nicht
