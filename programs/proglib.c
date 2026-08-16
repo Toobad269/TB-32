@@ -49,6 +49,19 @@ int  fileread(char* n, int adr, int max) { return sc(10, (int)n, adr, max, 0); }
 /* wie fileread, sucht aber zusaetzlich in \SOURCE -- fuer #include */
 int  fileread_lib(char* n, int adr, int max) { return sc(33, (int)n, adr, max, 0); }
 int  filewrite(char* n, int adr, int len) { return sc(11, (int)n, adr, len, 0); }
+/* Ordner wechseln, wie CD. "\" = Hauptverzeichnis, ".." = eine Ebene hoch. */
+int  chdir(char* n)               { return sc(50, (int)n, 0, 0, 0); }
+/* Die eigene Groesse in Bytes -- so gross, wie das OS dieses Programm geladen
+   hat. Damit kann ein Programm sein eigenes Abbild (ab 0x200000) kopieren. */
+int  progsize()                   { return sc(51, 0, 0, 0, 0); }
+int  filedelete(char* n)          { return sc(52, (int)n, 0, 0, 0); }
+/* TOOBAD DEFENDER: den Kernel-Waechter schalten und abfragen. */
+int  guard_set(int an)            { return sc(53, an, 0, 0, 0); }
+int  guard_blocks()               { return sc(54, 0, 0, 0, 0); }
+int  guard_state()                { return sc(55, 0, 0, 0, 0); }  /* 1 = an */
+/* Sich in den Autostart eintragen -- der Defender fragt den Benutzer. Der
+   Eintrag wird nur bei Zustimmung geschrieben; kein Passwort noetig. */
+int  autostart_anmelden(char* n)  { return sc(57, (int)n, 0, 0, 0); }
 void setmode(int m)               { sc(17, m, 0, 0, 0); }
 /* Hardware direkt statt ueber den Kernel -- steht in prog_start.asm, und CC
    auf dem Geraet setzt an der Aufrufstelle dieselben zwei Befehle ein. */

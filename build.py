@@ -168,9 +168,11 @@ def build():
     WERKZEUGE = {"CC.TBX", "ASM.TBX", "PY.TBX"}
     # Bibliotheken werden nur eingebunden, nie fuer sich uebersetzt.
     NUR_BIBLIOTHEK = ("proglib.c", "gfxlib.c")
-    # Diese Quelltexte kommen mit aufs Laufwerk, aber ohne fertiges Programm --
-    # sie sind zum Selberuebersetzen auf dem TB-32 gedacht.
-    NUR_QUELLTEXT = ("crash.c",)
+    # Frueher lagen crash/takt/seuche nur als Quelltext auf der Platte. Auf
+    # Wunsch liegen jetzt ALLE Programme als fertige .TBX in \PROGS -- kein
+    # Wust von .c-Dateien mehr in \SOURCE. Wer den Quelltext braucht, hat ihn
+    # im Projekt unter programs/.
+    NUR_QUELLTEXT = ()
 
     progdir = os.path.join(ROOT, "programs")
     if os.path.isdir(progdir):
@@ -200,12 +202,15 @@ def build():
             namen.append(f"{'SYSTEM' if name in WERKZEUGE else 'PROGS'}\\{name}")
         if namen:
             print("  Programme " + ", ".join(namen))
-        print("  Zum Selberuebersetzen  " +
-              ", ".join("SOURCE\\" + d[:-2].upper() + ".C" for d in NUR_QUELLTEXT))
+        if NUR_QUELLTEXT:
+            print("  Zum Selberuebersetzen  " +
+                  ", ".join("SOURCE\\" + d[:-2].upper() + ".C" for d in NUR_QUELLTEXT))
 
-        # Der Quelltext des Compilers gehört mit auf die Platte -- ohne ihn
-        # könnte sich der Rechner seinen Compiler nicht selbst neu bauen.
-        for quelle in ("cc.c", "proglib.c", "gfxlib.c", "calc.c", "crash.c"):
+        # Nur noch der Quelltext des Compilers gehört mit auf die Platte --
+        # damit sich der Rechner seinen Compiler selbst neu bauen kann. Alle
+        # anderen .c-Dateien laufen jetzt als fertige Programme in \PROGS und
+        # muellen \SOURCE nicht mehr voll.
+        for quelle in ("cc.c", "proglib.c", "gfxlib.c"):
             with open(os.path.join(progdir, quelle), "rb") as f:
                 fs.put(quelle.upper(), f.read(), source_dir)
 

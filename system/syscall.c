@@ -22,6 +22,85 @@
 
 int build_progress = 0;              /* 0..100, vom laufenden Programm gemeldet */
 char build_status[44];
+int prog_groesse = 0;                /* Groesse des zuletzt geladenen Programms */
+
+/* ==========================================================================
+   Absturzsicherung -- der Kernel haelt nicht mehr fuer immer an
+
+   Bis jetzt riss ein Programmfehler (Division durch Null, ungueltiger Befehl,
+   Sprung ins Leere, endlose Rekursion) die ganze Maschine mit: die CPU sprang
+   in den leeren Interrupt-Vektor und blieb stehen. crash.tbx macht das vor.
+
+   Jetzt sitzt in den Vektoren 0x00 (Division) und 0x06 (ungueltiger Befehl,
+   auch verirrte Spruenge und Stack-Ueberlauf) ein Handler (fault_asm in
+   start.asm). Statt ewig anzuhalten, zeigt der Kernel eine Meldung und
+   startet SAUBER neu -- so wie ein echtes System bei einer Kernel-Panik
+   automatisch rebootet, statt tot liegenzubleiben.
+
+   'crashing' verhindert eine Endlosschleife, falls das Aufraeumen selbst noch
+   in kaputten Kernel-Speicher laeuft (crash.tbx Menue 9 ohne Waechter): beim
+   zweiten Mal startet fault_asm dann direkt neu, ohne C anzufassen. */
+int crashing = 0;
+
+int fault_asm();                     /* der Fehler-Handler in start.asm */
+
+void nach_absturz() {
+    crashing = 1;
+    sys_setmode(0);                  /* zurueck in den Textmodus */
+    cls(NORMAL);
+    printc("\n\n  A program crashed.\n", RED);
+    print("  The system caught it and is restarting ...\n");
+    sleep(140);
+    sys_out(0x90, 2);                /* P_POWER: 2 = Neustart */
+    while (1) { }                    /* falls der Neustart haengt */
+}
+
+/* ==========================================================================
+   TOOBAD DEFENDER -- der Waechter, hier die Kernel-Seite
+
+   Der Waechter selbst sitzt NICHT im Kernel, sondern im Disk-Controller
+   (hardware/devices.py). Das muss so sein: ein Programm schreibt nicht ueber
+   einen Systemaufruf auf die Platte, sondern mit der CPU-Instruktion "outr"
+   direkt an die Ports -- am Kernel vorbei. Ein "if" im Kernel saehe das nie.
+
+   Die Hardware dagegen sieht bei jedem Portbefehl, WOHER er kommt (die
+   Adresse der Instruktion). Kommt ein SCHREIB-Befehl aus dem Programm-Band
+   (0x200000..0x300000), verweigert der Controller ihn -- der Kernel und das
+   BIOS liegen ausserhalb und duerfen. Das ist "privilegiertes I/O" in klein,
+   genau die Grenze, die einem echten Rechner Ring 0 von Ring 3 trennt.
+
+   Hier stehen nur die Zugaenge dazu: die Ports schalten und auslesen, und die
+   Meldung fuer den Schreibtisch. */
+#define PORT_DGUARD  0x36            /* an/aus -- hoert nur auf den Kernel */
+#define PORT_DALARM  0x37            /* 1 = etwas abgewehrt (Lesen quittiert) */
+#define PORT_DGLBA   0x38            /* Ziel des letzten Angriffs */
+#define PORT_DGCNT   0x39            /* Gesamtzahl der Abwehren */
+#define PORT_DGKIND  0x3A            /* Art: 1 = Platte, 2 = Speicher */
+
+int  wacht_alarm = 0;                /* 1 = eine Warnung wartet auf Anzeige */
+int  wacht_lba   = 0;                /* worauf der letzte Angriff zielte */
+int  wacht_kind  = 0;                /* 1 = Platte, 2 = Kernel-Speicher */
+
+/* --- Autostart auf Nachfrage ---------------------------------------------
+   JEDES Programm darf sich in den Autostart eintragen -- aber nicht heimlich.
+   Es ruft autostart_anmelden(name), das nur einen WUNSCH hinterlegt. Der
+   Schreibtisch sieht den Wunsch, zeigt das Defender-Fenster ("Programm X
+   moechte bei jedem Start laufen -- erlauben?") und schreibt den Eintrag NUR,
+   wenn der Benutzer zustimmt. So braucht ein braves Programm kein Passwort,
+   und ein heimliches kommt trotzdem nicht durch: wer nicht fragt, schreibt
+   \SYSTEM\AUTORUN.DAT gar nicht (der Passwortschutz bleibt davor). */
+int  as_anfrage = 0;                 /* 1 = ein Programm moechte in den Autostart */
+char as_name[20];                    /* welches */
+
+/* Wird aus der Schreibtischschleife regelmaessig aufgerufen: hat der
+   Waechter etwas abgewehrt? Dann fuer das Popup vormerken. */
+void defender_poll() {
+    if (sys_in(PORT_DALARM)) {
+        wacht_alarm = 1;
+        wacht_lba = sys_in(PORT_DGLBA);
+        wacht_kind = sys_in(PORT_DGKIND);
+    }
+}
 char cap_zahl[16];                   /* Zwischenablage fuer mitgeschriebene Zahlen */
 
 int call_addr(int adresse);           /* steht in start.asm */
@@ -151,11 +230,51 @@ int syscall(int fn, int a1, int a2, int a3, int a4) {
     if (fn == 42) return fw_groesse(a1, a2);
     if (fn == 43) return fw_fertig(a1);
     if (fn == 44) return fw_zu(a1);
+
+    /* Ordner wechseln -- wie CD in der Shell. Bis jetzt arbeiteten
+       fileread/filewrite immer im Ordner, in dem gerade jemand stand; ein
+       Programm konnte nicht gezielt ins Hauptverzeichnis schreiben. Der
+       Schutz aus fs.c bleibt unberuehrt: fs_chdir liest nur, es loescht
+       nichts. */
+    if (fn == 50) return fs_chdir((char*)a1);
+    if (fn == 51) return prog_groesse;    /* wie gross bin ich selbst? */
+    /* Datei loeschen, wie DEL. Der Schutz aus fs.c gilt: eine Systemdatei
+       liefert -4. Der Defender braucht das, um die Spuren eines Virus im
+       Hauptverzeichnis und in \PROGS zu entfernen. */
+    if (fn == 52) return fs_delete((char*)a1);
+    /* TOOBAD DEFENDER: den Waechter schalten (das darf nur der Kernel -- ein
+       Programm kommt nur hierdurch), seinen Zustand und seine Bilanz lesen.
+       Weil DIESER Aufruf im Kernel laeuft (nicht im Programm-Band), nimmt der
+       Controller das Schalten an. */
+    /* Einschalten darf jeder (schadet nie). AUSschalten nur mit offener
+       SUDO-Freigabe -- also nach dem Passwort. Sonst waere der Waechter
+       wertlos: ein Virus riefe guard_set(0), und der Kernel schaltete ihn
+       brav ab (dieser Aufruf laeuft ja im Kernel). fs_sudo ist genau die
+       Unterscheidung: der Benutzer mit Passwort kommt durch, das Programm im
+       Hintergrund nicht. */
+    if (fn == 53) {
+        if (a1) sys_out(PORT_DGUARD, 1);
+        else if (fs_sudo) sys_out(PORT_DGUARD, 0);
+        return 0;
+    }
+    if (fn == 54) return sys_in(PORT_DGCNT);
+    if (fn == 55) return sys_in(PORT_DGUARD);
+    /* Autostart anmelden: nur einen Wunsch hinterlegen, der Schreibtisch
+       fragt. Rueckgabe hier immer 0 -- ob es klappt, entscheidet der Nutzer. */
+    if (fn == 57) {
+        strncpy(as_name, (char*)a1, 18);
+        as_anfrage = 1;
+        return 0;
+    }
     return 0 - 1;
 }
 
 void syscall_init() {
     mem_put(0x40 * 4, (int)syscall_asm);
+    /* Fehler-Handler einhaengen: ab jetzt haelt ein Programmabsturz nicht
+       mehr die Maschine an, sondern nur das Programm. */
+    mem_put(0x00 * 4, (int)fault_asm);   /* Division durch Null */
+    mem_put(0x06 * 4, (int)fault_asm);   /* ungueltiger Befehl */
 }
 
 /* Uebergibt einem Programm seine Kommandozeile (alles nach dem Programmnamen) */
@@ -169,6 +288,7 @@ int prog_run(char* name, int hintergrund) {
     int n;
     n = fs_read_prog(name, PROG_ADDR, PROG_MAX);
     if (n < 0) return 0 - 1;
+    prog_groesse = n;                 /* damit ein Programm seine eigene Groesse erfragen kann */
     if (hintergrund) {
         int pid;
         if (mt_active == 0) mt_enable();

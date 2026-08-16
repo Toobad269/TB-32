@@ -12,8 +12,9 @@ sondern läuft als echter Maschinencode auf dieser CPU.
 """
 
 from hardware.isa import (
-    RAM_SIZE, RESET_VECTOR, IVT_BASE,
+    RAM_SIZE, RESET_VECTOR, IVT_BASE, ROM_BASE, ROM_SIZE,
     FLAG_Z, FLAG_N, FLAG_C, FLAG_V, FLAG_I,
+    GUARD_MEM_LO, GUARD_MEM_HI, GUARD_PC_LO, GUARD_PC_HI,
 )
 
 MASK = 0xFFFFFFFF
@@ -198,6 +199,25 @@ class CPU:
                     self.cycles += executed
                     return executed
 
+            # --- Fetch-Wache ----------------------------------------------
+            # Ein Sprung in eine unmoegliche Code-Adresse (nach 0, ins Nichts
+            # bei 0xFFFFFFFF, irgendwohin) ist ein Programmfehler, kein Code.
+            # Statt Datenmuell auszufuehren, loesen wir denselben Fehler aus
+            # wie bei einem ungueltigen Befehl -- der Handler faengt ihn ab.
+            # crash.tbx Menue 6 (Ruecksprung nach 0xFFFFFFFF) und 7 (nach 0).
+            if pc < 0x1000 or (pc >= RAM_SIZE
+                               and not (ROM_BASE <= pc < ROM_BASE + ROM_SIZE)):
+                self.pc = pc
+                self.flags = flags
+                self.last_fault = f"Sprung nach 0x{pc:08X} -- keine Code-Adresse"
+                self.software_interrupt(0x06)
+                if self.halted:
+                    self.cycles += executed
+                    return executed
+                pc = self.pc
+                flags = self.flags
+                continue
+
             # --- HOLEN ----------------------------------------------------
             if pc < RAM_SIZE:
                 if pc & 3:                      # krumme Adresse: Byte fuer Byte
@@ -271,6 +291,15 @@ class CPU:
                 simm = imm - 0x10000 if imm & 0x8000 else imm
                 a = (r[ra] + simm) & MASK
                 v = r[rd]
+                # TOOBAD DEFENDER, Speicherschutz: schreibt ein PROGRAMM
+                # (PC im Programm-Band) in den Kernel-Speicher, abwehren --
+                # genau das macht crash.tbx (*p = -1 mitten im Kernel).
+                if (bus.guard_on and GUARD_PC_LO <= pc < GUARD_PC_HI
+                        and GUARD_MEM_LO <= a < GUARD_MEM_HI):
+                    bus.guard_alarm = 1; bus.guard_target = a
+                    bus.guard_kind = 2; bus.guard_cnt += 1
+                    pc = npc
+                    continue
                 if a + 3 < RAM_SIZE:
                     if a & 3:
                         ram[a] = v & 0xFF
@@ -354,6 +383,18 @@ class CPU:
                 if off & 0x800000:
                     off -= 0x1000000
                 sp = (r[15] - 4) & MASK
+                # Stack-Wache: drueckt ein PROGRAMM den Stack in den Kernel-
+                # Bereich, ist das ein Ueberlauf (endlose Rekursion, crash.tbx
+                # Menue 8) -- als Fehler behandeln statt den Kernel zu fressen.
+                if (GUARD_PC_LO <= pc < GUARD_PC_HI and sp < GUARD_MEM_HI):
+                    self.pc = pc; self.flags = flags
+                    self.last_fault = "Stack-Ueberlauf (endlose Rekursion?)"
+                    self.software_interrupt(0x06)
+                    if self.halted:
+                        self.cycles += executed
+                        return executed
+                    pc = self.pc; flags = self.flags
+                    continue
                 r[15] = sp
                 if sp + 3 < RAM_SIZE:
                     ram[sp] = npc & 0xFF
@@ -381,6 +422,12 @@ class CPU:
                 imm = word & 0xFFFF
                 simm = imm - 0x10000 if imm & 0x8000 else imm
                 a = (r[ra] + simm) & MASK
+                if (bus.guard_on and GUARD_PC_LO <= pc < GUARD_PC_HI
+                        and GUARD_MEM_LO <= a < GUARD_MEM_HI):
+                    bus.guard_alarm = 1; bus.guard_target = a
+                    bus.guard_kind = 2; bus.guard_cnt += 1
+                    pc = npc
+                    continue
                 if a < RAM_SIZE:
                     ram[a] = r[rd] & 0xFF
                 else:
@@ -627,6 +674,15 @@ class CPU:
 
             elif op == 0x43:                   # callr
                 sp = (r[15] - 4) & MASK
+                if (GUARD_PC_LO <= pc < GUARD_PC_HI and sp < GUARD_MEM_HI):
+                    self.pc = pc; self.flags = flags
+                    self.last_fault = "Stack-Ueberlauf (endlose Rekursion?)"
+                    self.software_interrupt(0x06)
+                    if self.halted:
+                        self.cycles += executed
+                        return executed
+                    pc = self.pc; flags = self.flags
+                    continue
                 r[15] = sp
                 bus.write32(sp, npc)
                 npc = r[rd] & MASK
@@ -654,10 +710,12 @@ class CPU:
 
             elif op == 0x62:                   # out port, rd
                 imm = word & 0xFFFF
+                bus.io_pc = pc                 # woher kommt dieser Portbefehl?
                 bus.port_out(imm, r[rd])
                 irq = self.irq_pending
 
             elif op == 0x63:                   # outr ra, rd
+                bus.io_pc = pc                 # (fuer den Waechter im Controller)
                 bus.port_out(r[ra] & 0xFFFF, r[rd])
                 irq = self.irq_pending
 

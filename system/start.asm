@@ -211,6 +211,37 @@ sched_irq_asm:
     iret
 
 ; ===========================================================================
+;  Absturzsicherung -- der Fehler-Handler
+;
+;  Haengt in den Vektoren 0x00 (Division durch Null) und 0x06 (ungueltiger
+;  Befehl, auch verirrte Spruenge und Stack-Ueberlauf). Frueher hielt die CPU
+;  hier fuer immer an. Jetzt starten wir den Rechner SAUBER neu -- wie ein
+;  echtes System bei einer Kernel-Panik automatisch rebootet, statt tot
+;  liegenzubleiben.
+;
+;  Die C-Funktion nach_absturz() zeigt eine Meldung und startet neu. Sollte
+;  der Kernel-Speicher selbst zerstoert sein (crash.tbx Menue 9 OHNE Waechter)
+;  und das Aufraeumen erneut abstuerzen, faengt uns 'crashing' auf und startet
+;  direkt ueber den Power-Port neu -- ohne noch einmal C anzufassen.
+; ===========================================================================
+fault_asm:
+    ldwa r1, crashing
+    cmpi r1, 0
+    jz fault_first
+    ; schon beim Aufraeumen abgestuerzt -> direkt neu starten
+    li r1, P_POWER
+    movi r2, 2
+    outr r2, r1
+    hlt
+    jmp fault_asm
+fault_first:
+    li sp, KSTACK                         ; frischer Kernel-Stack, der alte kann kaputt sein
+    sti
+    call nach_absturz                     ; Meldung + Neustart, kehrt nie zurueck
+    hlt
+    jmp fault_asm
+
+; ===========================================================================
 ;  Systemaufruf-Schnittstelle (INT 0x40)
 ;
 ;  Programme, die von der Platte geladen werden, kennen den Kernel nicht --

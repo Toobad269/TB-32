@@ -23,6 +23,24 @@ class Bus:
         self.vga = vga
         self.port_devices = {}
         self.unknown_ports = set()
+        # Adresse des Portbefehls, der gerade laeuft. Die CPU setzt sie vor
+        # jedem out/outr. Der Disk-Waechter liest daran ab, ob der Zugriff
+        # aus dem Kernel oder aus einem Benutzerprogramm kommt.
+        self.io_pc = 0
+        # --- TOOBAD DEFENDER, jetzt geraeteuebergreifend --------------------
+        # Der Waechter deckt Platte UND Speicher ab, deshalb liegt sein
+        # Zustand hier auf dem Bus: der Disk-Controller UND die CPU kommen
+        # daran. guard_on schaltet beides; die Alarm-Felder melden den letzten
+        # abgewehrten Angriff an den Schreibtisch.
+        self.guard_on = 0
+        self.guard_alarm = 0        # 1 = seit dem letzten Auslesen abgewehrt
+        self.guard_target = 0       # Sektor (Platte) oder Adresse (Speicher)
+        self.guard_cnt = 0          # Gesamtzahl
+        self.guard_kind = 0         # 1 = Platte, 2 = Speicher
+        # Der gemerkte, abgewehrte Disk-Schreibbefehl (fuer "Allow once").
+        self.guard_plba = 0
+        self.guard_pcnt = 0
+        self.guard_paddr = 0
 
     # -- Geräte anmelden ---------------------------------------------------
 

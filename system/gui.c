@@ -74,6 +74,7 @@
 #define APP_POWER     16
 #define APP_BROWSER   17
 #define APP_FREMD     18     /* Fenster eines eigenstaendigen Programms */
+#define APP_SUDO      19     /* Passwortfenster vor einem Eingriff am System */
 
 /* ---------------------------------------------------------------------------
    Der Fenster-Server.
@@ -186,6 +187,20 @@ int  file_sel = 0;              /* markierte Zeile in der Dateiverwaltung */
 int  file_top = 0;              /* erste sichtbare Zeile (Blaettern) */
 int  file_rows = 11;            /* wie viele Zeilen ins Fenster passen */
 int  move_quelle = 0 - 1;       /* Eintrag, der gerade verschoben wird */
+
+/* Das Passwortfenster vor einem Eingriff am System. Es merkt sich, was
+   gleich geschehen soll -- ausgefuehrt wird es erst, wenn das Passwort
+   stimmt. su_cwd haelt den Ordner fest, in dem gefragt wurde: das Fenster
+   dahinter bleibt bedienbar, und ein Ordnerwechsel waehrend der Frage
+   duerfte nicht dazu fuehren, dass eine ganz andere Datei drankommt. */
+#define SU_NICHTS 0
+#define SU_DEL    1             /* Datei loeschen */
+#define SU_RMDIR  2             /* leeren Ordner loeschen */
+int  su_was = 0;
+int  su_cwd = 0 - 1;
+int  su_fehler = 0;
+char su_name[20];
+char su_pw[32];
 int  desk_sel = 0 - 1;          /* markiertes Symbol auf dem Schreibtisch */
 int  zieh_idx = 0 - 1;          /* Datei, die gerade mit der Maus gezogen wird */
 int  zieh_von = 0 - 1;          /* aus welchem Fenster sie stammt */
@@ -525,14 +540,20 @@ void app_files(int w) {
             g_fill(x - 2, y + 15 + zeile * 11, win_w[w] - 14, 10, C_TITLEBAR);
             attr = C_WHITE;
         }
+        /* "System" steht vor allem anderen: was hier steht, ist der Grund,
+           warum der Delete-Knopf gleich nach dem Passwort fragt. Ohne die
+           Spalte sieht KERNEL.BIN aus wie jede andere Datei. */
         if (ent_type(idx) == FT_DIR) {
             if (file_top + zeile != file_sel) attr = C_ACCENT;
             g_text(x, y + 16 + zeile * 11, ent_name(idx), attr, 256);
-            g_text(x + 200, y + 16 + zeile * 11, "Folder", attr, 256);
+            g_text(x + 200, y + 16 + zeile * 11,
+                   ent_geschuetzt(idx) ? "System" : "Folder", attr, 256);
         } else {
             g_text(x, y + 16 + zeile * 11, ent_name(idx), attr, 256);
             g_num(x + 136, y + 16 + zeile * 11, ent_size(idx), attr, 256);
-            if (endet_auf(ent_name(idx), ".TBX"))
+            if (ent_geschuetzt(idx))
+                g_text(x + 200, y + 16 + zeile * 11, "System", attr, 256);
+            else if (endet_auf(ent_name(idx), ".TBX"))
                 g_text(x + 200, y + 16 + zeile * 11, "Program", attr, 256);
             else
                 g_text(x + 200, y + 16 + zeile * 11, "Document", attr, 256);
@@ -2179,6 +2200,7 @@ void draw_window_inhalt(int i) {
     if (win_type[i] == APP_BIOSFRAGE) app_biosfrage(i);
     if (win_type[i] == APP_BIOSHILFE) app_bioshilfe(i);
     if (win_type[i] == APP_SETTINGS)  app_settings(i);
+    if (win_type[i] == APP_SUDO)      app_sudo(i);
     if (win_type[i] == APP_POWER)     app_power(i);
     if (win_type[i] == APP_FREMD)     app_fremd(i);
 }
@@ -2300,6 +2322,7 @@ char* win_kurz(int typ) {
     if (typ == APP_POWER)     return "Power";
     if (typ == APP_BROWSER)   return "Browser";
     if (typ == APP_FREMD)     return "Program";
+    if (typ == APP_SUDO)      return "Password";
     if (typ == APP_MONITOR) return "Monitor";
     if (typ == APP_CONTROL) return "Control";
     if (typ == APP_CLOCK)   return "Clock";
@@ -2813,6 +2836,13 @@ int files_click(int w, int mx, int my) {
         if (idx < 0) return 1;
         if (treffer(mx, my, bx + fb_x(2), by, fb_breite(2), 16)) {   /* Delete */
             if (idx == move_quelle) move_quelle = 0 - 1;
+            /* Systembestand nicht auf einen Klick. Das Fenster fragt nach
+               dem Passwort und loescht danach selbst -- hier ist Schluss. */
+            if (ent_geschuetzt(idx)) {
+                su_fragen(ent_type(idx) == FT_DIR ? SU_RMDIR : SU_DEL,
+                          ent_name(idx));
+                return 1;
+            }
             if (ent_type(idx) == FT_DIR) fs_rmdir(ent_name(idx));
             else fs_delete(ent_name(idx));
             if (file_sel > 0) file_sel--;
@@ -3029,6 +3059,111 @@ int gui_anmelden(int neu_anlegen) {
         }
         if (c >= 32 && c < 127 && n < 20) { ziel[n] = c; ziel[n + 1] = 0; }
     }
+}
+
+/* ==========================================================================
+   Das Passwortfenster vor einem Eingriff am System
+
+   Auf dem Schreibtisch loeschte der Knopf "Delete" alles, worauf man ihn
+   klickte -- auch \SYSTEM\KERNEL.BIN, ohne Nachfrage und ohne Passwort.
+   Ein Klick, und der Rechner startete nie wieder.
+
+   Ab hier oeffnet sich dafuer dieses Fenster. Es ist das Gegenstueck zu
+   SUDO in der Kommandozeile: beide fragen dasselbe Passwort ab, beide
+   oeffnen die Sperre in fs.c fuer genau einen Vorgang.
+
+   Die Arbeit passiert im Fenster, nicht beim Aufrufer. Die Dateiverwaltung
+   sagt nur "das hier soll weg" und ist fertig -- sie wartet auf nichts.
+   Warten koennte sie auch gar nicht: der Schreibtisch hat eine einzige
+   Schleife fuer alle Fenster, und wer darin stehenbliebe, legte den ganzen
+   Bildschirm lahm.
+   ========================================================================== */
+
+/* Fragen, bevor etwas passiert. <was> ist SU_DEL oder SU_RMDIR. */
+void su_fragen(int was, char* name) {
+    su_was = was;
+    su_cwd = cwd;
+    su_fehler = 0;
+    memset(su_name, 0, 20);
+    strncpy(su_name, name, 18);
+    memset(su_pw, 0, 32);
+    starte(APP_SUDO, "Authentication", 380, 168);
+}
+
+void su_schliessen() {
+    int i;
+    su_was = SU_NICHTS;
+    memset(su_pw, 0, 32);            /* nichts stehen lassen, was gerade galt */
+    i = win_find(APP_SUDO);
+    if (i >= 0) { win_type[i] = 0; win_voll[i] = 0; }
+    /* Die Tastatur zurueck an die Dateiverwaltung, sonst zeigt win_top auf
+       ein geschlossenes Fenster. */
+    i = win_find(APP_FILES);
+    if (i >= 0) win_top = i;
+}
+
+void app_sudo(int i) {
+    int x; int y; int b;
+    x = win_x[i] + 12;
+    y = win_y[i] + TITLE_H + 12;
+    b = win_w[i];
+
+    g_text(x, y, "This belongs to the system", C_WARN, 256);
+    g_text(x, y + 20, su_was == SU_RMDIR ? "Folder:" : "File:", C_WINDARK, 256);
+    g_text(x + 56, y + 20, su_name, C_ACCENT, 256);
+    g_text(x, y + 38, "Deleting it can stop this machine from", C_TEXT, 256);
+    g_text(x, y + 50, "starting. Enter your password to go ahead.", C_TEXT, 256);
+
+    st_feldkasten(x, y + 76, "Password", su_pw, 1);
+    if (su_fehler) g_text(x, y + 96, "Wrong password.", C_WARN, 256);
+
+    g_button(x + b - 190, y + 112, 80, 20, "Delete", 0);
+    g_button(x + b - 100, y + 112, 80, 20, "Cancel", 0);
+}
+
+/* Passwort pruefen und, wenn es stimmt, den gemerkten Vorgang ausfuehren.
+   Rueckgabe: 1 = es hat sich etwas geaendert, neu zeichnen. */
+int su_ausfuehren() {
+    int alt;
+    if (sudo_pw_ok(su_pw) == 0) {
+        su_fehler = 1;
+        memset(su_pw, 0, 32);
+        return 1;
+    }
+    /* Im Ordner arbeiten, in dem gefragt wurde -- nicht in dem, der jetzt
+       zufaellig offen ist. */
+    alt = cwd;
+    cwd = su_cwd;
+    fs_sudo = 1;
+    if (su_was == SU_RMDIR) fs_rmdir(su_name);
+    else fs_delete(su_name);
+    fs_sudo = 0;                     /* sofort wieder zu, nicht erst spaeter */
+    cwd = alt;
+    if (file_sel > 0) file_sel--;
+    su_schliessen();
+    return 1;
+}
+
+int su_klick(int i, int mx, int my) {
+    int x; int y; int b;
+    x = win_x[i] + 12;
+    y = win_y[i] + TITLE_H + 12;
+    b = win_w[i];
+    if (treffer(mx, my, x + b - 190, y + 112, 80, 20)) return su_ausfuehren();
+    if (treffer(mx, my, x + b - 100, y + 112, 80, 20)) { su_schliessen(); return 1; }
+    return 0;
+}
+
+int su_taste(int k) {
+    int c; int code; int n;
+    c = keychar(k);
+    code = keycode(k);
+    n = strlen(su_pw);
+    if (code == K_ENTER) return su_ausfuehren();
+    if (code == K_ESC) { su_schliessen(); return 1; }
+    if (code == K_BACKSPACE) { if (n > 0) su_pw[n - 1] = 0; return 1; }
+    if (c >= 32 && c < 127 && n < 20) { su_pw[n] = c; su_pw[n + 1] = 0; }
+    return 1;
 }
 
 /* ==========================================================================
@@ -3271,6 +3406,144 @@ int power_klick(int i, int mx, int my) {
     return 0;
 }
 
+/* ==========================================================================
+   TOOBAD DEFENDER -- die Warnung auf dem Schreibtisch
+
+   Der Waechter im Kernel (syscall.c) hat einen rohen Schreibbefehl an die
+   Platte abgefangen und wacht_alarm gesetzt. Hier wird das sichtbar: ein
+   modaler Kasten mitten auf dem Schirm, wie ihn ein Virenwaechter zeigt.
+   Der Schreibbefehl ist da schon geblockt -- der Kasten meldet es nur und
+   laesst die Wahl, den Uebeltaeter gleich zu beenden.
+
+   Modal heisst: solange er offen ist, macht der Schreibtisch nichts anderes.
+   Sonst malte der Desktop in der naechsten Runde darueber. */
+void defender_popup() {
+    int x; int y; int w; int h; int mx; int my; int btn; int alt_btn;
+    int ziel; int n; int darf;
+    w = 344; h = 150;
+    x = (G_W - w) / 2;
+    y = (BAR_Y - h) / 2;
+    ziel = wacht_lba;
+    /* "Allow once" gibt es nur fuer einen Disk-Schreibbefehl -- den kann der
+       Kernel gemerkt nachholen. Einen Schreibzugriff in den Kernel-SPEICHER
+       kann man nicht erlauben, ohne den Kernel zu zerstoeren. */
+    darf = (wacht_kind != 2);
+    alt_btn = 1;                          /* erst loslassen lassen */
+    while (1) {
+        g_fill(x, y, w, h, C_WIN);
+        g_frame(x, y, w, h, C_WINDARK);
+        g_fill(x, y, w, 16, C_WARN);
+        g_text(x + 8, y + 4, "TOOBAD DEFENDER", C_WHITE, 256);
+
+        g_text(x + 12, y + 26, "Dangerous action blocked", C_WARN, 256);
+        g_text(x + 12, y + 46, "Program:", C_WINDARK, 256);
+        if (autostart_pid > 0)
+            g_text(x + 92, y + 46, proc_name(autostart_pid), C_TEXT, 256);
+        else g_text(x + 92, y + 46, "a background program", C_TEXT, 256);
+        g_text(x + 12, y + 62, "Action:", C_WINDARK, 256);
+        g_text(x + 12, y + 78, "Target:", C_WINDARK, 256);
+        if (wacht_kind == 2) {
+            /* Ein Programm wollte in den Kernel-Speicher schreiben. */
+            g_text(x + 92, y + 62, "KERNEL MEMORY WRITE", C_TEXT, 256);
+            g_text(x + 92, y + 78, "Kernel code", C_TEXT, 256);
+        } else {
+            g_text(x + 92, y + 62, "RAW DISK WRITE", C_TEXT, 256);
+            if (ziel == 0) g_text(x + 92, y + 78, "Boot sector", C_TEXT, 256);
+            else if (ziel >= 512 && ziel <= 520)
+                g_text(x + 92, y + 78, "File system directory", C_TEXT, 256);
+            else { g_text(x + 92, y + 78, "Sector", C_TEXT, 256);
+                   g_num(x + 150, y + 78, ziel, C_TEXT, 256); }
+        }
+
+        if (darf) g_button(x + 10, y + h - 30, 70, 22, "Allow", 0);
+        g_button(x + 86, y + h - 30, 108, 22, "Keep blocked", 0);
+        g_button(x + 200, y + h - 30, 134, 22, "Terminate program", 0);
+        sys_out(P_GFX_TAUSCH, 2);
+
+        mx = sys_in(0x60); my = sys_in(0x61); btn = sys_in(0x62);
+        sys_out(P_MCUR_X, mx); sys_out(P_MCUR_Y, my); sys_out(P_MCUR_ON, 1);
+        if ((btn & 1) && alt_btn == 0) {
+            if (darf && treffer(mx, my, x + 10, y + h - 30, 70, 22)) {
+                /* Erlauben: den gemerkten Schreibbefehl doch ausfuehren -- aus
+                   dem Kernel heraus, also am Waechter vorbei (der prueft nur,
+                   ob der Befehl aus einem PROGRAMM kommt). */
+                sys_out(0x30, sys_in(0x3B));   /* LBA   = gemerkter Sektor */
+                sys_out(0x31, sys_in(0x3C));   /* COUNT = gemerkte Anzahl */
+                sys_out(0x32, sys_in(0x3D));   /* ADDR  = gemerkte RAM-Quelle */
+                sys_out(0x33, 2);              /* schreiben, jetzt erlaubt */
+                break;
+            }
+            if (treffer(mx, my, x + 86, y + h - 30, 108, 22)) break;
+            if (treffer(mx, my, x + 200, y + h - 30, 134, 22)) {
+                /* Den Uebeltaeter beenden -- den Autostart-Prozess. Prozess 0
+                   ist der Schreibtisch, den nie. */
+                if (autostart_pid > 0) p_state[autostart_pid] = 0;   /* PS_FREI */
+                break;
+            }
+        }
+        alt_btn = btn & 1;
+        /* Auch eine Taste (ENTER/ESC) schliesst -- Maus ist nur bequemer. */
+        if (sys_haskey()) { n = sys_getkey(); break; }
+        sleep(1);
+    }
+    wacht_alarm = 0;
+    draw_desktop();
+}
+
+/* ==========================================================================
+   Autostart auf Nachfrage -- der Defender fragt, bevor sich etwas eintraegt
+   ==========================================================================
+   Ein Programm hat autostart_anmelden(name) gerufen; der Schreibtisch sieht
+   den Wunsch (as_anfrage) und fragt hier nach. Nur bei "Allow" wird der
+   Eintrag \SYSTEM\AUTORUN.DAT geschrieben -- mit Freigabe, denn der Benutzer
+   hat ja gerade zugestimmt. */
+void autostart_schreiben() {
+    int alt;
+    alt = cwd;
+    cwd = fs_find_in("SYSTEM", 0 - 1);
+    if (cwd >= 0) {
+        fs_sudo = 1;
+        fs_write("AUTORUN.DAT", (int)as_name, strlen(as_name) + 1);
+        fs_sudo = 0;
+    }
+    cwd = alt;
+}
+
+void autostart_popup() {
+    int x; int y; int w; int h; int mx; int my; int btn; int alt_btn; int n;
+    w = 350; h = 140;
+    x = (G_W - w) / 2;
+    y = (BAR_Y - h) / 2;
+    alt_btn = 1;
+    while (1) {
+        g_fill(x, y, w, h, C_WIN);
+        g_frame(x, y, w, h, C_WINDARK);
+        g_fill(x, y, w, 16, C_TITLEBAR);
+        g_text(x + 8, y + 4, "TOOBAD DEFENDER", C_WHITE, 256);
+        g_text(x + 12, y + 28, "A program wants to run at every startup.", C_TEXT, 256);
+        g_text(x + 12, y + 50, "Program:", C_WINDARK, 256);
+        g_text(x + 92, y + 50, as_name, C_ACCENT, 256);
+        g_text(x + 12, y + 72, "Add it to autostart?", C_TEXT, 256);
+        g_button(x + 40, y + h - 32, 120, 22, "Allow", 0);
+        g_button(x + 190, y + h - 32, 120, 22, "Deny", 0);
+        sys_out(P_GFX_TAUSCH, 2);
+        mx = sys_in(0x60); my = sys_in(0x61); btn = sys_in(0x62);
+        sys_out(P_MCUR_X, mx); sys_out(P_MCUR_Y, my); sys_out(P_MCUR_ON, 1);
+        if ((btn & 1) && alt_btn == 0) {
+            if (treffer(mx, my, x + 40, y + h - 32, 120, 22)) {
+                autostart_schreiben();
+                break;
+            }
+            if (treffer(mx, my, x + 190, y + h - 32, 120, 22)) break;
+        }
+        alt_btn = btn & 1;
+        if (sys_haskey()) { n = sys_getkey(); break; }
+        sleep(1);
+    }
+    as_anfrage = 0;
+    draw_desktop();
+}
+
 void gui_main() {
     int mx; int my; int btn; int alt_btn; int i; int k;
     int drag; int drag_dx; int drag_dy; int neu; int letzte_sek;
@@ -3307,6 +3580,13 @@ void gui_main() {
     sys_out(P_GFX_TAUSCH, 2);
 
     while (gui_running) {
+        /* Hat der Waechter im Controller etwas abgewehrt? Dann zuerst die
+           Warnung, modal, bevor irgendetwas anderes passiert. */
+        defender_poll();
+        if (wacht_alarm) { defender_popup(); continue; }
+        /* Moechte ein Programm in den Autostart? Dann fragen, bevor es
+           passiert. */
+        if (as_anfrage) { autostart_popup(); continue; }
         /* Hat das Gehaeuse um den Text des obersten Fensters gebeten?
            Dann liegt er eine Schleifenrunde spaeter bereit. Billiger als
            ihn staendig aktuell zu halten -- gefragt wird selten. */
@@ -3379,6 +3659,9 @@ void gui_main() {
                 draw_window(win_top);
             } else if (win_top >= 0 && win_type[win_top] == APP_DIALOG) {
                 dlg_taste(k);
+                neu = 1;
+            } else if (win_top >= 0 && win_type[win_top] == APP_SUDO) {
+                su_taste(k);
                 neu = 1;
             } else if (win_top >= 0 && win_type[win_top] == APP_WORD) {
                 wd_taste(k);
@@ -3630,6 +3913,8 @@ void gui_main() {
                             if (wd_klick(i, mx, my)) neu = 1;
                         } else if (win_type[i] == APP_DIALOG) {
                             if (dlg_klick(i, mx, my)) neu = 1;
+                        } else if (win_type[i] == APP_SUDO) {
+                            if (su_klick(i, mx, my)) neu = 1;
                         } else if (win_type[i] == APP_POWER) {
                             if (power_klick(i, mx, my)) neu = 1;
                         } else if (win_type[i] == APP_FREMD) {

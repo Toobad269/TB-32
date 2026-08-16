@@ -35,6 +35,34 @@ Ausdrücklich **nicht** gewünscht: Pac-Man (Colin hat abgelehnt), GPIO-LEDs.
   können noch nichts einfügen.
 - **Symbole auf dem Schreibtisch** ordnen sich nicht selbst neu, wenn eines
   gelöscht wird — es bleibt eine Lücke, bis man sie von Hand zuzieht.
+- **`benutzer_passt()` vergleicht gegen `USER_BUF` im Speicher** — und
+  `USER_BUF` liegt auf derselben Adresse wie `FILEBUF` (0x000C0000). Jede
+  gelesene Datei überschreibt die Prüfsumme. Betroffen ist der Dialog
+  „Change password" in den Einstellungen: nach einem `COPY` oder einem
+  Compilerlauf urteilt er über den falschen Inhalt. `sudo_pw_ok()` in
+  `kernel.c` macht es richtig (Konto vorher frisch von der Platte lesen);
+  `benutzer_passt()` sollte dasselbe tun. Sauberer wäre, `USER_BUF` einfach
+  woanders hinzulegen.
+- **„Reset this machine"** in den Einstellungen löscht Konto und alle
+  eigenen Dateien **ohne** Passwortabfrage. `\SYSTEM` bleibt zwar stehen,
+  aber die Nachfrage ist nur ein „Are you sure?". Seit es das
+  Passwortfenster `APP_SUDO` gibt, wäre es dort naheliegend.
+- **Port-I/O ist nur für die Disk-Schreibports privilegiert — noch nicht
+  sonst.** TOOBAD DEFENDER (siehe [[14 Aenderungsjournal]]) schließt die
+  gefährlichste Lücke: der Disk-Controller verweigert **Schreib**-Befehle,
+  die aus dem Programm-Band (`0x200000–0x300000`) kommen, wenn der Wächter
+  aktiv ist (`hardware/devices.py`, Ports `0x36–0x39`). `TAKT`s Brick prallt
+  damit ab. Aber es ist erst EIN Port-Bereich:
+  - `crash.c` überschreibt weiterhin den Kernel per Zeiger (kein
+    **Speicher**schutz).
+  - Die Farbtabelle (VGA-Ports) ist weiter frei — Nuisance, kein Datenverlust.
+  - Power/CMOS-Ports sind ungeschützt.
+  Der saubere Abschluss wäre ein echter **Benutzer-/Kernel-Modus** (ein
+  Mode-Bit in der CPU): privilegierte Instruktionen (`outr`/`inr` auf eine
+  Portmaske, evtl. Speicherbereiche) lösen im Benutzermodus eine **Ausnahme**
+  aus, die der Kernel behandelt. Der `io_pc`-Trick im Controller ist die
+  Attrappe davon; das Mode-Bit wäre das Echte. Erst damit wäre auch der
+  Wächter selbst unangreifbar und die Persistenz (`AUTORUN.DAT`) regelbar.
 
 - **BIOS-Dienste**: Speichergröße, Ausstattungsliste, Warten, Piepser und vor
   allem die **Maus** fehlen als Dienst — das OS greift dafür an der Firmware

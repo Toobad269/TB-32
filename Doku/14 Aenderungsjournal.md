@@ -9,6 +9,297 @@ Die tiefer liegenden Fallen haben zusätzlich einen ausführlichen Eintrag in
 
 ---
 
+## Autostart auf Nachfrage — der Defender fragt, statt SUDO zu verlangen
+
+Bisher war die Regel hart: Autostart-Eintrag = Schreiben in `\SYSTEM` = braucht
+SUDO. Für ein braves Programm, das einfach beim Start mitlaufen möchte, ist das
+unnötig streng. Jetzt gibt es den freundlichen Weg — wie „App möchte beim Start
+ausgeführt werden — erlauben?" auf echten Systemen:
+
+* **Jedes** Programm darf `autostart_anmelden(name)` rufen (Syscall 57). Das
+  schreibt nichts, es hinterlegt nur einen **Wunsch** (`as_anfrage`).
+* Der Schreibtisch sieht den Wunsch und zeigt das **Defender-Fenster**:
+  „A program wants to run at every startup — Program: X — Allow / Deny."
+* Nur bei **Allow** wird `\SYSTEM\AUTORUN.DAT` geschrieben (mit Freigabe, denn
+  der Benutzer hat gerade zugestimmt). Bei **Deny** passiert nichts.
+
+Kein Passwort mehr für den ehrlichen Fall — der **Mensch** entscheidet. Das
+Gegenstück ist `\PROGS\UHRAPP.TBX` (Quelle `programs/uhrapp.c`): ein braves
+Programm, das höflich fragt, statt sich wie TAKT/SEUCHE heimlich einzunisten.
+Getestet: UHRAPP starten → Fenster erscheint → Allow → `AUTORUN.DAT =
+"UHRAPP.TBX"`. Der harte Weg (direkt `\SYSTEM` beschreiben) verlangt weiterhin
+SUDO — wer nicht fragt, kommt nicht durch (außer über die DIRBUF-Lücke, siehe
+unten).
+
+---
+
+## Die Lücke: SEUCHE geht am Defender vorbei — und ein „Allow"-Knopf
+
+Zwei Dinge auf einmal.
+
+**Der „Allow"-Knopf.** Das Warn-Popup hatte nur „Keep blocked" und „Terminate".
+Jetzt gibt es bei einem Disk-Schreibbefehl auch **„Allow"**: Der Controller
+merkt sich den abgewehrten Befehl (Ports `0x3B–0x3D`), und der Kernel holt ihn
+auf Knopfdruck nach — aus KERNEL-Code heraus, also am Wächter vorbei (der prüft
+nur, ob der Befehl aus einem Programm kommt). Bei einem Schreibzugriff in den
+Kernel-SPEICHER gibt es kein „Allow" — den zu erlauben hiesse, den Kernel
+selbst zu zerstören. Getestet: Sektor 200, vorher `0x00`, nach „Allow" `0xAB`.
+
+**Die Lücke.** `\SOURCE\SEUCHE.C` umgeht jetzt BEIDE Wächter und den
+Passwortschutz **komplett unentdeckt** — `guard_cnt` bleibt 0, kein Popup. Der
+Trick: Das Dateisystem hält eine Kopie des Verzeichnisses im RAM bei `0xB1000`
+— **oberhalb** des geschützten Kernel-Bereichs (bis `0x80000`), also vom
+Speicher-Wächter nicht gesehen. SEUCHE überschreibt diese RAM-Kopie (kein Port,
+kein geschützter Speicher) und löst dann einen normalen `filewrite` aus → der
+**Kernel selbst** schreibt das kaputte Verzeichnis auf die Platte (über
+`INT_DISK`, nicht über einen Port → der Disk-Wächter sieht nichts). Ergebnis:
+`\SYSTEM` weg, kein SUDO nötig, kein Wächter meldet sich. Gemessen: Defender
+an, `guard_cnt=0`, `\SYSTEM` zerstört.
+
+Das ist die Lehre über **Punkt-Verteidigungen**: Der Wächter deckt zwei Wege ab
+(Disk-Ports, Kernel-Code-Speicher), aber die FS-Puffer im RAM sind ein dritter.
+Schliessen liesse sich das, indem der Speicher-Wächter auch `[0xB0000, 0xD0000)`
+abdeckt (Verzeichnis- und Dateipuffer) — die Prozess-Stacks bei `0xA0000` müssen
+frei bleiben. Steht in [[11 Offene Punkte]].
+
+---
+
+## Kein toter Rechner mehr: Fehler-Handler statt Halt
+
+`crash.tbx` konnte den Rechner auf fuenf Wegen umbringen. Der Speicherschutz
+(voriger Eintrag) deckte nur Menue 9 (Kernel ueberschreiben, und nur mit
+Waechter). Die anderen — Division durch Null (5), Ruecksprung nach
+`0xFFFFFFFF` (6) und nach 0 (7), endlose Rekursion (8) — sind **Programm-
+fehler**, kein Angriff. Bisher sprang die CPU dabei in den leeren Interrupt-
+Vektor und **hielt fuer immer an**.
+
+Jetzt gibt es einen **Fehler-Handler** (`fault_asm` in `start.asm`) in den
+Vektoren `0x00` (Division) und `0x06` (ungueltiger Befehl). Statt anzuhalten,
+zeigt der Kernel „A program crashed" und **startet sauber neu** — wie ein
+echtes System bei einer Kernel-Panik automatisch rebootet, statt tot
+liegenzubleiben. `nach_absturz()` in `syscall.c` macht die Meldung und den
+Neustart; `crashing` faengt den Fall ab, dass das Aufraeumen selbst noch in
+kaputten Kernel-Speicher laeuft (Menue 9 ohne Waechter) — dann startet der
+Handler direkt ueber den Power-Port neu.
+
+Damit die verirrten Spruenge ueberhaupt als Fehler ankommen, hat die CPU zwei
+neue Waechter (`hardware/cpu.py`):
+* **Fetch-Wache**: ein Sprung in eine unmoegliche Code-Adresse (unter `0x1000`
+  oder ins Nichts) loest den Fehler aus — faengt Menue 6 und 7.
+* **Stack-Wache**: drueckt ein Programm (PC im Programm-Band) den Stack in den
+  Kernel-Bereich (`call`/`callr` unter `0x80000`), ist das ein Ueberlauf —
+  faengt Menue 8 (endlose Rekursion).
+
+**Grenze der Grenze:** Der Fehler-Handler REBOOTET (sauber), er kehrt nicht in
+die Shell zurueck. Ein Rueckkehren-statt-Neustart braeuchte echte Prozess-
+Isolation (Vordergrundprogramme als eigener Prozess, den man einzeln beendet)
+— steht in [[11 Offene Punkte]]. Der Neustart ist die robuste, einfache
+Loesung; getestet fuer crash.tbx Menue 5–9, Selbsttest bleibt 82/82.
+
+**Ein echter Bug nebenbei gefunden:** Der Speicherschutz reichte bis `0xA0000`
+— das schloss den Kernel-Stack (`0x9FFF0`) ein, auf dem VORDERGRUND-Programme
+laufen. Mit Waechter waeren ihre lokalen Variablen blockiert worden. Grenze
+korrigiert auf `0x80000` (ueber dem Kernel-Code, unter dem Stack).
+
+---
+
+## TOOBAD DEFENDER, Ausbau: Speicherschutz gegen `crash.tbx`
+
+Der Disk-Wächter hielt die Platte, aber `crash.tbx` lachte darüber: es fasst
+die Platte gar nicht an, sondern überschreibt den **Kernel im RAM** per Zeiger
+(`*p = -1` ab `0x11000`) — reiner Speicherzugriff, kein Port. Der Wächter sah
+das nicht.
+
+Jetzt schon. Nach demselben Prinzip wie beim Disk-Wächter (die CPU kennt den
+**PC** jedes Befehls) prüft die CPU bei jedem `stb`/`stw`: Kommt der
+Schreibbefehl aus dem **Programm-Band** (`0x200000–0x300000`) und zielt in den
+**Kernel-Speicher** (`[0x10000, 0xA0000)`), wird er verworfen und Alarm
+gesetzt (`hardware/cpu.py`, Konstanten in `isa.py`). Der Kernel selbst und das
+BIOS liegen außerhalb des Bandes und schreiben normal.
+
+**Warum genau diese Grenzen:** Programme schreiben ihre eigenen Daten ab
+`0x200000`, ihren **Stack** ab `0xA0000` und den **Bildspeicher** ab
+`0x02100000` — alle drei außerhalb von `[0x10000, 0xA0000)`. In diesen Bereich
+schreibt nur der Kernel (aus Kernel-PC, erlaubt) und `crash.c` (aus
+Programm-PC, jetzt geblockt). Getestet: ohne Wächter wird `0x11000` zu `0xFF`,
+mit Wächter bleibt es **intakt**.
+
+**Der Wächter-Zustand liegt jetzt auf dem Bus** (`bus.guard_on` usw.), weil ihn
+zwei Geräte brauchen: der Disk-Controller UND die CPU. Neuer Port `0x3A` meldet
+die Art des letzten Angriffs (1 = Platte, 2 = Speicher); das Popup zeigt
+entsprechend „RAW DISK WRITE" oder „KERNEL MEMORY WRITE".
+
+**Noch offen** (siehe [[11 Offene Punkte]]): die FS-Puffer (`DIRBUF` ab
+`0xB1000`) und Grafik-/Power-Ports sind noch frei; ein echter
+Benutzer-/Kernel-Modus wäre der vollständige Abschluss.
+
+**Gegenprobe `\SOURCE\SEUCHE.C`:** der Nachfolger von TAKT, ein Boot-Zerstörer,
+der bei jedem Start ALLE drei Wege gleichzeitig geht — Platte (Ports), Kernel
+(Speicher), Farben (VGA). Gemessen: mit Defender AUS ist Bootsektor und Kernel
+nach dem Boot zerstört (0 abgewehrt); mit Defender AN bleiben beide **heil**
+(97 640 Zugriffe abgewehrt), nur der Farbsalat kommt durch und wird von
+*Clean* geheilt. Quelltext-only, immer nur auf Kopien testen.
+
+---
+
+## TOOBAD DEFENDER — privilegiertes I/O im Disk-Controller
+
+Der Trojaner `TAKT` zerstört die Platte, indem er über `outr` **direkt** an die
+Disk-Ports schreibt — am Dateisystem und am Passwortschutz vorbei. Der
+entscheidende Punkt: `portout` ist kein Systemaufruf, sondern eine
+CPU-Instruktion. Ein `if` im Kernel kann das gar nicht sehen. Der Wächter
+**muss** eine Ebene tiefer sitzen: in der Hardware.
+
+**Wo der Wächter sitzt.** Im Disk-Controller (`hardware/devices.py`). Bei
+jedem Portbefehl setzt die CPU `bus.io_pc` = Adresse der Instruktion. Der
+Controller liest daran ab, **woher** der Zugriff kommt:
+
+- Kernel bei `0x10000`, BIOS-ROM bei `0x0F000000` → dürfen schreiben.
+- Programme laufen im Band `0x200000–0x300000` → ein **Schreib**-Befehl von
+  dort wird verweigert (Status 9), wenn der Wächter aktiv ist. Lesen bleibt
+  frei.
+
+Das ist „privilegiertes I/O" in klein — genau die Grenze, die auf einem
+echten Rechner Ring 0 von Ring 3 trennt. Der Kernel-eigene Plattenzugriff
+(über `INT 0x13`/BIOS) und jedes normale `filewrite` (das durch den Kernel
+läuft) sind nicht betroffen; nur der rohe `outr` aus einem Programm.
+
+**Neue Ports** (`isa.py`): `0x36` schalten (nur der Kernel — sonst schaltete
+ein Virus den Wächter selbst ab), `0x37` Alarm lesen (quittiert), `0x38`
+Ziel-Sektor, `0x39` Zähler.
+
+**Das Programm `DEFENDER.TBX`** (`programs/defender.c`): **Scan** (findet
+`AUTORUN.DAT`, `STAGE.DAT`, `\PROGS\TAKT.TBX`), **Clean & heal** (löscht die
+Spuren und setzt die zerfressene Farbtabelle zurück), **Protect** (schaltet
+den Wächter scharf und legt `DEFENDER.ON` an, damit er ab jedem Start aktiv
+ist — der Kernel liest die Flagge beim Boot, **vor** jedem Autostart).
+
+**Das Popup.** Wehrt der Controller etwas ab, sieht das der Schreibtisch
+(`defender_poll` liest den Alarm-Port) und zeigt einen modalen Warnkasten —
+„RAW DISK WRITE / Boot sector — blocked", mit *Keep blocked* und *Terminate
+program*. Bewiesen: mit `DEFENDER.ON` bleibt der Bootsektor nach `TAKT`s
+Angriff **heil**, der Rechner bootet weiter.
+
+**Die ehrliche Grenze.** Zwei Kleinsyscalls dienen dem Programm: **fn 52
+`filedelete`**, **fn 53–55** schalten/lesen den Wächter (und laufen im Kernel,
+deshalb nimmt der Controller das Schalten an). Was der Wächter **nicht**
+löst: die Farbtabelle (andere Ports — Nuisance, kein Datenverlust, wird von
+*Clean* geheilt) und die Persistenz (`AUTORUN.DAT` neu schreiben kann jedes
+Programm). Vollständige Trennung bräuchte einen echten Benutzer-/Kernel-Modus
+für **alle** privilegierten Ressourcen — siehe [[11 Offene Punkte]].
+
+---
+
+## Autostart (`AUTORUN.DAT`) — und `TAKT.C`, der Trojaner, der ihn ausnutzt
+
+Zwei Dinge auf einmal, weil das eine ohne das andere kein Lehrstück wäre.
+
+### Der Autostart
+
+Neu in `kernel.c`: Liegt im Hauptverzeichnis eine Datei `AUTORUN.DAT`, steht
+darin der Name eines Programms. `autostart_ausfuehren()` startet es beim
+Hochfahren als **Hintergrundprozess** (`prog_run(name, 1)`), bevor Desktop
+oder Konsole kommen — der Autostart-Ordner großer Systeme, auf eine Datei
+eingedampft. Zwei Sicherungen:
+
+- Nur wenn `AUTORUN.DAT` existiert, entsteht überhaupt eine Verzögerung — ein
+  sauberer Rechner bootet unverändert.
+- **ESC beim Start = abgesicherter Modus**: der Autostart wird übersprungen,
+  man kann `AUTORUN.DAT` löschen und ist die Sache los.
+
+Dazu zwei kleine Syscalls, die Programmen ohnehin fehlten: **fn 50 `chdir`**
+(Ordner wechseln, damit ein Programm gezielt ins Hauptverzeichnis schreiben
+kann) und **fn 51 `progsize`** (die eigene Größe, damit sich ein Programm
+selbst kopieren kann). `prog_run` merkt sich dafür die geladene Größe.
+
+### Der Trojaner, der ihn benutzt
+
+`TAKT.TBX` gibt sich als Uhr aus. Beim **ersten** Start (Vordergrund) kopiert
+es sich nach `\PROGS\TAKT.TBX` und trägt sich in `AUTORUN.DAT` ein — ab jetzt
+startet es das **System** bei jedem Boot mit, nicht die App. Ein Zähler in
+`STAGE.DAT` überlebt Neustarts und eskaliert **pro Boot**:
+
+- Boot 1–2: Ruhe.
+- Boot 3: der Desktop wird **dauerhaft zerfressen** — der Hintergrundprozess
+  verwürfelt laufend die Farbtabelle (Ports 0x42/0x43). Weil er endlos
+  weiterläuft, kommt die heile Ansicht nicht zurück.
+- Boot 4: dasselbe, heftiger.
+- Boot 5: die Platte wird zerstört → nächster Start **„No bootable device
+  found"**.
+
+**Der Punkt:** Der Schutz für `\SYSTEM` hält ihn nicht auf, weil er
+**woanders** angreift. Die Farbtabelle geht über Grafik-Ports, die
+Zerstörung über die Disk-Ports (0x30–0x33) **direkt** — am Dateisystem und an
+`fs_sudo` vorbei, Nullen über Bootsektor (0) und Verzeichnis (512–520). Genau
+das steht seit jeher in `kernel.c`: *„Es ist KEINE Sicherheit."* Ein Schutz
+in Software trägt nur, solange darunter niemand an die Hardware kommt; auf dem
+TB-32 kommt jedes Programm an die Hardware (keine Ringe, keine MMU, kein
+privilegiertes Port-I/O — siehe [[11 Offene Punkte]]).
+
+`TAKT.C` liegt als Quelltext in `\SOURCE` (wie `CRASH.C`) und wird **nicht**
+als fertiges Programm mitgeliefert — man übersetzt es im Coder selbst.
+Getestet wird ausschließlich auf einer **Kopie**; `python3 build.py` stellt
+die Platte wieder her. Rauskommen im Alltag: ESC beim Booten, dann
+`AUTORUN.DAT`, `STAGE.DAT` und `\PROGS\TAKT.TBX` löschen. Ausführlich im Kopf
+von [takt.c](../programs/takt.c).
+
+---
+
+## Systemdateien sind geschützt — `SUDO` in der Konsole, Passwortfenster im Desktop
+
+Vorher konnte man `\SYSTEM\KERNEL.BIN` löschen wie jede andere Datei — mit
+`DEL` in der Kommandozeile und mit einem Klick auf **Delete** im Dateimanager.
+Kein Passwort, keine Nachfrage. Danach startete der Rechner nie wieder, denn
+der Bootsektor holt den Kernel als *Datei* aus `\SYSTEM`.
+
+**Die Sperre sitzt im Dateisystem, nicht in der Bedienung.** Das ist der
+Punkt: Oberfläche und Konsole riefen schon vorher dieselbe `fs_delete()` auf.
+Eine Prüfung nur im Dateimanager hätte die Konsole offen gelassen, und
+umgekehrt.
+
+* **Bit 9 im Info-Wort** eines Verzeichniseintrags heißt jetzt „geschützt"
+  (Bit 8 war schon „versteckt"). `fs_schutz_setzen()` setzt es bei **jedem
+  Start** neu: geschützt ist alles im Ordner `\SYSTEM` und darunter, dazu
+  alles Versteckte — also das Konto `USER.DAT`. Die Regel wird jedes Mal neu
+  ausgerechnet, dadurch gilt sie auch für Platten, die es schon gibt, und
+  löst sich wieder, wenn eine Datei aus `\SYSTEM` herauswandert.
+* `fs_delete`, `fs_endgueltig_loeschen`, `fs_rmdir`, `fs_rename`, `fs_move`
+  und `fs_write` geben für solche Einträge **-4** zurück, solange die globale
+  Freigabe `fs_sudo` nicht gesetzt ist.
+* **Konsole:** `SUDO <befehl>` fragt das Passwort, schneidet sich selbst von
+  der Zeile und führt den Rest mit offener Sperre aus — für **genau einen**
+  Befehl.
+* **Desktop:** der Delete-Knopf öffnet für geschützte Einträge das Fenster
+  `APP_SUDO`. Es löscht selbst, sobald das Passwort stimmt; der Dateimanager
+  wartet auf nichts (er *kann* nicht warten — der Schreibtisch hat eine
+  einzige Schleife für alle Fenster).
+* Die Typspalte im Dateimanager zeigt für sie **System** statt
+  Program/Document/Folder.
+
+**Drei Fallen, die dabei auffielen:**
+
+1. `ent_setinfo()` überschreibt das ganze Info-Wort und löscht damit Bit 8
+   und 9 mit. Beim Verschieben in den Papierkorb verlor eine Datei also genau
+   den Schutz, der sie dorthin begleiten sollte — und `USER.DAT` seine
+   Unsichtbarkeit. Dafür gibt es jetzt `ent_setort()`, das die Merkmale
+   stehen lässt. `ent_setinfo()` bleibt für den Fall, in dem ein Platz
+   wirklich frei wird.
+2. **`USER_BUF` und `FILEBUF` liegen auf derselben Adresse (0x000C0000).**
+   Jedes `COPY`, jeder Compilerlauf, jede geöffnete Datei überschreibt die
+   Passwort-Prüfsumme im Speicher. `sudo_pw_ok()` holt das Konto deshalb
+   **frisch von der Platte**, bevor es vergleicht. `benutzer_passt()` in der
+   Systemsteuerung hat dieses Problem noch — siehe [[11 Offene Punkte]].
+3. Wer `fs_sudo` setzt, muss es auch zurücksetzen. Die Shell tut das direkt
+   hinter dem Befehl und nicht erst beim nächsten Prompt: `SUDO WIN` hätte
+   sonst den ganzen Schreibtisch mit offener Sperre laufen lassen.
+
+**Was das nicht ist:** Sicherheit. Die Platte ist unverschlüsselt, das
+Passwort steht als 32-Bit-Prüfsumme da, und wer `hd0.img` in die Hand
+bekommt, kann das Bit selbst löschen. Es hält den Finger auf, der zu schnell
+`DEL` tippt — mehr soll es nicht.
+
+---
+
 ## Der Fenster-Server: ein Programm von der Platte bekommt ein Fenster
 
 Bis hierher galt: entweder ein Programm hat den **ganzen** Bildschirm
@@ -576,7 +867,7 @@ auseinanderlaufen. Nachgerechnet passt die Leiste in allen drei Faellen:
 436, 382 und 454 von 588 Punkten.
 
 **Nachtraeglich bestaetigt:** der Suchlauf im Hintergrund hat doch noch
-Kopien von `asm.c` gefunden (in `~/Desktop/Projekte/PyPC Kopie` und im
+Kopien von `asm.c` gefunden (in `~/Desktop/Projekte/System/PyPC Kopie` und im
 iCloud-Papierkorb). Der Vergleich mit dem Original zeigt: keine Funktion
 fehlt, nur `parse_mem` heisst jetzt `mem_operand`, und Kodierung wie
 Sprungrechnung sind verhaltensgleich. Zur Sicherheit wurde HELLO.ASM auf

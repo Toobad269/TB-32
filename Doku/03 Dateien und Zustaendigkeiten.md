@@ -37,7 +37,7 @@ Wer macht was — damit Änderungen an der richtigen Stelle landen.
 |---|---|
 | `system/kernel.c` | Befehlsinterpreter, alle Shell-Befehle, `main()` |
 | `system/lib.c` | Ausgabe (**Weiche Text/Terminalfenster**), Zeichenketten, Eingabe, Bildschirmsperre, Scrollback-Ansicht |
-| `system/fs.c` | TBFS: Superblock, Verzeichnis, **Ordner**, Suchpfad, **Verschieben** |
+| `system/fs.c` | TBFS: Superblock, Verzeichnis, **Ordner**, Suchpfad, **Verschieben**, **Schutz der Systemdateien** (`fs_sudo`, `fs_schutz_setzen`) |
 | `system/edit.c` | Texteditor im Textmodus — die Editierlogik nutzt auch der GUI-Editor |
 | `system/proc.c` | Prozesse, Scheduler-Hälfte in C, `mt_enable` |
 | `system/syscall.c` | Gegenseite von `INT 0x40`, Programmlader, Fortschrittsmeldung |

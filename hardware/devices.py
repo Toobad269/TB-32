@@ -17,7 +17,9 @@ from hardware.isa import (
     PORT_BLT_CMD, PORT_BLT_COL, PORT_BLT_H, PORT_BLT_SRC, PORT_BLT_W,
     PORT_BLT_X, PORT_BLT_Y, PORT_CMOS_DATA, PORT_CMOS_IDX, PORT_DISK_ADDR,
     PORT_DISK_CMD, PORT_DISK_COUNT, PORT_DISK_LBA, PORT_DISK_SIZE,
-    PORT_DISK_STATUS, PORT_FAN, PORT_FANMODE, PORT_GFX_DOPPEL,
+    PORT_DISK_STATUS, PORT_DISK_GUARD, PORT_DISK_ALARM, PORT_DISK_GLBA,
+    PORT_DISK_GCNT, PORT_DISK_GKIND, PORT_DISK_PLBA, PORT_DISK_PCNT,
+    PORT_DISK_PADDR, PORT_FAN, PORT_FANMODE, PORT_GFX_DOPPEL,
     PORT_GFX_TAUSCH, PORT_BLT_ZOOM, PORT_DMA_SRC, PORT_DMA_DST,
     PORT_DMA_LEN, PORT_DMA_VAL, PORT_DMA_CMD, PORT_KBD_DATA,
     PORT_KBD_STATUS, PORT_MCUR_ON, PORT_MCUR_X, PORT_MCUR_Y, PORT_MOUSE_BTN,
@@ -556,6 +558,8 @@ class Disk:
         self.status = 0
         self.busy_until = 0.0
         self.led = False
+        # Der Wächter-Zustand liegt jetzt auf dem Bus (TOOBAD DEFENDER deckt
+        # Platte UND Speicher ab). attach_bus verbindet uns damit.
 
         if not os.path.exists(path):
             os.makedirs(os.path.dirname(path), exist_ok=True)
@@ -576,6 +580,14 @@ class Disk:
         self.bus = bus
 
 
+    def _aus_benutzerprogramm(self):
+        """Kommt der gerade laufende Portbefehl aus einem Benutzerprogramm?
+        Programme werden nach 0x200000 geladen und laufen unter 0x300000.
+        Kernel (ab 0x10000) und BIOS-ROM (ab 0x0F000000) liegen außerhalb --
+        die dürfen den Controller bedienen, ein Programm nicht."""
+        pc = getattr(self.bus, "io_pc", 0)
+        return 0x00200000 <= pc < 0x00300000
+
     def port_out(self, port, value):
         if port == PORT_DISK_LBA:
             self.lba = value
@@ -588,17 +600,56 @@ class Disk:
             self.addr = value
         elif port == PORT_DISK_CMD:
             self._command(value)
+        elif port == PORT_DISK_GUARD:
+            # Nur der Kernel darf den Wächter schalten. Käme das aus einem
+            # Programm, wäre der Schutz wertlos -- ein Virus würde ihn selbst
+            # abschalten. Also: Befehl aus Benutzercode wird ignoriert.
+            if not self._aus_benutzerprogramm():
+                self.bus.guard_on = 1 if value else 0
 
     def port_in(self, port):
+        b = self.bus
         if port == PORT_DISK_STATUS:
             return self.status
         if port == PORT_DISK_SIZE:
             return self.size_sectors
+        if port == PORT_DISK_GUARD:
+            return b.guard_on
+        if port == PORT_DISK_ALARM:
+            a = b.guard_alarm
+            b.guard_alarm = 0        # Auslesen quittiert
+            return a
+        if port == PORT_DISK_GLBA:
+            return b.guard_target
+        if port == PORT_DISK_GCNT:
+            return b.guard_cnt
+        if port == PORT_DISK_GKIND:
+            return b.guard_kind
+        if port == PORT_DISK_PLBA:
+            return b.guard_plba
+        if port == PORT_DISK_PCNT:
+            return b.guard_pcnt
+        if port == PORT_DISK_PADDR:
+            return b.guard_paddr
         return 0
 
     def _command(self, cmd):
         self.led = True
         self.busy_until = time.time() + 0.03
+        # --- Der Wächter greift ------------------------------------------
+        # Ein SCHREIB-Befehl (2) aus einem Benutzerprogramm wird abgewehrt.
+        # Lesen bleibt frei; der Kernel (außerhalb des Programm-Bandes)
+        # schreibt normal. So kommt ein Virus nicht mehr roh an die Platte.
+        if cmd == 2 and self.bus.guard_on and self._aus_benutzerprogramm():
+            self.bus.guard_alarm = 1
+            self.bus.guard_target = self.lba
+            self.bus.guard_kind = 1               # 1 = Platte
+            self.bus.guard_cnt += 1
+            self.bus.guard_plba = self.lba        # den Befehl merken -- fuer "Allow"
+            self.bus.guard_pcnt = self.count
+            self.bus.guard_paddr = self.addr
+            self.status = 9                       # 9 = vom Wächter verweigert
+            return
         if self.lba + self.count > self.size_sectors:
             self.status = 1                       # außerhalb der Platte
             return

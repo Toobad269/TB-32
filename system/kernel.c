@@ -71,6 +71,8 @@ void cmd_help(char* topic) {
         print("  COPY <a> <b>    Copy a file\n");
         print("  REN <a> <b>     Rename a file\n");
         print("  DEL <file>      Delete a file\n");
+        print("  SUDO <command>  Run one command on system files (asks for\n");
+        print("                  your password)\n");
         printc("\nDirectory commands\n", BRIGHT);
         print("  CD <name>       Change directory (CD .. goes up, CD \\ to root)\n");
         print("  MD <name>       Create a directory\n");
@@ -762,9 +764,22 @@ void cmd_more(char* name) {
     nl();
 }
 
+/* Ein Satz fuer alle Befehle, die an der Sperre haengenbleiben. Er sagt
+   auch gleich, wie es weitergeht -- eine Fehlermeldung ohne Ausweg ist
+   nur halb so viel wert. */
+void systemdatei_meldung(char* name) {
+    printc("Access denied -- ", RED);
+    printc(name, BRIGHT);
+    printc(" belongs to the system.\n", RED);
+    print("Put SUDO in front of the command if you really mean it.\n");
+}
+
 void cmd_del(char* name) {
+    int r;
     if (name[0] == 0) { printc("Syntax: DEL <file>\n", RED); return; }
-    if (fs_delete(name) == 0) print("File deleted\n");
+    r = fs_delete(name);
+    if (r == 0) print("File deleted\n");
+    else if (r == 0 - 4) systemdatei_meldung(name);
     else printc("File not found\n", RED);
 }
 
@@ -774,6 +789,7 @@ void cmd_ren(char* a, char* b) {
     r = fs_rename(a, b);
     if (r == 0) print("File renamed\n");
     else if (r == 0 - 2) printc("A file with that name already exists\n", RED);
+    else if (r == 0 - 4) systemdatei_meldung(a);
     else printc("File not found\n", RED);
 }
 
@@ -782,8 +798,12 @@ void cmd_copy(char* a, char* b) {
     if (a[0] == 0 || b[0] == 0) { printc("Syntax: COPY <source> <target>\n", RED); return; }
     n = fs_read(a, FILEBUF, FILEBUF_MAX);
     if (n < 0) { printc("Source file not found\n", RED); return; }
-    if (fs_write(b, FILEBUF, n) == 0) {
+    n = fs_write(b, FILEBUF, n);
+    if (n == 0) {
         print("        1 file(s) copied\n");
+    } else if (n == 0 - 4) {
+        /* Ueberschreiben ist Loeschen -- deshalb dieselbe Nachfrage. */
+        systemdatei_meldung(b);
     } else {
         printc("Insufficient disk space\n", RED);
     }
@@ -989,6 +1009,7 @@ void cmd_rd(char* name) {
     if (r == 0) print("Directory removed\n");
     else if (r == 0 - 3) printc("The directory is not empty\n", RED);
     else if (r == 0 - 2) printc("Not a directory\n", RED);
+    else if (r == 0 - 4) systemdatei_meldung(name);
     else printc("Directory not found\n", RED);
 }
 
@@ -1224,6 +1245,24 @@ void shell() {
         if (n <= 0) continue;
         parse(cmdline);
 
+        /* SUDO steht VOR dem eigentlichen Befehl und ist selbst keiner:
+           stimmt das Passwort, wird "sudo" von der Zeile geschnitten und
+           der Rest ganz normal ausgefuehrt -- nur eben mit offener Sperre.
+           Sie faellt am Ende der Schleife wieder zu, fuer diesen einen
+           Befehl und keinen weiteren. */
+        fs_sudo = 0;
+        if (stricmp(cmd, "sudo") == 0) {
+            if (arg1[0] == 0) {
+                printc("Syntax: SUDO <command>\n", RED);
+                print("Runs one command with access to system files.\n");
+                continue;
+            }
+            if (sudo_freigeben() == 0) continue;
+            strcpy(cmdline, nach_woertern(cmdline, 1));
+            parse(cmdline);
+            fs_sudo = 1;
+        }
+
         if      (stricmp(cmd, "help") == 0)       cmd_help(arg1);
         else if (stricmp(cmd, "?") == 0)          cmd_help(arg1);
         else if (stricmp(cmd, "ver") == 0)        cmd_ver();
@@ -1294,7 +1333,10 @@ void shell() {
             }
         }
         else if (stricmp(cmd, "exit") == 0) {
-            if (term_aktiv) return;              /* Terminalfenster schliessen */
+            if (term_aktiv) {
+                fs_sudo = 0;                     /* die Sperre nie offen lassen */
+                return;                          /* Terminalfenster schliessen */
+            }
             print("Not running in a window.\n");
         }
         else if (stricmp(cmd, "tbcmd") == 0) {
@@ -1345,6 +1387,10 @@ void shell() {
                 print("Type HELP for a list of commands, DIR for programs.\n");
             }
         }
+        /* Der Befehl ist durch, die Sperre faellt zu. Nicht erst oben beim
+           naechsten Durchgang: SUDO WIN wuerde sonst den ganzen Schreibtisch
+           mit offener Sperre laufen lassen, bis jemand wieder etwas tippt. */
+        fs_sudo = 0;
     }
 }
 
@@ -1413,9 +1459,14 @@ void benutzer_anlegen(char* name, char* pw) {
     strncpy((char*)(USER_BUF + USER_NAME), name, 19);
     mem_put(USER_BUF + USER_HASH, pw_summe(pw));
     alt = cwd; cwd = 0 - 1;
+    /* Das Konto ist selbst geschuetzt -- sonst waere die Sperre in einem Zug
+       zu umgehen. Hier schreibt aber das System selbst, und wer bis hierher
+       kommt, hat das alte Passwort schon genannt. Also kurz aufschliessen. */
+    fs_sudo = 1;
     fs_write("USER.DAT", USER_BUF, USER_LEN);
+    fs_sudo = 0;
     n = fs_find("USER.DAT");
-    if (n >= 0) { ent_verstecken(n); fs_save_dir(); }
+    if (n >= 0) { ent_verstecken(n); ent_schuetzen(n); fs_save_dir(); }
     cwd = alt;
 }
 
@@ -1432,6 +1483,45 @@ int benutzer_vorhanden() {
 }
 
 char* benutzer_name() { return (char*)(USER_BUF + USER_NAME); }
+
+/* Die Passwortpruefung fuer einen Eingriff am System.
+
+   Sie holt das Konto vorher FRISCH von der Platte. USER_BUF und FILEBUF
+   liegen naemlich auf derselben Adresse: jedes COPY, jeder Compilerlauf,
+   jede geoeffnete Datei ueberschreibt die Pruefsumme im Speicher. Wer
+   gegen den Inhalt vergliche, der zufaellig gerade dort steht, wuerde je
+   nach Vorgeschichte jedes Passwort ablehnen -- oder ein beliebiges
+   annehmen. benutzer_passt() in der Systemsteuerung hat genau dieses
+   Problem; hier darf es nicht auch noch stecken.
+
+   Gibt es gar kein Konto, ist die Platte frisch und es gibt nichts zu
+   fragen. Kommandozeile und Schreibtisch benutzen beide diese eine
+   Funktion, damit sie nicht auseinanderlaufen koennen.
+
+   Und wie beim grossen Vorbild: das haelt niemanden auf, der die Platte in
+   die Hand bekommt. Es haelt den Finger auf, der zu schnell DEL tippt. */
+int sudo_pw_ok(char* pw) {
+    if (benutzer_vorhanden() == 0) return 1;
+    return pw_summe(pw) == mem_get(USER_BUF + USER_HASH);
+}
+
+/* SUDO in der Kommandozeile: fragen, und 1 zurueckgeben, wenn es stimmt.
+   Der Aufrufer setzt danach fs_sudo, fuehrt GENAU EINEN Befehl aus und
+   setzt es wieder zurueck. */
+int sudo_freigeben() {
+    char pw[32];
+    if (benutzer_vorhanden() == 0) {
+        printc("No account on this machine -- proceeding.\n", YELLOW);
+        return 1;
+    }
+    print("Password for ");
+    printc(benutzer_name(), BRIGHT);
+    print(": ");
+    passwort_lesen(pw, 30);
+    if (sudo_pw_ok(pw)) return 1;
+    printc("Sorry, try again.\n", RED);
+    return 0;
+}
 
 void ersteinrichtung() {
     char name[24];
@@ -1505,6 +1595,76 @@ void benutzer_pruefen() {
     anmelden();
 }
 
+/* ==========================================================================
+   Autostart -- ein Programm, das bei jedem Start automatisch mitlaeuft
+
+   Liegt in \SYSTEM eine Datei AUTORUN.DAT, dann steht darin der Name eines
+   Programms. Dieses wird beim Hochfahren als HINTERGRUNDprozess gestartet,
+   bevor Schreibtisch oder Konsole kommen. Genau so funktioniert der
+   Autostart-Ordner grosser Systeme.
+
+   Warum in \SYSTEM und nicht im Hauptverzeichnis: dort ist die Datei
+   passwortgeschuetzt. Sich in den Systemstart einzutragen wird damit zur
+   Admin-Aktion (SUDO) -- ein Programm kann sich nicht mehr im Vorbeigehen
+   selbst einnisten. Vorher lag AUTORUN.DAT offen im Hauptverzeichnis, und
+   das war die Luecke, durch die \SOURCE\TAKT.C lautlos hereinkam.
+
+   ZWEI Sicherungen obendrein:
+     - Nur wenn AUTORUN.DAT ueberhaupt existiert, entsteht die kurze
+       Verzoegerung. Ein sauberer Rechner bootet unveraendert.
+     - Wer beim Start ESC drueckt, ueberspringt den Autostart ("abgesicherter
+       Modus") und kann dann mit SUDO aufraeumen. */
+char auto_name[24];
+int  autostart_pid = 0 - 1;          /* was der Autostart hochgebracht hat */
+
+/* Eine Datei aus \SYSTEM lesen, egal in welchem Ordner man gerade steht.
+   Rueckgabe: Anzahl Bytes, oder -1.
+
+   Warum aus \SYSTEM und nicht aus dem Hauptverzeichnis: Alles in \SYSTEM ist
+   passwortgeschuetzt (fs_schutz_setzen). Eine Autostart-Eintragung oder die
+   Schutz-Flagge DORT anzulegen, verlangt also SUDO -- ein Programm kann sich
+   nicht mehr im Vorbeigehen selbst in den Systemstart schreiben. Genau das
+   war vorher die Luecke: AUTORUN.DAT lag offen im Hauptverzeichnis. */
+int fs_read_sys(char* name, int addr, int max) {
+    int sys; int i;
+    sys = fs_find_in("SYSTEM", 0 - 1);
+    if (sys < 0) return 0 - 1;
+    i = fs_find_in(name, sys);
+    if (i < 0) return 0 - 1;
+    return fs_read_idx(i, addr, max);
+}
+
+int autostart_safe_mode() {
+    int i; int k;
+    printc("Autostart in progress -- hold ESC for safe mode ", YELLOW);
+    for (i = 0; i < 16; i++) {
+        if (sys_haskey()) {
+            k = sys_getkey();
+            if (keycode(k) == K_ESC) { nl(); return 1; }
+        }
+        putch('.');
+        sleep(3);
+    }
+    nl();
+    return 0;
+}
+
+void autostart_ausfuehren() {
+    int n;
+    /* Der Autostart-Eintrag liegt geschuetzt in \SYSTEM -- ihn anzulegen
+       verlangt SUDO. */
+    n = fs_read_sys("AUTORUN.DAT", (int)auto_name, 20);
+    if (n <= 0) return;                  /* nichts eingetragen -> keine Kosten */
+    auto_name[n] = 0;
+    if (autostart_safe_mode()) {
+        printc("Safe mode: autostart skipped. Clean it with SUDO in \\SYSTEM.\n",
+               YELLOW);
+        return;
+    }
+    prog_setargs("--boot");              /* so weiss das Programm: ich starte automatisch */
+    autostart_pid = prog_run(auto_name, 1);   /* 1 = Hintergrund; PID merken */
+}
+
 int main() {
     int formatiert;
 
@@ -1518,8 +1678,19 @@ int main() {
     formatiert = fs_mount();
     if (formatiert) printc("OK\n", GREEN);
     else printc("new disk, initialised\n", YELLOW);
+    /* Erst jetzt steht das Verzeichnis im Speicher -- vorher weiss niemand,
+       was \SYSTEM ueberhaupt enthaelt. */
+    fs_schutz_setzen();
 
     net_start();                     /* Netzwerkkarte und eigene Adresse */
+
+    /* TOOBAD DEFENDER: Liegt die geschuetzte Flagge \SYSTEM\DEFENDER.ON,
+       schaltet sich der Waechter ein, BEVOR irgendein Autostart laeuft. Weil
+       sie in \SYSTEM liegt, kann ein Virus sie weder anlegen noch loeschen --
+       den Schutz an- und auszuschalten ist eine Admin-Aktion (SUDO). */
+    if (fs_read_sys("DEFENDER.ON", (int)auto_name, 4) >= 0) sys_out(0x36, 1);
+
+    autostart_ausfuehren();          /* AUTORUN.DAT: was mitstarten soll, startet jetzt */
 
     /* Startziel: Schreibtisch oder Textkonsole. Steht im CMOS neben Quick
        Boot, aenderbar im Setup und im Control Panel. Standard ist der

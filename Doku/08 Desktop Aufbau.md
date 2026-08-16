@@ -109,6 +109,26 @@ Die Shell läuft als **eigener Prozess** (`term_main` in `system/term.c`).
   fragt `gui_running` ab. Deshalb muss `gui_main()` `gui_running = 0` auch
   beim Verlassen mit ESC setzen, nicht nur beim Menüpunkt *Exit*
 
+## Passwortfenster vor einem Eingriff am System (`APP_SUDO`)
+
+Der **Delete**-Knopf im Dateimanager löscht geschützte Einträge nicht selbst.
+Er ruft `su_fragen()` und ist fertig; das Fenster prüft das Passwort und
+löscht danach. Warten könnte der Dateimanager auch gar nicht — der
+Schreibtisch hat **eine** Schleife für alle Fenster, und wer darin
+stehenbliebe, legte den ganzen Bildschirm lahm. Dasselbe Muster wie beim
+Dateiauswahl-Dialog (`dialog.c`).
+
+- Geschützt ist alles in `\SYSTEM` und alles Versteckte — gesetzt in
+  `fs_schutz_setzen()` bei jedem Start, abgefragt mit `ent_geschuetzt()`
+- `su_cwd` merkt sich den Ordner, in dem gefragt wurde: das Fenster dahinter
+  bleibt bedienbar, und ein Ordnerwechsel während der Frage darf nicht dazu
+  führen, dass eine ganz andere Datei drankommt
+- Geprüft wird mit `sudo_pw_ok()` aus `kernel.c` — dieselbe Funktion, die
+  `SUDO` in der Kommandozeile benutzt
+- `fs_sudo` wird direkt um den Löschaufruf herum gesetzt und sofort wieder
+  zurückgenommen
+- Die Typspalte der Dateiliste zeigt für solche Einträge **System**
+
 ## Editorfenster
 
 Nutzt die Editierfunktionen aus `system/edit.c` (`ed_insert`, `ed_backspace`,

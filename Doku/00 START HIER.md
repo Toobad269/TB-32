@@ -13,7 +13,7 @@ mit Symptom. Colins ausdrücklicher Wunsch; nachgereichte Doku zählt nicht.
 
 ## Was das Projekt ist
 
-Ein vollständiger virtueller PC in `~/Desktop/Projekte/PyPC/`. Colins Challenge
+Ein vollständiger virtueller PC in `~/Desktop/Projekte/System/PyPC/`. Colins Challenge
 gegen andere KIs. **Kernprinzip: Python emuliert nur die Chips.** Alles Sichtbare
 — BIOS, Bootvorgang, OS, Editor, Desktop — ist echter Maschinencode auf der
 emulierten CPU. Wer das aufweicht, zerstört den Sinn des Projekts.
@@ -50,7 +50,7 @@ kostet Stunden.
 ## Sofort-Befehle
 
 ```bash
-cd ~/Desktop/Projekte/PyPC
+cd ~/Desktop/Projekte/System/PyPC
 python3 build.py            # BIOS + Kernel + Programme + Platte
 python3 pc.py               # starten (Fenster)
 python3 tools/selftest.py   # 41 Prüfungen, ~2 min

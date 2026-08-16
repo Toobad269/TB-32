@@ -1,0 +1,9 @@
+Stabile Kopie aus TB-32
+
+Commit: 5b7228f1013983d9e9e43c1f0dcd7648487c86d6
+Datum:  2026-08-04 19:47:11 +0200
+Betreff: TB-LOCK: eigenes BIOS mit Setup-Passwort (#1)
+
+Dies ist die voll funktionierende Version VOR dem Umbau, bei dem Word/Coder/Paint aus dem Kernel in den Programme-Ordner gezogen wurden. Word, Coder, Paint, Prompt und Monitor liegen hier noch im Kernel. Kein COMPANY-OS, Sprache Deutsch.
+
+Geholt aus: https://github.com/Toobad269/TB-32 (main-Historie, dieser Commit bleibt dort erhalten).

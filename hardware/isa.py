@@ -212,6 +212,38 @@ PORT_DISK_CMD    = 0x0033   # 1 = lesen, 2 = schreiben
 PORT_DISK_STATUS = 0x0034   # 0 = ok, sonst Fehlercode
 PORT_DISK_SIZE   = 0x0035   # Größe der Platte in Sektoren
 
+# --- TOOBAD DEFENDER: der Wächter im Disk-Controller ----------------------
+# Ein Schreibbefehl, der aus einem BENUTZERprogramm kommt (Instruktion im
+# Bereich 0x200000..0x300000), wird bei aktivem Wächter verweigert. Der
+# Kernel und das BIOS liegen außerhalb dieses Bandes und schreiben normal.
+# Das ist "privilegiertes I/O" in klein: nicht jeder darf an den Controller.
+# Die Steuerung (0x36) hört nur auf den KERNEL -- sonst schaltete ein Virus
+# den Wächter einfach selbst ab.
+PORT_DISK_GUARD  = 0x0036   # schreiben: 1 = an, 0 = aus (nur vom Kernel)
+PORT_DISK_ALARM  = 0x0037   # lesen: 1 = seit dem letzten Lesen abgewehrt; löscht
+PORT_DISK_GLBA   = 0x0038   # lesen: Ziel des letzten Angriffs (Sektor oder Adresse)
+PORT_DISK_GCNT   = 0x0039   # lesen: wie oft insgesamt abgewehrt
+PORT_DISK_GKIND  = 0x003A   # lesen: Art des letzten Angriffs (1 = Platte, 2 = Speicher)
+# Der zuletzt ABGEWEHRTE Disk-Schreibbefehl bleibt gemerkt, damit der Kernel
+# ihn auf Knopfdruck ("Allow once") doch noch ausführen kann.
+PORT_DISK_PLBA   = 0x003B   # lesen: Sektor des gemerkten Befehls
+PORT_DISK_PCNT   = 0x003C   # lesen: Anzahl
+PORT_DISK_PADDR  = 0x003D   # lesen: RAM-Adresse
+
+# Der Wächter deckt jetzt ZWEI Wege ab: rohe Disk-Schreibbefehle UND
+# Schreibzugriffe aus einem Programm in den Kernel-Speicher. Beide erkennt
+# die Hardware am PC des Befehls (kommt er aus dem Programm-Band?). Der
+# geschützte Speicherbereich ist der Kernel-Code; Programm-Stacks (ab
+# 0xA0000) und Bildspeicher (ab 0x02100000) liegen bewusst außerhalb.
+GUARD_MEM_LO = 0x00010000   # ab hier liegt der Kernel-Code im RAM
+GUARD_MEM_HI = 0x00080000   # bis hier; der Kernel endet bei ~0x6E800.
+# WICHTIG: NICHT bis 0xA0000 -- dazwischen (um 0x9FFF0) liegt der Kernel-/
+# Prozess-0-Stack, auf dem VORDERGRUND-Programme laufen. Reichte der Schutz
+# dort hinein, blockierte er die lokalen Variablen jedes gestarteten Programms.
+# crash.tbx schreibt bei 0x11000..0x31000, wird also weiterhin voll erfasst.
+GUARD_PC_LO  = 0x00200000   # Programme werden hierhin geladen ...
+GUARD_PC_HI  = 0x00300000   # ... und laufen darunter
+
 PORT_VGA_MODE    = 0x0040   # 0 = Text, 1 = Grafik
 PORT_VGA_CURSOR  = 0x0041   # Cursorposition (y*80+x), 0xFFFF = unsichtbar
 PORT_VGA_PALIDX  = 0x0042   # Paletten-Index wählen

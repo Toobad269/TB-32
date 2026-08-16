@@ -15,6 +15,8 @@ from hardware.isa import (
     PORT_KBD_DATA, PORT_KBD_STATUS,
     PORT_DISK_LBA, PORT_DISK_COUNT, PORT_DISK_ADDR, PORT_DISK_CMD,
     PORT_DISK_STATUS, PORT_DISK_SIZE,
+    PORT_DISK_GUARD, PORT_DISK_ALARM, PORT_DISK_GLBA, PORT_DISK_GCNT,
+    PORT_DISK_GKIND, PORT_DISK_PLBA, PORT_DISK_PCNT, PORT_DISK_PADDR,
     PORT_VGA_MODE, PORT_VGA_CURSOR, PORT_VGA_PALIDX, PORT_VGA_PALVAL,
     PORT_BLT_X, PORT_BLT_Y, PORT_BLT_W, PORT_BLT_H, PORT_BLT_COL,
     PORT_BLT_CMD, PORT_BLT_CHR, PORT_BLT_SRC, PORT_BLT_BG,
@@ -88,7 +90,10 @@ class Machine:
         b.register(self.timer, [PORT_TIMER_HZ, PORT_TIMER_TICKS])
         b.register(self.keyboard, [PORT_KBD_DATA, PORT_KBD_STATUS])
         b.register(self.disk, [PORT_DISK_LBA, PORT_DISK_COUNT, PORT_DISK_ADDR,
-                               PORT_DISK_CMD, PORT_DISK_STATUS, PORT_DISK_SIZE])
+                               PORT_DISK_CMD, PORT_DISK_STATUS, PORT_DISK_SIZE,
+                               PORT_DISK_GUARD, PORT_DISK_ALARM,
+                               PORT_DISK_GLBA, PORT_DISK_GCNT, PORT_DISK_GKIND,
+                               PORT_DISK_PLBA, PORT_DISK_PCNT, PORT_DISK_PADDR])
         b.register(self.vga, [PORT_VGA_MODE, PORT_VGA_CURSOR,
                               PORT_VGA_PALIDX, PORT_VGA_PALVAL,
                               PORT_BLT_X, PORT_BLT_Y, PORT_BLT_W, PORT_BLT_H,
