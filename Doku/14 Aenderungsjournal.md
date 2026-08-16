@@ -9,32 +9,37 @@ Die tiefer liegenden Fallen haben zusätzlich einen ausführlichen Eintrag in
 
 ---
 
-## OS-Auswahlmenü im BIOS — mehrere Betriebssysteme, du wählst
+## Betriebssystem-Auswahl im BIOS-Setup — mehrere OS, du wählst den Standard
 
-Wie bei echtem UEFI: Das BIOS zeigt beim Start ein **Bootmenü**, wenn mehr als
-ein Betriebssystem auf der Platte liegt. Mit den Pfeiltasten wählt man, ENTER
-lädt den gewählten Kernel nach `0x00010000` und springt hinein — genau das,
-was sonst der Bootsektor fest mit `KERNEL.BIN` macht, nur eben wählbar.
+Man kann **mehrere Betriebssysteme** auf die Platte legen und im BIOS wählen,
+welches bootet — damit man auch sein **eigenes** OS bauen und starten kann.
+
+**Kein Menü bei jedem Start** (das nervt). Stattdessen im **Setup** (DEL →
+*Main* → *Operating System*) eine Liste aller Systeme; man wählt eines mit den
+Pfeiltasten, ENTER speichert es als Standard, ESC bricht ab. Beim Start lädt
+das BIOS dann genau das gemerkte System — ohne Nachfrage.
 
 **Mehrere OS bauen.** Jeder Ordner unter `os/<name>/` (mit `kernel.c` +
-`start.asm`) wird von `build.py` zu `\SYSTEM\<NAME>.BIN` übersetzt. TOOBAD-OS
-bleibt `KERNEL.BIN`. Ein eigenes OS dazunehmen heißt also: `os/meinos/`
-anlegen, `python3 build.py` — fertig, es steht im Menü. Mitgeliefert als
-Beispiel: `os/tbos/` (TBOS 0.1).
+`start.asm`, lädt bei `0x00010000`) wird von `build.py` zu `\SYSTEM\<NAME>.BIN`.
+TOOBAD-OS bleibt `KERNEL.BIN`. Eigenes OS dazunehmen: Ordner anlegen +
+`python3 build.py`. Beispiel: `os/tbos/` (TBOS 0.1).
 
-**Wie es umgesetzt ist.** Die Routine `os_auswahl` in `firmware/bios.asm` läuft
-am Anfang von `boot:`. Sie liest das TBFS-Verzeichnis (wie `kernel_finden` es
-für Secure Boot schon tat), sammelt alle `*.BIN` in `\SYSTEM` außer `BIOS.BIN`,
-und zeigt bei ≥2 Treffern das Menü. Bei ≤1 kehrt sie zurück und der gewohnte
-Boot über den Bootsektor läuft weiter — der alte Weg bleibt also unangetastet.
+**Wie es umgesetzt ist** (`firmware/bios.asm`):
+- `os_enum` liest das TBFS-Verzeichnis (wie `kernel_finden` für Secure Boot),
+  sammelt die Kernel: `KERNEL.BIN` immer als **Index 0** (der Standard), danach
+  die weiteren `*.BIN` außer `BIOS.BIN`.
+- `os_boot` läuft am Anfang von `boot:`. Der gewählte Index steht im CMOS
+  (`CM_OS`, `0x1E`). Ist er **0**, kehrt sie zurück und der Bootsektor bootet
+  `KERNEL.BIN` wie eh und je — der alte Weg bleibt unangetastet. Sonst wird das
+  gewählte System nach `0x10000` geladen und gestartet.
+- `os_setup_screen` zeigt die Liste im Setup und schreibt die Wahl nach
+  `CM_OS`. Aufgerufen über den Setup-Eintrag `REG_OS` (wie der „Flash
+  BIOS"-Button).
 
-**Abschaltbar** über CMOS `0x1E` (`CM_NOMENU`): Die Testwerkzeuge setzen es auf
-1 und booten ohne Menü direkt das Standard-OS, damit automatische Läufe nicht
-am Menü hängen. Für echte Nutzer ist es 0 → Menü an.
-
-**Falle, die dabei auffiel:** Der Assembler will bei Stores `st [ziel], quelle`
-— erst die Adresse in Klammern, dann der Wert. `stw r4, [r0]` (vertauscht)
-gab „Speicherzugriff braucht [klammern]".
+**Zwei Fallen dabei:** (1) Der Assembler will Stores als `st [ziel], quelle` —
+`stw r4, [r0]` (vertauscht) gab „Speicherzugriff braucht [klammern]". (2) Jeder
+Setup-Reiter hat seine Eintragszahl in `setup_tabs`; einen Eintrag hinzufügen
+heißt, auch die Zahl (Main: 7 → 8) mitzuziehen.
 
 ---
 

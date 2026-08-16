@@ -170,7 +170,7 @@
 .equ CM_SUM2,       0x1B
 .equ CM_SUM3,       0x1C
 .equ CM_BOOTMODE,   0x1D            ; 0 = Schreibtisch, 1 = Textkonsole
-.equ CM_NOMENU,     0x1E            ; 1 = OS-Auswahlmenue ueberspringen (Standard-OS)
+.equ CM_OS,         0x1E            ; welches Betriebssystem booten (Index, 0 = Standard KERNEL.BIN)
 .equ CM_SAVE,       0x3F            ; Schreiben loest "in Datei sichern" aus
 
 ; --- Tastatur-Scancodes ----------------------------------------------------

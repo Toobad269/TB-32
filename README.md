@@ -48,16 +48,18 @@ Zum Ausprobieren liegen als Quelltext bei: `TAKT` und `SEUCHE` (Angreifer),
 Emulator; ein `python3 build.py` stellt jede Platte wieder her. Details im
 [Änderungsjournal](Doku/14%20Aenderungsjournal.md).
 
-## Betriebssystem auswählen (Bootmenü)
+## Betriebssystem auswählen
 
-Liegt mehr als ein Betriebssystem auf der Platte, zeigt das BIOS beim Start ein
-**Auswahlmenü** — wie ein echtes UEFI-Bootmenü. Pfeiltasten wählen, ENTER
-bootet den gewählten Kernel.
+Man kann **mehrere Betriebssysteme** auf die Platte legen und im BIOS wählen,
+welches bootet. Kein Menü bei jedem Start — sondern im **Setup** (`DEL` →
+*Main* → *Operating System*) eine Liste aller Systeme; mit den Pfeiltasten
+wählen, ENTER speichert den Standard. Beim Start bootet das BIOS dann das
+gemerkte System automatisch.
 
 **Eigenes OS dazunehmen:** einen Ordner `os/<name>/` mit `kernel.c` und
 `start.asm` (lädt bei `0x00010000`) anlegen, dann `python3 build.py` — es steht
-als `\SYSTEM\<NAME>.BIN` im Menü. TOOBAD-OS bleibt `KERNEL.BIN`. Als Beispiel
-liegt `os/tbos/` (TBOS 0.1) bei.
+als `\SYSTEM\<NAME>.BIN` in der Auswahl. TOOBAD-OS bleibt `KERNEL.BIN`. Als
+Beispiel liegt `os/tbos/` (TBOS 0.1) bei.
 
 ## Netzwerk
 

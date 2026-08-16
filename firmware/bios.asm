@@ -895,7 +895,7 @@ mem_test:
 ; ===========================================================================
 
 boot:
-    call os_auswahl                   ; OS-Menue; bootet selbst oder kehrt zurueck
+    call os_boot                   ; OS-Menue; bootet selbst oder kehrt zurueck
     push r6
     movi r1, 0
     movi r2, SCR_H-1
@@ -954,39 +954,36 @@ boot:
     ret
 
 ; ===========================================================================
-;  OS-Auswahlmenue
+;  Betriebssystem-Auswahl
 ;
-;  Sucht in \SYSTEM alle Kernel (Name endet auf ".BIN", ausser BIOS.BIN) und
-;  zeigt -- wenn mehr als eines da ist -- ein Menue. Mit den Pfeiltasten
-;  waehlt man, ENTER laedt den gewaehlten Kernel nach 0x00010000 und springt
-;  hinein. Genau das macht sonst der Bootsektor mit KERNEL.BIN -- nur dass man
-;  jetzt WELCHES System waehlen kann. Wer ein eigenes OS als \SYSTEM\X.BIN
-;  ablegt (build.py baut os/<name>/ dorthin), findet es hier wieder.
+;  KEIN Menue bei jedem Start (das nervt). Stattdessen merkt sich das CMOS
+;  (CM_OS) ein Betriebssystem, und beim Start laedt das BIOS genau dieses --
+;  ohne Nachfrage. Gewaehlt wird im Setup unter "Operating System": dort sieht
+;  man alle Systeme und setzt den Standard.
 ;
-;  Hoechstens ein System (oder Platte unlesbar) -> Ruecksprung, dann laeuft
-;  der gewohnte Boot ueber den Bootsektor weiter. So bleibt der alte Weg heil.
+;  os_enum  sammelt die Kernel: \SYSTEM\KERNEL.BIN immer als Index 0 (der
+;           Standard), danach alle weiteren *.BIN (ausser BIOS.BIN).
+;  os_boot  laeuft am Anfang von boot:. CM_OS = 0 -> Ruecksprung, dann bootet
+;           der Bootsektor KERNEL.BIN wie eh und je (alter Weg unangetastet).
+;           CM_OS > 0 -> das gewaehlte System nach 0x10000 laden und starten.
+;  os_setup_screen  zeigt die Liste im Setup und speichert die Wahl in CM_OS.
 ; ===========================================================================
-.equ MENU_TAB,   0x00000600           ; bis zu 8 Zeiger auf Verzeichniseintraege
+.equ MENU_TAB,   0x00000600
 .equ MENU_COUNT, 0x00000624
 .equ MENU_SEL,   0x00000628
 .equ MENU_SYSP,  0x0000062C
 
-os_auswahl:
-    movi r10, CM_NOMENU               ; Menue per CMOS abgeschaltet? (Testwerkzeuge)
-    call cmos_read
-    cmpi r0, 0
-    jnz .zurueck
-    li r1, SS_DIRSEC0                  ; Verzeichnis lesen
+os_enum:
+    li r1, SS_DIRSEC0
     movi r2, SS_DIRSECS
     li r3, SEC_PUFFER
     call disk_read
     cmpi r0, 0
-    jnz .zurueck
-
-    li r4, SEC_PUFFER                  ; \SYSTEM-Ordner finden
+    jnz .fail
+    li r4, SEC_PUFFER
     movi r5, 0
-    li r6, 0x54535953                  ; "SYST"
-    li r7, 0x00004D45                  ; "EM"
+    li r6, 0x54535953
+    li r7, 0x00004D45
 .sys_loop:
     ldw r9, [r4]
     cmp r9, r6
@@ -1006,47 +1003,115 @@ os_auswahl:
     addi r5, r5, 1
     cmpi r5, SS_MAXFILES
     jl .sys_loop
-    jmp .zurueck
+    jmp .fail
 .sys_found:
-    addi r5, r5, 1                     ; Elternwert der Kinder = SYSTEM-Index+1
+    addi r5, r5, 1
     stwa MENU_SYSP, r5
-
-    li r4, SEC_PUFFER                  ; Kandidaten sammeln
+    movi r8, 0
+    li r4, SEC_PUFFER
     movi r5, 0
-    movi r8, 0                         ; Kandidatenzahl
-    ldwa r7, MENU_SYSP
-.scan:
+.p1:
     ldw r9, [r4+SS_E_INFO]
     andi r0, r9, 0xFF
-    cmpi r0, 1                         ; FT_FILE?
-    jnz .scan_next
+    cmpi r0, 1
+    jnz .p1n
     shri r0, r9, 16
-    cmp r0, r7                         ; liegt in \SYSTEM?
-    jnz .scan_next
+    ldwa r1, MENU_SYSP
+    cmp r0, r1
+    jnz .p1n
+    mov r1, r4
+    call name_ist_kernel
+    cmpi r0, 0
+    jz .p1n
+    li r0, MENU_TAB
+    stw [r0], r4
+    movi r8, 1
+    jmp .p2start
+.p1n:
+    addi r4, r4, SS_ENTSIZE
+    addi r5, r5, 1
+    cmpi r5, SS_MAXFILES
+    jl .p1
+.p2start:
+    li r4, SEC_PUFFER
+    movi r5, 0
+.p2:
+    ldw r9, [r4+SS_E_INFO]
+    andi r0, r9, 0xFF
+    cmpi r0, 1
+    jnz .p2n
+    shri r0, r9, 16
+    ldwa r1, MENU_SYSP
+    cmp r0, r1
+    jnz .p2n
     mov r1, r4
     call name_ist_bin
     cmpi r0, 0
-    jz .scan_next
+    jz .p2n
+    mov r1, r4
+    call name_ist_kernel
+    cmpi r0, 0
+    jnz .p2n
     li r0, MENU_TAB
     shli r1, r8, 2
     add r0, r0, r1
     stw [r0], r4
     addi r8, r8, 1
     cmpi r8, 8
-    jl .scan_next
-    jmp .scan_done
-.scan_next:
+    jge .enum_done
+.p2n:
     addi r4, r4, SS_ENTSIZE
     addi r5, r5, 1
     cmpi r5, SS_MAXFILES
-    jl .scan
-.scan_done:
+    jl .p2
+.enum_done:
     stwa MENU_COUNT, r8
-    cmpi r8, 2                         ; weniger als 2 -> kein Menue
-    jl .zurueck
+    mov r0, r8
+    ret
+.fail:
+    movi r0, 0
+    stwa MENU_COUNT, r0
+    ret
 
-    movi r5, 0                         ; Auswahl = 0
-    stwa MENU_SEL, r5
+os_boot:
+    movi r10, CM_OS
+    call cmos_read
+    cmpi r0, 0
+    jz .zurueck
+    stwa MENU_SEL, r0
+    call os_enum
+    ldwa r6, MENU_SEL
+    ldwa r0, MENU_COUNT
+    cmp r6, r0
+    jge .zurueck
+    li r1, MENU_TAB
+    shli r0, r6, 2
+    add r1, r1, r0
+    ldw r4, [r1]
+    ldw r1, [r4+SS_E_START]
+    ldw r2, [r4+SS_E_SIZE]
+    addi r2, r2, 511
+    shri r2, r2, 9
+    li r3, KERNEL_ADDR
+    call disk_read
+    li r10, KERNEL_ADDR
+    jmpr r10
+.zurueck:
+    ret
+
+os_setup_screen:
+    call os_enum
+    ldwa r0, MENU_COUNT
+    cmpi r0, 0
+    jz .ende
+    movi r10, CM_OS
+    call cmos_read
+    ldwa r1, MENU_COUNT
+    cmp r0, r1
+    jl .sel_ok
+    movi r0, 0
+.sel_ok:
+    stwa MENU_SEL, r0
 .redraw:
     movi r1, ATTR_NORMAL
     call vid_clear
@@ -1060,9 +1125,9 @@ os_auswahl:
     li r3, s_oshint
     movi r4, ATTR_NORMAL
     call vid_putsat
-    movi r6, 0                         ; Zeilenindex
+    movi r6, 0
 .draw_loop:
-    ldwa r0, MENU_SEL                  ; Marker '>' oder ' '
+    ldwa r0, MENU_SEL
     cmp r0, r6
     jz .mk_sel
     movi r3, 0x20
@@ -1074,7 +1139,7 @@ os_auswahl:
     addi r2, r6, 6
     movi r4, ATTR_BRIGHT
     call vid_putat
-    ldwa r0, MENU_SEL                  ; Name, markiert oder normal
+    ldwa r0, MENU_SEL
     cmp r0, r6
     jz .nm_hi
     movi r4, ATTR_NORMAL
@@ -1085,7 +1150,7 @@ os_auswahl:
     li r0, MENU_TAB
     shli r1, r6, 2
     add r0, r0, r1
-    ldw r3, [r0]                       ; Zeiger auf Eintrag = Name (0-terminiert)
+    ldw r3, [r0]
     movi r1, 6
     addi r2, r6, 6
     call vid_putsat
@@ -1097,7 +1162,9 @@ os_auswahl:
     call kbd_getkey
     shri r10, r0, 8
     cmpi r10, K_ENTER
-    jz .boot_it
+    jz .save
+    cmpi r10, K_ESC
+    jz .ende
     cmpi r10, K_UP
     jz .up
     cmpi r10, K_DOWN
@@ -1120,25 +1187,37 @@ os_auswahl:
 .down_ok:
     stwa MENU_SEL, r0
     jmp .redraw
-.boot_it:
-    ldwa r0, MENU_SEL
-    li r1, MENU_TAB
-    shli r0, r0, 2
-    add r1, r1, r0
-    ldw r4, [r1]                       ; Zeiger auf gewaehlten Eintrag
-    ldw r1, [r4+SS_E_START]            ; Startsektor
-    ldw r2, [r4+SS_E_SIZE]             ; Groesse in Byte
-    addi r2, r2, 511
-    shri r2, r2, 9                     ; -> Sektoren
-    li r3, KERNEL_ADDR
-    call disk_read
-    li r10, KERNEL_ADDR
-    jmpr r10                           ; ab ins gewaehlte System
-.zurueck:
+.save:
+    ldwa r11, MENU_SEL
+    movi r10, CM_OS
+    call cmos_write
+.ende:
     ret
 
-; r1 = Zeiger auf Verzeichniseintrag. r0 = 1, wenn der Name auf ".BIN" endet
-; und NICHT "BIOS.BIN" ist, sonst 0. Erhaelt r2/r3/r4.
+name_ist_kernel:
+    push r2
+    push r3
+    ldw r2, [r1]
+    li r3, 0x4E52454B
+    cmp r2, r3
+    jnz .nok
+    ldw r2, [r1+4]
+    li r3, 0x422E4C45
+    cmp r2, r3
+    jnz .nok
+    ldw r2, [r1+8]
+    li r3, 0x00004E49
+    cmp r2, r3
+    jnz .nok
+    movi r0, 1
+    jmp .kdone
+.nok:
+    movi r0, 0
+.kdone:
+    pop r3
+    pop r2
+    ret
+
 name_ist_bin:
     push r2
     push r3
@@ -1158,23 +1237,23 @@ name_ist_bin:
     subi r2, r2, 4
     add r3, r1, r2
     ldb r4, [r3]
-    cmpi r4, 0x2E                      ; '.'
+    cmpi r4, 0x2E
     jnz .no
     ldb r4, [r3+1]
-    cmpi r4, 0x42                      ; 'B'
+    cmpi r4, 0x42
     jnz .no
     ldb r4, [r3+2]
-    cmpi r4, 0x49                      ; 'I'
+    cmpi r4, 0x49
     jnz .no
     ldb r4, [r3+3]
-    cmpi r4, 0x4E                      ; 'N'
+    cmpi r4, 0x4E
     jnz .no
-    ldw r4, [r1]                       ; "BIOS.BIN" ausschliessen
-    li r3, 0x534F4942                  ; "BIOS"
+    ldw r4, [r1]
+    li r3, 0x534F4942
     cmp r4, r3
     jnz .yes
     ldw r4, [r1+4]
-    li r3, 0x4E49422E                  ; ".BIN"
+    li r3, 0x4E49422E
     cmp r4, r3
     jz .no
 .yes:
@@ -1255,8 +1334,8 @@ s_sec_hint2:  .db "DEL = Setup (Security > Trust Current Boot Image)", 0
 s_sec_halt:   .db "Secure Boot: halted", 0
 s_booting:    .db "Starting system ...", 0
 s_bootmsg:    .db "Booting from Hard Disk 0 ... ", 0
-s_osmenu:     .db "TOOBAD BIOS  --  Select Operating System", 0
-s_oshint:     .db "Arrow keys to choose, ENTER to boot.", 0
+s_osmenu:     .db "Operating System  --  pick the default to boot", 0
+s_oshint:     .db "Up/Down to choose, ENTER to save, ESC to cancel.", 0
 s_nosig:      .db "no boot signature", 0
 s_diskerr:    .db "read error", 0
 s_nosys:      .db "No bootable device found", 0

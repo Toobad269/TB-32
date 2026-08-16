@@ -23,6 +23,7 @@
 .equ REG_BIOSSUM,  0xE1            ; nur Anzeige: Pruefsumme des Chips
 .equ REG_FLASH,    0xE2            ; Knopf: BIOS aus einer Datei neu brennen
 .equ REG_RESTORE,  0xE3            ; Knopf: Sicherung zurueckspielen
+.equ REG_OS,       0xE4            ; Knopf: Betriebssystem auswaehlen
 .equ REG_TIME,     0xF0            ; Uhrzeit, mit ENTER editierbar
 .equ REG_DATE,     0xF1            ; Datum, mit ENTER editierbar
 .equ REG_DEFAULTS, 0xF2            ; Knopf: Standardwerte laden
@@ -284,6 +285,8 @@ setup_change:
     jz .flash
     cmpi r7, REG_RESTORE
     jz .restore
+    cmpi r7, REG_OS
+    jz .os
     cmpi r7, 0xE0
     jae .done                         ; reine Anzeigezeilen
     ldw r8, [r6+8]                    ; r8 = Anzahl moeglicher Werte
@@ -308,6 +311,9 @@ setup_change:
     jmp .done
 .flash:
     call flash_bios
+    jmp .done
+.os:
+    call os_setup_screen              ; Liste zeigen, Standard-OS in CM_OS setzen
     jmp .done
 .restore:
     call flash_restore
@@ -1344,7 +1350,7 @@ setup_message:
 ; --- Die vier Reiter -----------------------------------------------------
 ;  je Reiter: Zeiger auf die Eintragstabelle, Anzahl der Zeilen
 setup_tabs:
-    .dw tab_main,     7
+    .dw tab_main,     8
     .dw tab_hardware, 5
     .dw tab_cooling,  6
     .dw tab_security, 4
@@ -1361,6 +1367,7 @@ tab_main:
     .dw s_e_beep,  CM_BEEP,      2, opts_onoff
     .dw s_e_verb,  CM_VERBOSE,   2, opts_verb
     .dw s_e_boot2, CM_BOOTMODE,  2, opts_boot2
+    .dw s_e_os,    REG_OS,       0, 0
     .dw s_e_def,   REG_DEFAULTS, 0, 0
 
 tab_hardware:
@@ -1427,6 +1434,7 @@ s_e_beep:    .db "POST Beep", 0
 s_e_speed:   .db "CPU Clock Speed", 0
 s_e_verb:    .db "POST Messages", 0
 s_e_boot2:   .db "Boot To", 0
+s_e_os:      .db "Operating System", 0
 s_bm0:       .db "Desktop", 0
 s_bm1:       .db "Console", 0
 s_e_def:     .db "Load Setup Defaults", 0
