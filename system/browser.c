@@ -17,14 +17,22 @@
 #define BR_TEXT     0x00190000       /* daraus gemachte Zeilen */
 #define BR_ZEILEMAX 100              /* Zeichen je Zeile */
 #define BR_ZEILEN   400              /* so viele Zeilen merken wir uns */
-#define BR_LINKS    0x00196000       /* Ziele der Verweise, je 160 Byte */
 #define BR_LINKMAX  32
-/* Platz zum Zwischenlegen: beim Umbrechen wandert der Rest der Zeile kurz
-   hierher, und die HTTP-Anfrage wird hier gebaut. Vorher lag beides bei
-   BR_ROH + BR_ROHMAX -- das ist aber genau BR_TEXT, also die erste Zeile der
-   Seite. Deshalb stand oben im Fenster ein Wortfetzen aus der Mitte des
-   Textes. */
-#define BR_KRATZ    0x00198000
+/* WICHTIG -- die drei Puffer duerfen sich nicht ueberschneiden, sonst frisst
+   eine lange Seite die Verweise und den Kratzpuffer auf:
+
+     BR_ROH   0x180000 .. 0x190000   (65536 Byte Antwort)
+     BR_TEXT  0x190000 .. 0x19A000   (400 Zeilen x 100 = 40000 Byte)
+     BR_LINKS 0x19A000 .. 0x19C000   (32 Verweise x 160 = 5120 Byte)
+     BR_KRATZ 0x19C000 .. 0x19D000   (Umbruch-Rest + HTTP-Anfrage)
+
+   Frueher lag BR_LINKS bei 0x196000 und BR_KRATZ bei 0x198000 -- beides
+   MITTEN im Textbereich (Zeile ~245 bzw. ~327). Ab einer langen Seite
+   ueberschrieb der Text die Verweise und den Kratzpuffer; Links gingen ins
+   Leere und die Anzeige wurde Kraut und Rueben. Jeder Puffer bekommt jetzt
+   seinen eigenen Bereich; bis 0x200000 (Programm-Band) ist reichlich Luft. */
+#define BR_LINKS    0x0019A000       /* Ziele der Verweise, je 160 Byte */
+#define BR_KRATZ    0x0019C000
 
 int  br_anzahl = 0;                  /* wie viele Zeilen die Seite hat */
 int  br_top = 0;                     /* erste sichtbare Zeile */

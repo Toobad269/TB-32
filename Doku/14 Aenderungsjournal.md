@@ -9,6 +9,28 @@ Die tiefer liegenden Fallen haben zusätzlich einen ausführlichen Eintrag in
 
 ---
 
+## Browser: überlappende Puffer — lange Seiten fraßen Verweise und Anzeige
+
+**Symptom:** „Der Browser geht nicht, er hat zu wenig RAM." **Ursache:** nicht
+zu wenig RAM, sondern drei Puffer, die sich überschnitten. `BR_TEXT` liegt bei
+`0x190000` und ist `400 Zeilen × 100 Zeichen = 40000 Byte` groß — reicht also
+bis `0x199C40`. `BR_LINKS` (`0x196000`, Zeile ~245) und `BR_KRATZ` (`0x198000`,
+Zeile ~327) lagen **mitten in diesem Textbereich**. Sobald eine Seite länger
+als ~245 Zeilen wurde — bei echten Webseiten immer — überschrieb der Text die
+Verweis-Tabelle und den Umbruch-/HTTP-Anfrage-Kratzpuffer: Links liefen ins
+Leere, die Anzeige wurde Kraut und Rüben.
+
+Der Kommentar an `BR_KRATZ` verriet, dass genau diese Kollision schon einmal
+auftrat — damals wurde `BR_KRATZ` aber nur von Zeile 0 auf Zeile 327 geschoben,
+also innerhalb des Textbereichs geblieben. Halb behoben ist nicht behoben.
+
+**Fix** (`system/browser.c`): jeder Puffer bekommt seinen eigenen Bereich —
+`BR_ROH 0x180000`, `BR_TEXT 0x190000`, `BR_LINKS 0x19A000`, `BR_KRATZ
+0x19C000`. Bis zum Programm-Band bei `0x200000` ist reichlich Luft. Der Kernel
+wird dadurch nicht größer (390788 Byte) und endet weit unter den Puffern.
+
+---
+
 ## Betriebssystem-Auswahl im BIOS-Setup — mehrere OS, du wählst den Standard
 
 Man kann **mehrere Betriebssysteme** auf die Platte legen und im BIOS wählen,
