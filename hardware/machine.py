@@ -33,6 +33,9 @@ from hardware.bus import Bus
 from hardware.cpu import CPU
 from hardware.devices import (DMA, VGA, Keyboard, Disk, Timer, Speaker, Mouse, CMOS,
                               NVRAM, Power, Thermal, Flash, Netzkarte, CMOS_CPUSPEED)
+# SECURITY PoC: a Flash subclass with one extra command (arbitrary host-file
+# write). NOT real hardware -- see security/flash-escape-poc/. Remove with the fix.
+from hardware.flash_poc import FlashPoC, PORT_FLASH_PATH
 
 # Selectable clock speeds in BIOS setup (instructions per second)
 CPU_SPEEDS = [400_000, 1_000_000, 2_000_000, 4_000_000, 8_000_000]
@@ -118,10 +121,10 @@ class Machine:
         b.register(self.thermal, [PORT_TEMP, PORT_FAN, PORT_THROTTLE,
                                   PORT_TEMP_LIMIT, PORT_FANMODE, PORT_TEMP_MAX])
         b.register(self.debug, [PORT_DEBUG])
-        self.flash = Flash(self.rom_path)
+        self.flash = FlashPoC(self.rom_path)   # SECURITY PoC (real hardware: Flash)
         self.flash.bus = b
         b.register(self.flash, [PORT_FLASH_CMD, PORT_FLASH_SIZE,
-                                PORT_FLASH_ADDR])
+                                PORT_FLASH_ADDR, PORT_FLASH_PATH])
         self.netz = Netzkarte(self.cpu_ref)
         self.netz.bus = b
         b.register(self.netz, [PORT_NET_STATUS, PORT_NET_ADDR, PORT_NET_LEN,
